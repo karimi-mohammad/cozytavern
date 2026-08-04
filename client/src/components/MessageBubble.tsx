@@ -56,22 +56,17 @@ export default function MessageBubble({ message, isLast }: Props) {
 
   return (
     <div
-      className={`flex gap-3 px-5 py-3 group hover:bg-tavern-hover/30 transition-colors ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      className={`flex gap-3 px-4 py-3 group hover:bg-tavern-hover/20 transition-colors border-b border-tavern-border/30 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => setShowControls(false)}
     >
-      {/* Token count - far side */}
-      <div className="flex-shrink-0 w-10 flex items-start justify-center pt-8">
-        <span className="text-[11px] text-tavern-dim font-mono">{tokenCount}t</span>
-      </div>
-
       {/* Avatar - only for AI */}
       {isAssistant && (
         <div className="flex-shrink-0">
           <CharacterAvatar name={currentCharacter?.name || '?'} avatar={currentCharacter?.avatar} size="lg" />
         </div>
       )}
-      {isUser && <div className="w-12 flex-shrink-0" />}
+      {isUser && <div className="w-10 flex-shrink-0" />}
 
       {/* Message Content */}
       <div className={`flex flex-col flex-1 min-w-0 max-w-[88%] md:max-w-[82%]`}>

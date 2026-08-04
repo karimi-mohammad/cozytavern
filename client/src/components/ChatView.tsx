@@ -142,7 +142,7 @@ export default function ChatView() {
   return (
     <div className="flex-1 flex flex-col bg-tavern-bg min-w-0 relative">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-2 relative z-10 px-[120px]">
+      <div className="flex-1 overflow-y-auto py-2 relative z-10 px-[60px]">
         {currentChat?.messages.map((msg, index) => (
           <MessageBubble
             key={msg.id}

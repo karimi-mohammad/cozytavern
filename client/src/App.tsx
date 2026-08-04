@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useStore } from './store/state';
+import IconBar from './components/IconBar';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
@@ -22,20 +23,26 @@ function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-tavern-bg">
-      {/* Top Bar with horizontal icons, chat selector, search */}
-      <TopBar />
+    <div className="flex h-screen overflow-hidden bg-tavern-bg">
+      {/* Left Icon Bar - always visible (SillyTavern style) */}
+      <IconBar />
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Main Chat Area - always full width */}
-        <ChatView />
+      {/* Main Content Area */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Top Bar */}
+        <TopBar />
 
-        {/* Sidebar - absolutely positioned, doesn't affect chat width */}
-        <Sidebar />
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* Main Chat Area - always full width */}
+          <ChatView />
 
-        {/* Right Panel */}
-        <RightPanel />
+          {/* Sidebar - absolutely positioned overlay */}
+          <Sidebar />
+
+          {/* Right Panel */}
+          <RightPanel />
+        </div>
       </div>
 
       {/* Modals */}

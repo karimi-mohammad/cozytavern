@@ -36,24 +36,15 @@ export default function MessageInput() {
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
       {/* Main input row */}
       <div className="flex items-end gap-2 px-3 py-2">
-        {/* Left: hamburger + magic wand icons */}
+        {/* Left: hamburger icon */}
         <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
           <button
             onClick={() => setActivePanel('chats')}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
             title="Menu"
           >
             <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
-            title="AI Settings"
-          >
-            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </button>
         </div>
