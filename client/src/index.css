@@ -38,10 +38,31 @@ body {
   padding: 0;
   overflow: hidden;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background-color: #0f0f1a;
+  background-color: #0a0b12;
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(140, 40, 200, 0.25) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 50, 160, 0.2) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 100%, rgba(80, 20, 120, 0.15) 0%, transparent 40%),
+    radial-gradient(ellipse at 0% 0%, rgba(20, 30, 80, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 70% 30%, rgba(60, 30, 100, 0.08) 0%, transparent 25%),
+    linear-gradient(180deg, #08091a 0%, #0d0e20 30%, #0f1025 60%, #0a0b15 100%);
+  background-attachment: fixed;
   color: #ccccdd;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Background wallpaper overlay - neon room effect */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23060710'/%3E%3Cstop offset='0.4' stop-color='%230a0c18'/%3E%3Cstop offset='1' stop-color='%23080912'/%3E%3C/linearGradient%3E%3CradialGradient id='glow1' cx='0.05' cy='0.85' r='0.4'%3E%3Cstop offset='0' stop-color='%237c5cbf' stop-opacity='0.2'/%3E%3Cstop offset='1' stop-color='transparent'/%3E%3C/radialGradient%3E%3CradialGradient id='glow2' cx='0.95' cy='0.15' r='0.35'%3E%3Cstop offset='0' stop-color='%234a5a9a' stop-opacity='0.15'/%3E%3Cstop offset='1' stop-color='transparent'/%3E%3C/radialGradient%3E%3CradialGradient id='glow3' cx='0.5' cy='1' r='0.5'%3E%3Cstop offset='0' stop-color='%235a3a8a' stop-opacity='0.1'/%3E%3Cstop offset='1' stop-color='transparent'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect fill='url(%23sky)' width='1920' height='1080'/%3E%3Crect fill='url(%23glow1)' width='1920' height='1080'/%3E%3Crect fill='url(%23glow2)' width='1920' height='1080'/%3E%3Crect fill='url(%23glow3)' width='1920' height='1080'/%3E%3C!-- Left neon vertical line --%3E%3Crect x='0' y='100' width='4' height='800' fill='%237c5cbf' opacity='0.12' rx='2'/%3E%3Crect x='8' y='200' width='2' height='600' fill='%239370db' opacity='0.06'/%3E%3C!-- Right neon vertical line --%3E%3Crect x='1916' y='50' width='4' height='900' fill='%234a5a9a' opacity='0.1' rx='2'/%3E%3Crect x='1908' y='150' width='2' height='700' fill='%235a6aaa' opacity='0.05'/%3E%3C!-- Horizontal light streaks --%3E%3Crect x='0' y='350' width='500' height='1' fill='%237c5cbf' opacity='0.08'/%3E%3Crect x='0' y='352' width='400' height='1' fill='%239370db' opacity='0.04'/%3E%3Crect x='1420' y='250' width='500' height='1' fill='%234a5a9a' opacity='0.06'/%3E%3Crect x='1520' y='252' width='400' height='1' fill='%235a6aaa' opacity='0.03'/%3E%3C!-- Desk/table surface --%3E%3Crect x='0' y='850' width='1920' height='1' fill='%233a3a5a' opacity='0.08'/%3E%3Crect x='0' y='852' width='1920' height='230' fill='%23050608' opacity='0.4'/%3E%3C!-- Monitor glow left --%3E%3Crect x='100' y='400' width='200' height='150' rx='5' fill='%231a1a2e' opacity='0.15' stroke='%233a3a5a' stroke-opacity='0.06' stroke-width='1'/%3E%3Crect x='110' y='410' width='180' height='130' fill='%230a0c18' opacity='0.2'/%3E%3C!-- Monitor glow right --%3E%3Crect x='1600' y='300' width='220' height='160' rx='5' fill='%231a1a2e' opacity='0.12' stroke='%233a3a5a' stroke-opacity='0.05' stroke-width='1'/%3E%3Crect x='1610' y='310' width='200' height='140' fill='%230a0c18' opacity='0.15'/%3E%3C!-- Particles/dust --%3E%3Ccircle cx='300' cy='200' r='1.5' fill='%237c5cbf' opacity='0.2'/%3E%3Ccircle cx='600' cy='500' r='1' fill='%239370db' opacity='0.15'/%3E%3Ccircle cx='900' cy='150' r='1' fill='%235a6aaa' opacity='0.12'/%3E%3Ccircle cx='1200' cy='400' r='1.5' fill='%234a5a9a' opacity='0.1'/%3E%3Ccircle cx='1500' cy='700' r='1' fill='%237c5cbf' opacity='0.15'/%3E%3Ccircle cx='1800' cy='300' r='1.5' fill='%235a6aaa' opacity='0.12'/%3E%3Ccircle cx='400' cy='600' r='1' fill='%239370db' opacity='0.08'/%3E%3Ccircle cx='1100' cy='250' r='1' fill='%237c5cbf' opacity='0.1'/%3E%3Ccircle cx='750' cy='800' r='1.5' fill='%234a5a9a' opacity='0.08'/%3E%3Ccircle cx='1350' cy='550' r='1' fill='%239370db' opacity='0.1'/%3E%3C!-- Ambient light pools --%3E%3Cellipse cx='200' cy='700' rx='200' ry='100' fill='%237c5cbf' opacity='0.04'/%3E%3Cellipse cx='1700' cy='350' rx='180' ry='90' fill='%234a5a9a' opacity='0.035'/%3E%3Cellipse cx='960' cy='900' rx='400' ry='80' fill='%235a3a8a' opacity='0.03'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
