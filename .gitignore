@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Database files
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/settings.local.json
+
+# Playwright
+.playwright-mcp/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (keep package-lock)
+yarn.lock
+pnpm-lock.yaml

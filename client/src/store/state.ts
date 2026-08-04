@@ -1,0 +1,432 @@
+import { create } from 'zustand';
+import { Character, Chat, Message, Persona, Lorebook, ApiSettings } from '../types';
+import { api } from '../api/client';
+
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+interface ConfirmDialog {
+  message: string;
+}
+
+interface AppState {
+  // Data
+  characters: Character[];
+  currentCharacter: Character | null;
+  chats: Chat[];
+  currentChat: (Chat & { messages: Message[] }) | null;
+  personas: Persona[];
+  activePersona: Persona | null;
+  lorebooks: Lorebook[];
+  activeLorebook: Lorebook | null;
+  apiSettings: Record<string, ApiSettings>;
+
+  // UI State
+  sidebarOpen: boolean;
+  settingsOpen: boolean;
+  characterEditorOpen: boolean;
+  editingCharacter: Character | null;
+  lorebookEditorOpen: boolean;
+  personaEditorOpen: boolean;
+  editingPersona: Persona | null;
+  isGenerating: boolean;
+  galleryView: boolean;
+  toggleGallery: () => void;
+  setGalleryView: (open: boolean) => void;
+  activePanel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'extensions' | 'settings' | null;
+  panelOpen: boolean;
+  rightPanelOpen: boolean;
+  setActivePanel: (panel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'extensions' | 'settings' | null) => void;
+  togglePanel: () => void;
+  toggleRightPanel: () => void;
+  setRightPanelOpen: (open: boolean) => void;
+
+  // Toast
+  toasts: Toast[];
+  addToast: (message: string, type?: Toast['type']) => void;
+  removeToast: (id: string) => void;
+
+  // Confirm
+  confirmDialog: ConfirmDialog | null;
+  showConfirm: (message: string) => Promise<boolean>;
+  resolveConfirm: (result: boolean) => void;
+
+  // Actions
+  loadCharacters: () => Promise<void>;
+  selectCharacter: (character: Character) => Promise<void>;
+  createCharacter: (data: any) => Promise<Character>;
+  updateCharacter: (id: string, data: any) => Promise<void>;
+  deleteCharacter: (id: string) => Promise<void>;
+
+  loadChats: (characterId: string) => Promise<void>;
+  selectChat: (chatId: string) => Promise<void>;
+  createChat: (characterId: string) => Promise<Chat>;
+  branchChat: (characterId: string, sourceChatId: string, branchPoint: string) => Promise<Chat>;
+  deleteChat: (id: string) => Promise<void>;
+  renameChat: (id: string, name: string) => Promise<void>;
+  moveChatToFolder: (id: string, folder: string) => Promise<void>;
+
+  sendMessage: (content: string) => Promise<void>;
+  editMessage: (messageId: string, content: string) => Promise<void>;
+  regenerateMessage: () => Promise<void>;
+  swipeMessage: (messageId: string, direction: string) => Promise<void>;
+
+  loadPersonas: () => Promise<void>;
+  createPersona: (data: any) => Promise<void>;
+  updatePersona: (id: string, data: any) => Promise<void>;
+  deletePersona: (id: string) => Promise<void>;
+  setActivePersona: (persona: Persona | null) => void;
+
+  loadLorebooks: () => Promise<void>;
+  setActiveLorebook: (lorebook: Lorebook | null) => void;
+
+  loadApiSettings: () => Promise<void>;
+  saveApiSettings: (data: any) => Promise<void>;
+
+  setSidebarOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setCharacterEditorOpen: (open: boolean, character?: Character | null) => void;
+  setLorebookEditorOpen: (open: boolean) => void;
+  setPersonaEditorOpen: (open: boolean, persona?: Persona | null) => void;
+  setIsGenerating: (generating: boolean) => void;
+}
+
+let confirmResolver: ((result: boolean) => void) | null = null;
+
+export const useStore = create<AppState>((set, get) => ({
+  characters: [],
+  currentCharacter: null,
+  chats: [],
+  currentChat: null,
+  personas: [],
+  activePersona: null,
+  lorebooks: [],
+  activeLorebook: null,
+  apiSettings: {},
+
+  sidebarOpen: true,
+  settingsOpen: false,
+  characterEditorOpen: false,
+  editingCharacter: null,
+  lorebookEditorOpen: false,
+  personaEditorOpen: false,
+  editingPersona: null,
+  isGenerating: false,
+  galleryView: false,
+  toggleGallery: () => set(s => ({ galleryView: !s.galleryView, sidebarOpen: true })),
+  setGalleryView: (open) => set({ galleryView: open, sidebarOpen: true }),
+  activePanel: 'characters',
+  panelOpen: true,
+  rightPanelOpen: false,
+  setActivePanel: (panel) => set(s => {
+    if (s.activePanel === panel && s.panelOpen) {
+      return { panelOpen: false };
+    }
+    return { activePanel: panel, panelOpen: true };
+  }),
+  togglePanel: () => set(s => ({ panelOpen: !s.panelOpen })),
+  toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),
+  setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
+
+  toasts: [],
+  confirmDialog: null,
+
+  addToast: (message, type = 'info') => {
+    const id = Math.random().toString(36).slice(2);
+    set(s => ({ toasts: [...s.toasts, { id, message, type }] }));
+  },
+  removeToast: (id) => {
+    set(s => ({ toasts: s.toasts.filter(t => t.id !== id) }));
+  },
+
+  showConfirm: (message) => {
+    return new Promise<boolean>((resolve) => {
+      confirmResolver = resolve;
+      set({ confirmDialog: { message } });
+    });
+  },
+  resolveConfirm: (result) => {
+    set({ confirmDialog: null });
+    confirmResolver?.(result);
+    confirmResolver = null;
+  },
+
+  loadCharacters: async () => {
+    const characters = await api.getCharacters();
+    set({ characters });
+  },
+
+  selectCharacter: async (character) => {
+    set({ currentCharacter: character, currentChat: null });
+    const chats = await api.getChats(character.id);
+    set({ chats });
+  },
+
+  createCharacter: async (data) => {
+    const character = await api.createCharacter(data);
+    set(s => ({ characters: [character, ...s.characters] }));
+    get().addToast('کاراکتر ایجاد شد', 'success');
+    return character;
+  },
+
+  updateCharacter: async (id, data) => {
+    const updated = await api.updateCharacter(id, data);
+    set(s => ({
+      characters: s.characters.map(c => c.id === id ? updated : c),
+      currentCharacter: s.currentCharacter?.id === id ? updated : s.currentCharacter,
+    }));
+    get().addToast('کاراکتر ذخیره شد', 'success');
+  },
+
+  deleteCharacter: async (id) => {
+    await api.deleteCharacter(id);
+    set(s => ({
+      characters: s.characters.filter(c => c.id !== id),
+      currentCharacter: s.currentCharacter?.id === id ? null : s.currentCharacter,
+    }));
+    get().addToast('کاراکتر حذف شد', 'success');
+  },
+
+  loadChats: async (characterId) => {
+    const chats = await api.getChats(characterId);
+    set({ chats });
+  },
+
+  selectChat: async (chatId) => {
+    const chat = await api.getChat(chatId);
+    set({ currentChat: chat });
+  },
+
+  createChat: async (characterId) => {
+    const chat = await api.createChat({ character_id: characterId });
+    set(s => ({ chats: [chat, ...s.chats], currentChat: null }));
+    return chat;
+  },
+
+  branchChat: async (characterId, sourceChatId, branchPoint) => {
+    const chat = await api.createChat({
+      character_id: characterId,
+      branch_from: sourceChatId,
+      branch_point: branchPoint,
+    });
+    set(s => ({ chats: [chat, ...s.chats] }));
+    return chat;
+  },
+
+  deleteChat: async (id) => {
+    await api.deleteChat(id);
+    set(s => ({
+      chats: s.chats.filter(c => c.id !== id),
+      currentChat: s.currentChat?.id === id ? null : s.currentChat,
+    }));
+  },
+
+  renameChat: async (id, name) => {
+    const updated = await api.updateChat(id, { name });
+    set(s => ({
+      chats: s.chats.map(c => c.id === id ? updated : c),
+      currentChat: s.currentChat?.id === id ? { ...s.currentChat, ...updated } : s.currentChat,
+    }));
+  },
+
+  moveChatToFolder: async (id, folder) => {
+    const updated = await api.updateChat(id, { folder });
+    set(s => ({
+      chats: s.chats.map(c => c.id === id ? updated : c),
+      currentChat: s.currentChat?.id === id ? { ...s.currentChat, ...updated } : s.currentChat,
+    }));
+  },
+
+  sendMessage: async (content) => {
+    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    if (!currentChat || !currentCharacter || isGenerating) return;
+
+    const userMsg = await api.sendMessage({
+      chat_id: currentChat.id,
+      role: 'user',
+      content,
+    });
+
+    set(s => ({
+      currentChat: s.currentChat ? {
+        ...s.currentChat,
+        messages: [...s.currentChat.messages, userMsg],
+      } : null,
+      isGenerating: true,
+    }));
+
+    try {
+      let fullContent = '';
+      await api.chatWithAI(
+        {
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+        },
+        (messageId) => {
+          const assistantMsg = {
+            id: messageId,
+            chat_id: currentChat.id,
+            role: 'assistant' as const,
+            content: '',
+            swipes: [],
+            swipe_id: 0,
+            is_edited: false,
+            is_system: false,
+            send_date: new Date().toISOString(),
+          };
+          set(s => ({
+            currentChat: s.currentChat ? {
+              ...s.currentChat,
+              messages: [...s.currentChat.messages, assistantMsg],
+            } : null,
+          }));
+        },
+        (token) => {
+          fullContent += token;
+          set(s => {
+            if (!s.currentChat) return s;
+            const msgs = [...s.currentChat.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+            }
+            return { currentChat: { ...s.currentChat, messages: msgs } };
+          });
+        },
+        () => {
+          set({ isGenerating: false });
+        }
+      );
+    } catch (error: any) {
+      get().addToast(`خطا: ${error.message}`, 'error');
+      set(s => {
+        if (!s.currentChat) return s;
+        const msgs = [...s.currentChat.messages];
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
+          msgs[msgs.length - 1] = { ...lastMsg, content: `خطا: ${error.message}` };
+        }
+        return { currentChat: { ...s.currentChat, messages: msgs }, isGenerating: false };
+      });
+    }
+  },
+
+  editMessage: async (messageId, content) => {
+    await api.editMessage(messageId, content);
+    const { currentChat } = get();
+    if (currentChat) {
+      const chat = await api.getChat(currentChat.id);
+      set({ currentChat: chat });
+    }
+  },
+
+  regenerateMessage: async () => {
+    const { currentChat, currentCharacter, activePersona, activeLorebook } = get();
+    if (!currentChat || !currentCharacter) return;
+
+    const lastAssistantMsg = [...currentChat.messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistantMsg) return;
+
+    set({ isGenerating: true });
+
+    try {
+      await api.regenerateMessage(currentChat.id);
+
+      let fullContent = '';
+      await api.chatWithAI(
+        {
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          update_message_id: lastAssistantMsg.id,
+        },
+        () => {},
+        (token) => {
+          fullContent += token;
+          set(s => {
+            if (!s.currentChat) return s;
+            const msgs = s.currentChat.messages.map(m =>
+              m.id === lastAssistantMsg.id ? { ...m, content: fullContent } : m
+            );
+            return { currentChat: { ...s.currentChat, messages: msgs } };
+          });
+        },
+        () => {
+          set({ isGenerating: false });
+        }
+      );
+    } catch (error: any) {
+      set({ isGenerating: false });
+    }
+  },
+
+  swipeMessage: async (messageId, direction) => {
+    const updated = await api.swipeMessage(messageId, direction);
+    set(s => {
+      if (!s.currentChat) return s;
+      const msgs = s.currentChat.messages.map(m => m.id === messageId ? updated : m);
+      return { currentChat: { ...s.currentChat, messages: msgs } };
+    });
+  },
+
+  loadPersonas: async () => {
+    const personas = await api.getPersonas();
+    set({ personas });
+  },
+
+  createPersona: async (data) => {
+    const persona = await api.createPersona(data);
+    set(s => ({ personas: [persona, ...s.personas] }));
+    get().addToast('پرسونا ایجاد شد', 'success');
+  },
+
+  updatePersona: async (id, data) => {
+    const updated = await api.updatePersona(id, data);
+    set(s => ({
+      personas: s.personas.map(p => p.id === id ? updated : p),
+    }));
+    get().addToast('پرسونا ذخیره شد', 'success');
+  },
+
+  deletePersona: async (id) => {
+    await api.deletePersona(id);
+    set(s => ({
+      personas: s.personas.filter(p => p.id !== id),
+      activePersona: s.activePersona?.id === id ? null : s.activePersona,
+    }));
+    get().addToast('پرسونا حذف شد', 'success');
+  },
+
+  setActivePersona: (persona) => set({ activePersona: persona }),
+
+  loadLorebooks: async () => {
+    const lorebooks = await api.getLorebooks();
+    set({ lorebooks });
+  },
+
+  setActiveLorebook: (lorebook) => set({ activeLorebook: lorebook }),
+
+  loadApiSettings: async () => {
+    const settings = await api.getApiSettings();
+    set({ apiSettings: { openai: settings } });
+  },
+
+  saveApiSettings: async (data) => {
+    await api.saveApiSettings(data);
+    set(s => ({ apiSettings: { ...s.apiSettings, openai: data } }));
+    get().addToast('تنظیمات ذخیره شد', 'success');
+  },
+
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setCharacterEditorOpen: (open, character = null) => set({ characterEditorOpen: open, editingCharacter: character }),
+  setLorebookEditorOpen: (open) => set({ lorebookEditorOpen: open }),
+  setPersonaEditorOpen: (open, persona = null) => set({ personaEditorOpen: open, editingPersona: persona }),
+  setIsGenerating: (generating) => set({ isGenerating: generating }),
+}));
