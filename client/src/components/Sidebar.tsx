@@ -59,7 +59,7 @@ export default function Sidebar() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-tavern-card border border-tavern-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-tavern-accent"
+          className="w-full bg-tavern-input border border-tavern-border rounded-md px-3 py-2 text-xs focus:outline-none focus:border-tavern-accent transition-colors text-tavern-text placeholder-tavern-dim"
           placeholder="Search characters..."
         />
       </div>
@@ -67,10 +67,10 @@ export default function Sidebar() {
       {/* Character list */}
       <div className="px-3 pb-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-tavern-muted">Characters</span>
+          <span className="text-xs text-tavern-dim font-medium">Characters</span>
           <button
             onClick={() => setCharacterEditorOpen(true)}
-            className="text-tavern-accent hover:text-tavern-accent-hover text-xs"
+            className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
           >
             + New
           </button>
@@ -81,31 +81,33 @@ export default function Sidebar() {
           filteredCharacters.map(char => (
             <div
               key={char.id}
-              className={`p-2 rounded cursor-pointer mb-1 transition-colors ${
-                currentCharacter?.id === char.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover'
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors ${
+                currentCharacter?.id === char.id
+                  ? 'bg-tavern-accent/20 text-tavern-accent'
+                  : 'hover:bg-tavern-hover text-tavern-text'
               }`}
               onClick={() => { selectCharacter(char); closeSidebarIfMobile(); }}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <CharacterAvatar name={char.name} avatar={char.avatar} size="sm" />
-                  <span className="text-sm truncate">{char.name}</span>
+                  <span className="text-sm truncate font-medium">{char.name}</span>
                 </div>
-                <div className="flex gap-1 flex-shrink-0">
+                <div className="flex gap-0.5 flex-shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); setCharacterEditorOpen(true, char); }}
-                    className="text-tavern-muted hover:text-tavern-text text-xs p-1"
+                    className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteCharacter(char.id); }}
-                    className="text-tavern-muted hover:text-red-400 text-xs p-1"
+                    className="text-tavern-dim hover:text-tavern-danger text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
@@ -121,7 +123,7 @@ export default function Sidebar() {
     if (!currentCharacter) {
       return (
         <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-sm text-tavern-muted text-center">Select a character first</p>
+          <p className="text-sm text-tavern-dim text-center">Select a character first</p>
         </div>
       );
     }
@@ -129,11 +131,11 @@ export default function Sidebar() {
     return (
       <div className="flex-1 overflow-y-auto p-3">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-tavern-muted">Chats</span>
+          <span className="text-xs text-tavern-dim font-medium">Chats</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowNewFolderInput(!showNewFolderInput)}
-              className="text-tavern-muted hover:text-tavern-text text-xs"
+              className="text-tavern-dim hover:text-tavern-text text-xs p-1 rounded-md hover:bg-tavern-hover transition-colors"
               title="New folder"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,7 +144,7 @@ export default function Sidebar() {
             </button>
             <button
               onClick={() => createChat(currentCharacter.id)}
-              className="text-tavern-accent hover:text-tavern-accent-hover text-xs"
+              className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
             >
               + New
             </button>
@@ -157,7 +159,7 @@ export default function Sidebar() {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Folder name..."
-              className="flex-1 bg-tavern-card border border-tavern-border rounded px-2 py-0.5 text-xs focus:outline-none focus:border-tavern-accent"
+              className="flex-1 bg-tavern-input border border-tavern-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-tavern-accent text-tavern-text placeholder-tavern-dim"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newFolderName.trim()) {
                   setCollapsedFolders(prev => ({ ...prev, [newFolderName.trim()]: false }));
@@ -177,7 +179,7 @@ export default function Sidebar() {
                   setShowNewFolderInput(false);
                 }
               }}
-              className="text-tavern-accent text-xs px-1"
+              className="text-tavern-accent text-xs px-2"
             >
               ✓
             </button>
@@ -189,8 +191,10 @@ export default function Sidebar() {
           const renderChatItem = (chat: typeof chats[0]) => (
             <div
               key={chat.id}
-              className={`p-2 rounded cursor-pointer mb-1 transition-colors flex items-center justify-between group ${
-                currentChat?.id === chat.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover'
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between group ${
+                currentChat?.id === chat.id
+                  ? 'bg-tavern-accent/20 text-tavern-accent'
+                  : 'hover:bg-tavern-hover text-tavern-text'
               }`}
               onClick={() => { if (renamingChatId !== chat.id && folderDropdownChatId !== chat.id) { selectChat(chat.id); closeSidebarIfMobile(); } }}
             >
@@ -211,12 +215,12 @@ export default function Sidebar() {
                       setRenamingChatId(null);
                     }
                   }}
-                  className="flex-1 bg-tavern-card border border-tavern-accent rounded px-2 py-0.5 text-sm focus:outline-none"
+                  className="flex-1 bg-tavern-input border border-tavern-accent rounded-md px-2 py-1 text-sm focus:outline-none text-tavern-text"
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
                 <span
-                  className="text-sm truncate flex items-center gap-1 flex-1 min-w-0"
+                  className="text-sm truncate flex items-center gap-1.5 flex-1 min-w-0"
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setRenamingChatId(chat.id);
@@ -239,7 +243,7 @@ export default function Sidebar() {
                       e.stopPropagation();
                       setFolderDropdownChatId(folderDropdownChatId === chat.id ? null : chat.id);
                     }}
-                    className="text-tavern-muted hover:text-tavern-text text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-tavern-hover"
                     title="Move to folder"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -247,7 +251,7 @@ export default function Sidebar() {
                     </svg>
                   </button>
                   {folderDropdownChatId === chat.id && (
-                    <div className="absolute left-0 top-full mt-1 bg-tavern-card border border-tavern-border rounded-lg shadow-lg z-50 py-1 min-w-[140px]">
+                    <div className="absolute left-0 top-full mt-1 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl z-50 py-1 min-w-[140px]">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -276,10 +280,10 @@ export default function Sidebar() {
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }}
-                  className="text-tavern-muted hover:text-red-400 text-xs p-1"
+                  className="text-tavern-dim hover:text-tavern-danger text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
                 >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
@@ -293,19 +297,19 @@ export default function Sidebar() {
                 <div key={folder} className="mb-1">
                   <button
                     onClick={() => setCollapsedFolders(prev => ({ ...prev, [folder]: !prev[folder] }))}
-                    className="flex items-center gap-1 w-full text-left py-1 px-1 rounded hover:bg-tavern-hover transition-colors"
+                    className="flex items-center gap-1.5 w-full text-left py-1.5 px-1.5 rounded-lg hover:bg-tavern-hover transition-colors"
                   >
                     <svg
-                      className={`w-3 h-3 text-tavern-muted transition-transform ${collapsedFolders[folder] ? '' : 'rotate-90'}`}
+                      className={`w-3 h-3 text-tavern-dim transition-transform ${collapsedFolders[folder] ? '' : 'rotate-90'}`}
                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    <svg className="w-3.5 h-3.5 text-tavern-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-tavern-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                     </svg>
-                    <span className="text-xs text-tavern-muted font-medium flex-1">{folder}</span>
-                    <span className="text-[10px] text-tavern-muted/60">{groupedChats[folder].length}</span>
+                    <span className="text-xs text-tavern-dim font-medium flex-1">{folder}</span>
+                    <span className="text-[10px] text-tavern-faint">{groupedChats[folder].length}</span>
                   </button>
                   {!collapsedFolders[folder] && (
                     <div className="ml-2">
@@ -319,7 +323,7 @@ export default function Sidebar() {
               {unfolderedChats.length > 0 && (
                 <div>
                   {chatFolders.length > 0 && (
-                    <div className="text-[10px] text-tavern-muted/50 px-1 mb-1">No folder</div>
+                    <div className="text-[10px] text-tavern-faint px-1.5 mb-1">No folder</div>
                   )}
                   {unfolderedChats.map(renderChatItem)}
                 </div>
@@ -335,10 +339,10 @@ export default function Sidebar() {
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* API Settings */}
       <div>
-        <h3 className="text-sm font-medium mb-2">API Settings</h3>
+        <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">API Settings</h3>
         <button
           onClick={() => setSettingsOpen(true)}
-          className="w-full p-2 bg-tavern-card rounded text-sm hover:bg-tavern-hover transition-colors text-left"
+          className="w-full p-2.5 bg-tavern-input border border-tavern-border rounded-lg text-sm hover:bg-tavern-hover transition-colors text-left text-tavern-text"
         >
           Connection Settings
         </button>
@@ -346,15 +350,15 @@ export default function Sidebar() {
 
       {/* Theme */}
       <div>
-        <h3 className="text-sm font-medium mb-2">Theme</h3>
+        <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">Theme</h3>
         <div className="grid grid-cols-3 gap-2">
-          <button className="p-2 bg-tavern-card rounded text-xs hover:bg-tavern-hover transition-colors border border-tavern-accent">
+          <button className="p-2 bg-tavern-input border border-tavern-accent rounded-lg text-xs text-tavern-accent">
             Dark
           </button>
-          <button className="p-2 bg-tavern-card rounded text-xs hover:bg-tavern-hover transition-colors">
+          <button className="p-2 bg-tavern-input border border-tavern-border rounded-lg text-xs text-tavern-muted hover:bg-tavern-hover transition-colors">
             Darker
           </button>
-          <button className="p-2 bg-tavern-card rounded text-xs hover:bg-tavern-hover transition-colors">
+          <button className="p-2 bg-tavern-input border border-tavern-border rounded-lg text-xs text-tavern-muted hover:bg-tavern-hover transition-colors">
             Light
           </button>
         </div>
@@ -362,9 +366,9 @@ export default function Sidebar() {
 
       {/* About */}
       <div>
-        <h3 className="text-sm font-medium mb-2">About</h3>
-        <div className="p-3 bg-tavern-card rounded text-xs text-tavern-muted space-y-1">
-          <p>CozyTavern v1.0.0</p>
+        <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">About</h3>
+        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg text-xs text-tavern-dim space-y-1">
+          <p>CozyTavern v0.0.1</p>
           <p>A SillyTavern-inspired chat interface</p>
         </div>
       </div>
@@ -374,10 +378,10 @@ export default function Sidebar() {
   const renderLorebooksPanel = () => (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">Lorebooks</h3>
+        <h3 className="text-sm font-medium text-tavern-text-bright">Lorebooks</h3>
         <button
           onClick={() => setLorebookEditorOpen(true)}
-          className="text-tavern-accent hover:text-tavern-accent-hover text-xs"
+          className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
         >
           + New
         </button>
@@ -385,8 +389,8 @@ export default function Sidebar() {
       {lorebooks.map(l => (
         <div
           key={l.id}
-          className={`p-2 rounded cursor-pointer mb-1 transition-colors ${
-            activeLorebook?.id === l.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover'
+          className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors ${
+            activeLorebook?.id === l.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
           }`}
           onClick={() => setActiveLorebook(activeLorebook?.id === l.id ? null : l)}
         >
@@ -394,7 +398,7 @@ export default function Sidebar() {
         </div>
       ))}
       {lorebooks.length === 0 && (
-        <p className="text-xs text-tavern-muted text-center py-4">No lorebooks yet</p>
+        <p className="text-xs text-tavern-dim text-center py-4">No lorebooks yet</p>
       )}
     </div>
   );
@@ -402,10 +406,10 @@ export default function Sidebar() {
   const renderPersonasPanel = () => (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">Personas</h3>
+        <h3 className="text-sm font-medium text-tavern-text-bright">Personas</h3>
         <button
           onClick={() => setPersonaEditorOpen(true)}
-          className="text-tavern-accent hover:text-tavern-accent-hover text-xs"
+          className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
         >
           + New
         </button>
@@ -413,70 +417,70 @@ export default function Sidebar() {
       {personas.map(p => (
         <div
           key={p.id}
-          className={`p-2 rounded cursor-pointer mb-1 transition-colors flex items-center justify-between ${
-            activePersona?.id === p.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover'
+          className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between ${
+            activePersona?.id === p.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
           }`}
           onClick={() => setActivePersona(activePersona?.id === p.id ? null : p)}
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-tavern-card flex items-center justify-center text-sm font-medium flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-tavern-input border border-tavern-border flex items-center justify-center text-sm font-medium flex-shrink-0">
               {p.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-sm truncate">{p.name}</p>
-              {p.description && <p className="text-xs text-tavern-muted truncate">{p.description}</p>}
+              <p className="text-sm truncate font-medium">{p.name}</p>
+              {p.description && <p className="text-xs text-tavern-dim truncate">{p.description}</p>}
             </div>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); setPersonaEditorOpen(true, p); }}
-            className="text-tavern-muted hover:text-tavern-text text-xs p-1"
+            className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
           >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
           </button>
         </div>
       ))}
       {personas.length === 0 && (
-        <p className="text-xs text-tavern-muted text-center py-4">No personas yet</p>
+        <p className="text-xs text-tavern-dim text-center py-4">No personas yet</p>
       )}
     </div>
   );
 
   const renderExtensionsPanel = () => (
     <div className="flex-1 overflow-y-auto p-4">
-      <h3 className="text-sm font-medium mb-3">Extensions</h3>
+      <h3 className="text-sm font-medium mb-3 text-tavern-text-bright">Extensions</h3>
       <div className="space-y-2">
-        <div className="p-3 bg-tavern-card rounded-lg">
+        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Prompt Builder</p>
-              <p className="text-xs text-tavern-muted">Configure system prompts</p>
+              <p className="text-sm font-medium text-tavern-text">Prompt Builder</p>
+              <p className="text-xs text-tavern-dim">Configure system prompts</p>
             </div>
-            <div className="w-8 h-5 bg-tavern-accent rounded-full relative">
-              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full" />
+            <div className="w-9 h-5 bg-tavern-accent rounded-full relative cursor-pointer">
+              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" />
             </div>
           </div>
         </div>
-        <div className="p-3 bg-tavern-card rounded-lg">
+        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Lorebook Scanner</p>
-              <p className="text-xs text-tavern-muted">Auto-inject lore entries</p>
+              <p className="text-sm font-medium text-tavern-text">Lorebook Scanner</p>
+              <p className="text-xs text-tavern-dim">Auto-inject lore entries</p>
             </div>
-            <div className="w-8 h-5 bg-tavern-accent rounded-full relative">
-              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full" />
+            <div className="w-9 h-5 bg-tavern-accent rounded-full relative cursor-pointer">
+              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" />
             </div>
           </div>
         </div>
-        <div className="p-3 bg-tavern-card rounded-lg opacity-50">
+        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg opacity-50">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Voice Synthesis</p>
-              <p className="text-xs text-tavern-muted">Coming soon</p>
+              <p className="text-sm font-medium text-tavern-text">Voice Synthesis</p>
+              <p className="text-xs text-tavern-dim">Coming soon</p>
             </div>
-            <div className="w-8 h-5 bg-tavern-border rounded-full relative">
-              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-tavern-muted rounded-full" />
+            <div className="w-9 h-5 bg-tavern-border rounded-full relative cursor-pointer">
+              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-tavern-dim rounded-full transition-transform" />
             </div>
           </div>
         </div>
@@ -494,16 +498,16 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="absolute left-0 top-0 bottom-0 w-64 bg-tavern-sidebar border-r border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl">
+    <div className="absolute left-0 top-0 bottom-0 w-72 bg-tavern-surface border-r border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl">
       {/* Panel Header */}
-      <div className="h-10 border-b border-tavern-border flex items-center justify-between px-3 flex-shrink-0">
-        <h2 className="text-sm font-medium text-tavern-text">{panelTitles[activePanel || 'characters']}</h2>
+      <div className="h-[50px] border-b border-tavern-border flex items-center justify-between px-3 flex-shrink-0">
+        <h2 className="text-sm font-semibold text-tavern-text-bright">{panelTitles[activePanel || 'characters']}</h2>
         <button
           onClick={() => useStore.setState({ panelOpen: false })}
-          className="text-tavern-muted hover:text-tavern-text p-1 rounded hover:bg-tavern-hover transition-colors"
+          className="text-tavern-dim hover:text-tavern-text p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
       </div>

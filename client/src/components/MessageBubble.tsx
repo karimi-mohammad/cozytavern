@@ -56,13 +56,13 @@ export default function MessageBubble({ message, isLast }: Props) {
 
   return (
     <div
-      className={`flex gap-3 px-5 py-3 group hover:bg-tavern-hover/10 transition-colors ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      className={`flex gap-3 px-5 py-3 group hover:bg-tavern-hover/30 transition-colors ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => setShowControls(false)}
     >
       {/* Token count - far side */}
       <div className="flex-shrink-0 w-10 flex items-start justify-center pt-8">
-        <span className="text-[11px] text-tavern-muted font-mono">{tokenCount}t</span>
+        <span className="text-[11px] text-tavern-dim font-mono">{tokenCount}t</span>
       </div>
 
       {/* Avatar - only for AI */}
@@ -77,16 +77,16 @@ export default function MessageBubble({ message, isLast }: Props) {
       <div className={`flex flex-col flex-1 min-w-0 max-w-[88%] md:max-w-[82%]`}>
         {/* Name + Timestamp row */}
         <div className={`flex items-center gap-2 mb-1 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <span className="text-[15px] font-bold text-tavern-text">
+          <span className="text-[15px] font-bold text-tavern-text-bright">
             {isUser ? (activePersona?.name || 'You') : (currentCharacter?.name || 'Assistant')}
           </span>
-          <span className="text-xs text-tavern-muted">{formatMessageTime(message.send_date)}</span>
-          {message.is_edited && <span className="text-[10px] text-tavern-muted/60 italic">(edited)</span>}
+          <span className="text-xs text-tavern-dim">{formatMessageTime(message.send_date)}</span>
+          {message.is_edited && <span className="text-[10px] text-tavern-faint italic">(edited)</span>}
           {/* Edit button - top right */}
           <div className={`ml-auto ${isUser ? 'ml-0 mr-auto' : ''}`}>
             <button
               onClick={() => { setEditContent(message.content); setIsEditing(true); }}
-              className={`text-tavern-muted hover:text-tavern-text p-1 rounded hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              className={`text-tavern-dim hover:text-tavern-text p-1.5 rounded-md hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
               title="Edit"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,19 +102,19 @@ export default function MessageBubble({ message, isLast }: Props) {
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="w-full bg-tavern-card border border-tavern-border rounded-lg p-3 text-sm resize-none min-h-[100px] focus:outline-none focus:border-tavern-accent"
+              className="w-full bg-tavern-input border border-tavern-border rounded-lg p-3 text-sm resize-none min-h-[100px] focus:outline-none focus:border-tavern-accent text-tavern-text"
               rows={5}
             />
             <div className="flex gap-2 mt-2 justify-end">
               <button
                 onClick={() => setIsEditing(false)}
-                className="text-xs text-tavern-muted hover:text-tavern-text px-3 py-1.5 rounded hover:bg-tavern-hover"
+                className="text-xs text-tavern-dim hover:text-tavern-text px-3 py-1.5 rounded-md hover:bg-tavern-hover transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="text-xs bg-tavern-accent text-white px-4 py-1.5 rounded font-medium"
+                className="text-xs bg-tavern-accent text-white px-4 py-1.5 rounded-md font-medium hover:bg-tavern-accent-hover transition-colors"
               >
                 Save
               </button>
@@ -127,7 +127,7 @@ export default function MessageBubble({ message, isLast }: Props) {
               <div className="mb-3">
                 <button
                   onClick={() => setShowThought(!showThought)}
-                  className="flex items-center gap-2 text-sm text-tavern-muted hover:text-tavern-text bg-tavern-card px-4 py-2 rounded-lg transition-colors border border-tavern-border/50"
+                  className="flex items-center gap-2 text-sm text-tavern-dim hover:text-tavern-text bg-tavern-input px-4 py-2 rounded-lg transition-colors border border-tavern-border"
                 >
                   <svg
                     className={`w-4 h-4 transition-transform ${showThought ? 'rotate-90' : ''}`}
@@ -140,7 +140,7 @@ export default function MessageBubble({ message, isLast }: Props) {
                   <span className="font-medium">Thought for {Math.floor(Math.random() * 20 + 5)} seconds</span>
                 </button>
                 {showThought && (
-                  <div className="mt-3 text-sm text-tavern-muted/70 pl-5 border-l-2 border-tavern-accent/30 leading-relaxed">
+                  <div className="mt-3 text-sm text-tavern-dim pl-5 border-l-2 border-tavern-accent/30 leading-relaxed thinking-block">
                     {thinkingContent}
                   </div>
                 )}
@@ -153,7 +153,7 @@ export default function MessageBubble({ message, isLast }: Props) {
                 <Markdown remarkPlugins={[remarkGfm]}>{mainContent}</Markdown>
               </div>
             ) : (
-              <p className="text-[15px] whitespace-pre-wrap leading-7 text-amber-400">{mainContent}</p>
+              <p className="text-[15px] whitespace-pre-wrap leading-7 text-tavern-text">{mainContent}</p>
             )}
           </>
         )}
@@ -167,19 +167,19 @@ export default function MessageBubble({ message, isLast }: Props) {
                 <button
                   onClick={() => swipeMessage(message.id, 'prev')}
                   disabled={message.swipe_id <= 0}
-                  className="text-tavern-muted hover:text-tavern-text disabled:opacity-30 p-1"
+                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <span className="text-xs text-tavern-muted min-w-[28px] text-center font-mono">
+                <span className="text-xs text-tavern-dim min-w-[28px] text-center font-mono">
                   {message.swipe_id + 1}/{message.swipes.length + 1}
                 </span>
                 <button
                   onClick={() => swipeMessage(message.id, 'next')}
                   disabled={message.swipe_id >= message.swipes.length}
-                  className="text-tavern-muted hover:text-tavern-text disabled:opacity-30 p-1"
+                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -192,7 +192,7 @@ export default function MessageBubble({ message, isLast }: Props) {
             <div className={`flex items-center gap-1 transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}>
               <button
                 onClick={handleBranch}
-                className="text-tavern-muted hover:text-tavern-text p-1 rounded hover:bg-tavern-hover"
+                className="text-tavern-dim hover:text-tavern-text p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
                 title="Branch"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -203,7 +203,7 @@ export default function MessageBubble({ message, isLast }: Props) {
               {isAssistant && isLast && !isGenerating && (
                 <button
                   onClick={() => regenerateMessage()}
-                  className="text-tavern-muted hover:text-tavern-text p-1 rounded hover:bg-tavern-hover"
+                  className="text-tavern-dim hover:text-tavern-text p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
                   title="Regenerate"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

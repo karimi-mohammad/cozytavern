@@ -7,7 +7,7 @@ export default function TopBar() {
     rightPanelOpen, toggleRightPanel, currentCharacter,
     chats, currentChat, selectChat, createChat,
     setCharacterEditorOpen, editingCharacter,
-    activePanel, setActivePanel, panelOpen,
+    activePanel, setActivePanel, panelOpen, panelOpen: sidebarOpen,
     regenerateMessage,
   } = useStore();
 
@@ -36,7 +36,7 @@ export default function TopBar() {
       id: 'settings' as const,
       label: 'API Settings',
       icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
@@ -47,7 +47,7 @@ export default function TopBar() {
       id: 'characters' as const,
       label: 'Characters',
       icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       ),
@@ -57,7 +57,7 @@ export default function TopBar() {
       id: 'chats' as const,
       label: 'Chats',
       icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       ),
@@ -67,7 +67,7 @@ export default function TopBar() {
       id: 'personas' as const,
       label: 'Personas',
       icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       ),
@@ -77,7 +77,7 @@ export default function TopBar() {
       id: 'lorebooks' as const,
       label: 'Lorebooks',
       icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
       ),
@@ -86,17 +86,17 @@ export default function TopBar() {
   ];
 
   return (
-    <div className="h-10 bg-tavern-topbar backdrop-blur-xl border-b border-tavern-border flex items-center px-2 gap-1 flex-shrink-0 z-40">
+    <div className="h-[50px] bg-tavern-surface border-b border-tavern-border flex items-center px-2 gap-1 flex-shrink-0 z-40">
       {/* Left: Toolbar Icons */}
       <div className="flex items-center gap-0.5">
         {toolbarIcons.map((icon) => (
           <button
             key={icon.id}
             onClick={icon.action}
-            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
               activePanel === icon.id && panelOpen
                 ? 'bg-tavern-accent/20 text-tavern-accent'
-                : 'text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover'
+                : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
             }`}
             title={icon.label}
           >
@@ -104,9 +104,9 @@ export default function TopBar() {
           </button>
         ))}
         {/* Connection status */}
-        <div className="flex items-center gap-1.5 ml-1 px-2">
-          <div className={`w-1.5 h-1.5 rounded-full ${isGenerating ? 'bg-green-400 animate-pulse' : 'bg-tavern-muted/50'}`} />
-          <span className="text-[10px] text-tavern-muted hidden lg:inline">{model}</span>
+        <div className="flex items-center gap-1.5 ml-2 px-2">
+          <div className={`w-1.5 h-1.5 rounded-full ${isGenerating ? 'bg-tavern-success animate-pulse' : 'bg-tavern-muted/50'}`} />
+          <span className="text-[10px] text-tavern-dim hidden lg:inline font-mono">{model}</span>
         </div>
       </div>
 
@@ -117,13 +117,13 @@ export default function TopBar() {
       <div className="relative flex-shrink-0">
         <button
           onClick={() => setShowChatDropdown(!showChatDropdown)}
-          className="flex items-center gap-1.5 hover:bg-tavern-hover px-2 py-1 rounded transition-colors max-w-[320px]"
+          className="flex items-center gap-1.5 hover:bg-tavern-hover px-2 py-1 rounded-md transition-colors max-w-[320px]"
         >
-          <svg className="w-3.5 h-3.5 text-tavern-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          <svg className="w-4 h-4 text-tavern-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           <span className="text-xs text-tavern-text truncate">
-            {currentChat ? `${currentCharacter?.name || ''} - ${currentChat.name}` : 'Select a chat'}
+            {currentChat ? `${currentCharacter?.name || ''} - ${currentChat.name}` : 'No chat selected'}
           </span>
           <svg className={`w-3 h-3 text-tavern-muted transition-transform flex-shrink-0 ${showChatDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -131,7 +131,7 @@ export default function TopBar() {
         </button>
 
         {showChatDropdown && (
-          <div className="absolute top-full left-0 mt-1 w-72 bg-tavern-card border border-tavern-border rounded-lg shadow-xl z-50 py-1 max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full left-0 mt-1 w-72 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl z-50 py-1 max-h-[300px] overflow-y-auto">
             {currentCharacter && (
               <button
                 onClick={handleNewChat}
@@ -163,7 +163,7 @@ export default function TopBar() {
               </button>
             ))}
             {chats.length === 0 && (
-              <div className="px-3 py-2 text-xs text-tavern-muted text-center">No chats yet</div>
+              <div className="px-3 py-2 text-xs text-tavern-dim text-center">No chats yet</div>
             )}
           </div>
         )}
@@ -176,7 +176,7 @@ export default function TopBar() {
       <div className="flex items-center gap-1 ml-auto">
         {/* Search */}
         <div className="relative hidden md:flex items-center">
-          <svg className="w-3.5 h-3.5 text-tavern-muted absolute left-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-tavern-dim absolute left-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -184,7 +184,7 @@ export default function TopBar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search..."
-            className="w-32 lg:w-44 bg-tavern-card border border-tavern-border rounded pl-7 pr-2 py-1 text-xs text-tavern-text placeholder-tavern-muted/50 focus:outline-none focus:border-tavern-accent/50 transition-colors"
+            className="w-36 lg:w-48 bg-tavern-input border border-tavern-border rounded-md pl-7 pr-2 py-1.5 text-xs text-tavern-text placeholder-tavern-dim focus:outline-none focus:border-tavern-accent transition-colors"
           />
         </div>
 
@@ -202,10 +202,10 @@ export default function TopBar() {
         {/* Action buttons */}
         <button
           onClick={() => currentCharacter && setCharacterEditorOpen(true, currentCharacter)}
-          className="w-7 h-7 flex items-center justify-center rounded text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
           title="Edit Character"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </button>
@@ -213,20 +213,20 @@ export default function TopBar() {
         <button
           onClick={() => regenerateMessage()}
           disabled={isGenerating || !currentChat}
-          className="w-7 h-7 flex items-center justify-center rounded text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors disabled:opacity-30"
+          className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
           title="Regenerate"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </button>
 
         <button
           onClick={toggleRightPanel}
-          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${rightPanelOpen ? 'bg-tavern-accent/20 text-tavern-accent' : 'text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover'}`}
+          className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${rightPanelOpen ? 'bg-tavern-accent/20 text-tavern-accent' : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'}`}
           title="Toggle Info Panel"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>

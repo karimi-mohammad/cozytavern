@@ -11,23 +11,47 @@ export default {
     extend: {
       colors: {
         tavern: {
-          bg: 'transparent',
-          sidebar: '#111318ee',
-          card: '#1a1c24cc',
-          hover: '#ffffff08',
-          accent: '#7c5cbf',
-          'accent-hover': '#9370db',
-          text: '#d4d4d8',
-          muted: '#71717a',
-          border: '#ffffff12',
-          user: '#2d4a7a',
-          assistant: '#1a1c24aa',
-          'icon-bar': '#0a0b1099',
-          topbar: '#0a0b10cc',
-          'right-panel': '#111318ee',
-          'panel-header': '#181a22dd',
+          // Backgrounds (solid, SillyTavern-style)
+          bg: '#0f0f1a',
+          surface: '#1a1a2e',
+          surface2: '#252540',
+          input: '#2a2a3e',
+          hover: '#2e2e4a',
+          // Legacy aliases (for gradual migration)
+          sidebar: '#1a1a2e',
+          card: '#252540',
+          'icon-bar': '#1a1a2e',
+          topbar: '#1a1a2e',
+          'right-panel': '#1a1a2e',
+          'panel-header': '#252540',
+          // Borders
+          border: '#3a3a5e',
+          'border-subtle': '#2a2a3e',
+          'border-focus': '#6666cc',
+          // Text
+          text: '#ccccdd',
+          'text-bright': '#e0e0ff',
+          muted: '#8888aa',
+          dim: '#6666aa',
+          faint: '#555577',
+          // Accents
+          accent: '#6666cc',
+          'accent-hover': '#7777dd',
+          cta: '#ff6644',
+          'cta-hover': '#ff7755',
+          dialogue: '#ffaa44',
+          danger: '#ff4444',
+          success: '#44cc66',
+          info: '#4488cc',
+          // Legacy aliases
+          user: '#ccccdd',
+          assistant: '#1a1a2e',
         }
-      }
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+      },
     },
   },
   plugins: [

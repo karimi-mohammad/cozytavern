@@ -33,27 +33,27 @@ export default function MessageInput() {
   const hasSwipes = lastAssistantMsg && lastAssistantMsg.swipes && lastAssistantMsg.swipes.length > 0;
 
   return (
-    <div className="border-t border-tavern-border bg-tavern-topbar/60 backdrop-blur-xl flex-shrink-0 relative z-10">
+    <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
       {/* Main input row */}
       <div className="flex items-end gap-2 px-3 py-2">
-        {/* Left: hamburger + settings icons */}
+        {/* Left: hamburger + magic wand icons */}
         <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
           <button
             onClick={() => setActivePanel('chats')}
-            className="w-7 h-7 flex items-center justify-center rounded text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
             title="Menu"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="w-7 h-7 flex items-center justify-center rounded text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors"
-            title="Settings"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
+            title="AI Settings"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </button>
         </div>
@@ -66,7 +66,7 @@ export default function MessageInput() {
           onKeyDown={handleKeyDown}
           placeholder={currentCharacter ? `Message ${currentCharacter.name}...` : 'Type a message, or /? for help'}
           disabled={isGenerating}
-          className="flex-1 bg-transparent border-0 text-sm resize-none focus:outline-none placeholder-tavern-muted/40 text-tavern-text disabled:opacity-50 min-h-[36px] max-h-[120px] py-1.5"
+          className="flex-1 bg-tavern-input border border-tavern-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-tavern-accent placeholder-tavern-dim text-tavern-text disabled:opacity-50 min-h-[36px] max-h-[120px]"
           rows={1}
         />
 
@@ -75,20 +75,20 @@ export default function MessageInput() {
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}
-            className="w-7 h-7 flex items-center justify-center rounded text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors disabled:opacity-30"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
             title="Send arrow"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
           </button>
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}
-            className="w-7 h-7 flex items-center justify-center rounded text-tavern-accent hover:text-tavern-accent-hover hover:bg-tavern-accent/10 transition-colors disabled:opacity-30"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-accent hover:text-tavern-accent-hover hover:bg-tavern-accent/10 transition-colors disabled:opacity-30"
             title="Send"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
             </svg>
           </button>
@@ -104,19 +104,19 @@ export default function MessageInput() {
               <button
                 onClick={() => swipeMessage(lastAssistantMsg.id, 'prev')}
                 disabled={lastAssistantMsg.swipe_id <= 0}
-                className="text-tavern-muted hover:text-tavern-text disabled:opacity-30 p-1"
+                className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-1"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <span className="text-xs text-tavern-muted min-w-[28px] text-center font-mono">
+              <span className="text-xs text-tavern-dim min-w-[28px] text-center font-mono">
                 {lastAssistantMsg.swipe_id + 1}/{lastAssistantMsg.swipes.length + 1}
               </span>
               <button
                 onClick={() => swipeMessage(lastAssistantMsg.id, 'next')}
                 disabled={lastAssistantMsg.swipe_id >= lastAssistantMsg.swipes.length}
-                className="text-tavern-muted hover:text-tavern-text disabled:opacity-30 p-1"
+                className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-1"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -130,10 +130,10 @@ export default function MessageInput() {
         <button
           onClick={handleSubmit}
           disabled={!content.trim() || isGenerating}
-          className={`px-5 py-1.5 rounded-lg text-sm font-medium transition-all shadow-lg ${
+          className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg ${
             isGenerating
               ? 'bg-tavern-accent/20 text-tavern-accent cursor-wait shadow-none'
-              : 'bg-green-600 hover:bg-green-500 text-white shadow-green-900/30 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
+              : 'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
           }`}
         >
           {isGenerating ? (
