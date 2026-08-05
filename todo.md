@@ -30,7 +30,7 @@
 
 - [x] کامپوننت ConfirmModal اختصاصی
 - [x] جایگزینی تمام `window.confirm()` ها
-- [ ] انیمیشن باز/بسته شدن
+- [x] انیمیشن باز/بسته شدن
 
 ## اولویت ۶: System Prompt UI
 
@@ -80,8 +80,8 @@
 
 ## بهبودهای فنی
 
-- [ ] Error boundaries React (جلوگیری از کرashed کل اپ)
-- [ ] Virtual scrolling برای لیست پیام‌های طولانی
-- [ ] Debounce روی search/filter
-- [ ] Optimistic updates برای edit/delete
+- [x] Error boundaries React (جلوگیری از کرashed کل اپ)
+- [x] Virtual scrolling برای لیست پیام‌های طولانی
+- [x] Debounce روی search/filter
+- [x] Optimistic updates برای edit/delete
 - [x] Loading skeletons موقع لود اولیه دیتا

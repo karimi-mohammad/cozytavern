@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
 import { CharacterSkeleton } from './LoadingSkeleton';
+import { useDebounce } from '../hooks/useDebounce';
 
 export default function Sidebar() {
   const {
@@ -16,6 +17,7 @@ export default function Sidebar() {
   } = useStore();
 
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 150);
   const [loading] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -29,8 +31,8 @@ export default function Sidebar() {
   const closeSidebarIfMobile = () => { if (isMobile()) useStore.setState({ panelOpen: false }); };
 
   const filteredCharacters = characters.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()))
+    c.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    c.tags?.some(t => t.toLowerCase().includes(debouncedSearch.toLowerCase()))
   );
 
   const chatFolders = [...new Set(chats.map(c => c.folder || '').filter(Boolean))].sort();

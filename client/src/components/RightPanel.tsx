@@ -96,7 +96,7 @@ export default function RightPanel() {
       ) : (
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
-            <svg className="w-14 h-14 mx-auto mb-4 text-tavern-muted opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-14 h-14 mx-auto mb-4 text-tavern-text opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm text-tavern-text font-medium">Select a character</p>

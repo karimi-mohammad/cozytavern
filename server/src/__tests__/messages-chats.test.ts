@@ -115,6 +115,41 @@ describe('Messages & Chats API', () => {
     });
   });
 
+  describe('DELETE /api/messages/:id', () => {
+    it('باید پیام رو حذف کنه', async () => {
+      const msg = await postMessage({ content: 'قابل حذف' });
+      const res = await request(app)
+        .delete(`/api/messages/${msg.body.id}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      const remaining = testDb.prepare('SELECT * FROM messages WHERE id = ?').get(msg.body.id);
+      expect(remaining).toBeUndefined();
+    });
+
+    it('باید پیام‌های بعدی رو هم حذف کنه', async () => {
+      const msg1 = await postMessage({ content: 'اول' });
+      await postMessage({ content: 'دوم', role: 'assistant' });
+      await postMessage({ content: 'سوم' });
+
+      await request(app)
+        .delete(`/api/messages/${msg1.body.id}`)
+        .expect(200);
+
+      const remaining = testDb.prepare(
+        'SELECT * FROM messages WHERE chat_id = ? ORDER BY send_date ASC'
+      ).all(chatId) as any[];
+
+      expect(remaining).toHaveLength(0);
+    });
+
+    it('باید 404 برگردونه برای پیام ناموجود', async () => {
+      await request(app)
+        .delete('/api/messages/nonexistent')
+        .expect(404);
+    });
+  });
+
   describe('POST /api/messages/regenerate/:chatId', () => {
     it('باید نسخه فعلی رو در swipes ذخیره کنه', async () => {
       await postMessage({ content: 'سلام', role: 'user' });

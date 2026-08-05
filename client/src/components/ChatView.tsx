@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '../store/state';
-import MessageBubble from './MessageBubble';
+import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import CharacterAvatar from './CharacterAvatar';
 
@@ -9,12 +9,20 @@ export default function ChatView() {
     currentCharacter, currentChat, characters, chats,
     selectCharacter, selectChat, setSettingsOpen,
     setCharacterEditorOpen, loadChats,
+    editMessage, deleteMessage, branchChat,
+    activePersona, isGenerating, showConfirm,
   } = useStore();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentChat?.messages]);
+  const handleBranch = async (messageId: string, sendDate: string) => {
+    if (!currentChat || !currentCharacter) return;
+    const newChat = await branchChat(currentCharacter.id, currentChat.id, sendDate);
+    await selectChat(newChat.id);
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const ok = await showConfirm('Are you sure you want to delete this message and everything after it?');
+    if (ok) deleteMessage(messageId);
+  };
 
   // Empty state: no character selected - show welcome screen
   if (!currentCharacter) {
@@ -142,16 +150,18 @@ export default function ChatView() {
   return (
     <div className="flex-1 flex flex-col bg-tavern-bg min-w-0 relative">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-2 relative z-10 px-[60px]">
-        {currentChat?.messages.map((msg, index) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            isLast={index === (currentChat.messages.length - 1)}
-          />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
+      {currentChat && (
+        <MessageList
+          messages={currentChat.messages}
+          currentCharacter={currentCharacter}
+          currentChat={currentChat}
+          activePersona={activePersona}
+          isGenerating={isGenerating}
+          onEditMessage={editMessage}
+          onDeleteMessage={handleDeleteMessage}
+          onBranch={handleBranch}
+        />
+      )}
 
       {/* Input */}
       {currentChat && <MessageInput />}

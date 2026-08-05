@@ -70,7 +70,7 @@ export default function IconBar() {
           className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all ${
             activePanel === icon.id && panelOpen
               ? 'bg-tavern-accent/20 text-tavern-accent'
-              : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'
+              : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
           }`}
           title={icon.label}
         >

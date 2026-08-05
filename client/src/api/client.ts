@@ -31,6 +31,7 @@ export const api = {
   // Messages
   sendMessage: (data: any) => request('/messages', { method: 'POST', body: JSON.stringify(data) }),
   editMessage: (id: string, content: string) => request(`/messages/${id}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  deleteMessage: (id: string) => request(`/messages/${id}`, { method: 'DELETE' }),
   regenerateMessage: (chatId: string) => request(`/messages/regenerate/${chatId}`, { method: 'POST' }),
   swipeMessage: (id: string, direction: string) => request(`/messages/swipe/${id}`, { method: 'POST', body: JSON.stringify({ direction }) }),
 

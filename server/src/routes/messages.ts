@@ -69,6 +69,22 @@ router.put('/:id', (req: Request, res: Response) => {
   });
 });
 
+// حذف پیام - پیام‌های بعدی هم حذف می‌شوند (چون context تغییر کرده)
+router.delete('/:id', (req: Request, res: Response) => {
+  const db = getDb();
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+  if (!message) {
+    res.status(404).json({ error: 'پیام پیدا نشد' });
+    return;
+  }
+
+  db.prepare(
+    'DELETE FROM messages WHERE chat_id = ? AND send_date >= ?'
+  ).run(message.chat_id, message.send_date);
+
+  res.json({ success: true });
+});
+
 // Regenerate - بازسازی آخرین پاسخ
 router.post('/regenerate/:chatId', (req: Request, res: Response) => {
   const db = getDb();

@@ -54,6 +54,9 @@ interface AppState {
   showConfirm: (message: string) => Promise<boolean>;
   resolveConfirm: (result: boolean) => void;
 
+  // Optimistic state (نیازی به رندر ندارد)
+  pendingEdit: Promise<Message> | null;
+
   // Actions
   loadCharacters: () => Promise<void>;
   selectCharacter: (character: Character) => Promise<void>;
@@ -71,6 +74,7 @@ interface AppState {
 
   sendMessage: (content: string) => Promise<void>;
   editMessage: (messageId: string, content: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   regenerateMessage: () => Promise<void>;
   swipeMessage: (messageId: string, direction: string) => Promise<void>;
 
@@ -133,6 +137,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   toasts: [],
   confirmDialog: null,
+  pendingEdit: null,
 
   addToast: (message, type = 'info') => {
     const id = Math.random().toString(36).slice(2);
@@ -182,12 +187,22 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteCharacter: async (id) => {
-    await api.deleteCharacter(id);
+    const deleted = get().characters.find(c => c.id === id);
+    if (!deleted) return;
     set(s => ({
       characters: s.characters.filter(c => c.id !== id),
       currentCharacter: s.currentCharacter?.id === id ? null : s.currentCharacter,
     }));
-    get().addToast('کاراکتر حذف شد', 'success');
+    try {
+      await api.deleteCharacter(id);
+      get().addToast('کاراکتر حذف شد', 'success');
+    } catch (error: any) {
+      set(s => ({
+        characters: [deleted, ...s.characters],
+        currentCharacter: s.currentCharacter ?? deleted,
+      }));
+      get().addToast(`خطا: ${error.message}`, 'error');
+    }
   },
 
   loadChats: async (characterId) => {
@@ -217,11 +232,23 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deleteChat: async (id) => {
-    await api.deleteChat(id);
+    const deleted = get().chats.find(c => c.id === id);
+    if (!deleted) return;
+    const deletedCurrent = get().currentChat?.id === id;
     set(s => ({
       chats: s.chats.filter(c => c.id !== id),
-      currentChat: s.currentChat?.id === id ? null : s.currentChat,
+      currentChat: deletedCurrent ? null : s.currentChat,
     }));
+    try {
+      await api.deleteChat(id);
+      get().addToast('چت حذف شد', 'success');
+    } catch (error: any) {
+      set(s => ({
+        chats: [deleted, ...s.chats],
+        currentChat: s.currentChat ?? get().currentChat,
+      }));
+      get().addToast(`خطا: ${error.message}`, 'error');
+    }
   },
 
   renameChat: async (id, name) => {
@@ -241,6 +268,10 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   sendMessage: async (content) => {
+    // صبر برای پایان ادیت در حال انجام (تا نسخه‌های قدیمی روی پیام‌ها ننویسد)
+    if (get().pendingEdit) {
+      try { await get().pendingEdit; } catch {}
+    }
     const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
@@ -317,15 +348,87 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   editMessage: async (messageId, content) => {
-    await api.editMessage(messageId, content);
+    const { currentChat, pendingEdit } = get();
+    if (pendingEdit) {
+      try { await pendingEdit; } catch {}
+    }
+    if (!currentChat) return;
+
+    const index = currentChat.messages.findIndex(m => m.id === messageId);
+    if (index === -1) return;
+    const original = currentChat.messages[index];
+    const optimistic: Message = { ...original, content, is_edited: true };
+
+    set(s => {
+      if (!s.currentChat) return s;
+      const msgs = [...s.currentChat.messages];
+      msgs[index] = optimistic;
+      return { currentChat: { ...s.currentChat, messages: msgs } };
+    });
+
+    const request = api.editMessage(messageId, content);
+    set({ pendingEdit: request });
+
+    try {
+      const updated = await request;
+      set(s => {
+        if (!s.currentChat) return s;
+        const msgs = s.currentChat.messages.map(m => m.id === messageId ? updated : m);
+        return { currentChat: { ...s.currentChat, messages: msgs } };
+      });
+    } catch (error: any) {
+      set(s => {
+        if (!s.currentChat) return s;
+        const msgs = [...s.currentChat.messages];
+        const idx = msgs.findIndex(m => m.id === messageId);
+        if (idx !== -1) msgs[idx] = original;
+        return { currentChat: { ...s.currentChat, messages: msgs } };
+      });
+      get().addToast(`خطا: ${error.message}`, 'error');
+    } finally {
+      set({ pendingEdit: null });
+    }
+  },
+
+  deleteMessage: async (messageId) => {
     const { currentChat } = get();
-    if (currentChat) {
-      const chat = await api.getChat(currentChat.id);
-      set({ currentChat: chat });
+    if (!currentChat) return;
+
+    const index = currentChat.messages.findIndex(m => m.id === messageId);
+    if (index === -1) return;
+    const removed = currentChat.messages[index];
+
+    set(s => {
+      if (!s.currentChat) return s;
+      return {
+        currentChat: {
+          ...s.currentChat,
+          messages: s.currentChat.messages.filter(m => m.id !== messageId),
+        },
+      };
+    });
+
+    try {
+      await api.deleteMessage(messageId);
+    } catch (error: any) {
+      set(s => {
+        if (!s.currentChat) return s;
+        const msgs = [...s.currentChat.messages];
+        const idx = msgs.findIndex(m => m.id === messageId);
+        if (idx === -1) {
+          msgs.splice(Math.min(index, msgs.length), 0, removed);
+        }
+        return { currentChat: { ...s.currentChat, messages: msgs } };
+      });
+      get().addToast(`خطا: ${error.message}`, 'error');
     }
   },
 
   regenerateMessage: async () => {
+    // صبر برای پایان ادیت در حال انجام
+    if (get().pendingEdit) {
+      try { await get().pendingEdit; } catch {}
+    }
     const { currentChat, currentCharacter, activePersona, activeLorebook } = get();
     if (!currentChat || !currentCharacter) return;
 
@@ -395,12 +498,22 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   deletePersona: async (id) => {
-    await api.deletePersona(id);
+    const deleted = get().personas.find(p => p.id === id);
+    if (!deleted) return;
     set(s => ({
       personas: s.personas.filter(p => p.id !== id),
       activePersona: s.activePersona?.id === id ? null : s.activePersona,
     }));
-    get().addToast('پرسونا حذف شد', 'success');
+    try {
+      await api.deletePersona(id);
+      get().addToast('پرسونا حذف شد', 'success');
+    } catch (error: any) {
+      set(s => ({
+        personas: [deleted, ...s.personas],
+        activePersona: s.activePersona ?? deleted,
+      }));
+      get().addToast(`خطا: ${error.message}`, 'error');
+    }
   },
 
   setActivePersona: (persona) => set({ activePersona: persona }),

@@ -11,6 +11,7 @@ import LorebookEditor from './components/LorebookEditor';
 import PersonaEditor from './components/PersonaEditor';
 import Toast from './components/Toast';
 import ConfirmModal from './components/ConfirmModal';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings } = useStore();
@@ -45,13 +46,13 @@ function App() {
         </div>
       </div>
 
-      {/* Modals */}
-      <CharacterEditor />
-      <ChatSettings />
-      <LorebookEditor />
-      <PersonaEditor />
-      <Toast />
-      <ConfirmModal />
+      {/* Modals - هر مودال در ErrorBoundary جدا، تا خطای یکی بقیه را از کار نیندازد */}
+      <ErrorBoundary label="CharacterEditor"><CharacterEditor /></ErrorBoundary>
+      <ErrorBoundary label="ChatSettings"><ChatSettings /></ErrorBoundary>
+      <ErrorBoundary label="LorebookEditor"><LorebookEditor /></ErrorBoundary>
+      <ErrorBoundary label="PersonaEditor"><PersonaEditor /></ErrorBoundary>
+      <ErrorBoundary label="Toast"><Toast /></ErrorBoundary>
+      <ErrorBoundary label="ConfirmModal"><ConfirmModal /></ErrorBoundary>
     </div>
   );
 }
