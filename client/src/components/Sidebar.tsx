@@ -14,6 +14,7 @@ export default function Sidebar() {
     loadLorebooks, setLorebookEditorOpen, setPersonaEditorOpen,
     showConfirm, addToast,
     activePanel, panelOpen,
+    theme, setTheme,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -354,15 +355,19 @@ export default function Sidebar() {
       <div>
         <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">Theme</h3>
         <div className="grid grid-cols-3 gap-2">
-          <button className="p-2 bg-tavern-input border border-tavern-accent rounded-lg text-xs text-tavern-accent">
-            Dark
-          </button>
-          <button className="p-2 bg-tavern-input border border-tavern-border rounded-lg text-xs text-tavern-muted hover:bg-tavern-hover transition-colors">
-            Darker
-          </button>
-          <button className="p-2 bg-tavern-input border border-tavern-border rounded-lg text-xs text-tavern-muted hover:bg-tavern-hover transition-colors">
-            Light
-          </button>
+          {(['dark', 'darker', 'light'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTheme(t)}
+              className={`p-2 rounded-lg text-xs capitalize transition-colors ${
+                theme === t
+                  ? 'bg-tavern-input border border-tavern-accent text-tavern-accent'
+                  : 'bg-tavern-input border border-tavern-border text-tavern-muted hover:bg-tavern-hover'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
       </div>
 

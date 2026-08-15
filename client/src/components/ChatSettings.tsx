@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/state';
 
 export default function ChatSettings() {
   const { settingsOpen, setSettingsOpen, loadApiSettings, saveApiSettings, apiSettings } = useStore();
+  const loadedRef = useRef(false);
   const [form, setForm] = useState({
     base_url: '', api_key: '', model: '',
     temperature: 0.7, max_tokens: 2048, top_p: 1,
@@ -11,13 +12,24 @@ export default function ChatSettings() {
     system_prompt: '',
   });
 
+  // وقتی مودال باز می‌شه، اول از store پر کن، بعد از سرور رفرش کن
   useEffect(() => {
-    if (settingsOpen) loadApiSettings();
+    if (settingsOpen) {
+      loadedRef.current = false;
+      // اول از store موجود پر کن (فوری)
+      const storeData = useStore.getState().apiSettings['openai'];
+      if (storeData) {
+        setForm(storeData);
+      }
+      // بعد از سرور رفرش کن
+      (async () => {
+        await loadApiSettings();
+        const freshData = useStore.getState().apiSettings['openai'];
+        if (freshData) setForm(freshData);
+        loadedRef.current = true;
+      })();
+    }
   }, [settingsOpen]);
-
-  useEffect(() => {
-    if (apiSettings['openai']) setForm(apiSettings['openai']);
-  }, [apiSettings]);
 
   if (!settingsOpen) return null;
 

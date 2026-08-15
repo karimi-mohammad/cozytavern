@@ -57,6 +57,23 @@ export function buildRequestBody(
   return JSON.stringify(body);
 }
 
+export function createLineBuffer() {
+  let buffer = '';
+  return {
+    push(chunk: string): string[] {
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      return lines;
+    },
+    flush(): string[] {
+      const lines = buffer.split('\n');
+      buffer = '';
+      return lines;
+    },
+  };
+}
+
 export function parseStreamChunk(data: string): string | null {
   try {
     const parsed = JSON.parse(data);

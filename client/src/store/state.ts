@@ -25,6 +25,8 @@ interface AppState {
   apiSettings: Record<string, ApiSettings>;
 
   // UI State
+  theme: 'dark' | 'darker' | 'light';
+  setTheme: (theme: 'dark' | 'darker' | 'light') => void;
   sidebarOpen: boolean;
   settingsOpen: boolean;
   characterEditorOpen: boolean;
@@ -73,6 +75,7 @@ interface AppState {
   moveChatToFolder: (id: string, folder: string) => Promise<void>;
 
   sendMessage: (content: string) => Promise<void>;
+  stopGeneration: () => Promise<void>;
   editMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   regenerateMessage: () => Promise<void>;
@@ -89,6 +92,7 @@ interface AppState {
 
   loadApiSettings: () => Promise<void>;
   saveApiSettings: (data: any) => Promise<void>;
+  autoNameChat: (chatId: string) => Promise<void>;
 
   setSidebarOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -99,6 +103,7 @@ interface AppState {
 }
 
 let confirmResolver: ((result: boolean) => void) | null = null;
+let currentAbortController: AbortController | null = null;
 
 export const useStore = create<AppState>((set, get) => ({
   characters: [],
@@ -111,6 +116,14 @@ export const useStore = create<AppState>((set, get) => ({
   activeLorebook: null,
   apiSettings: {},
 
+  theme: (localStorage.getItem('cozytavern.theme') as 'dark' | 'darker' | 'light') || 'dark',
+  setTheme: (theme) => {
+    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light');
+    document.documentElement.classList.add(`theme-${theme}`);
+    document.body.classList.toggle('theme-light', theme === 'light');
+    try { localStorage.setItem('cozytavern.theme', theme); } catch {}
+    set({ theme });
+  },
   sidebarOpen: true,
   settingsOpen: false,
   characterEditorOpen: false,
@@ -148,6 +161,11 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   showConfirm: (message) => {
+    // اگر مودالی هنوز باز است، پرامیس قبلی را بسته (false) کنیم تا hanging نشود
+    if (confirmResolver) {
+      confirmResolver(false);
+      confirmResolver = null;
+    }
     return new Promise<boolean>((resolve) => {
       confirmResolver = resolve;
       set({ confirmDialog: { message } });
@@ -217,7 +235,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   createChat: async (characterId) => {
     const chat = await api.createChat({ character_id: characterId });
-    set(s => ({ chats: [chat, ...s.chats], currentChat: null }));
+    const fullChat = await api.getChat(chat.id);
+    set(s => ({ chats: [chat, ...s.chats], currentChat: fullChat }));
     return chat;
   },
 
@@ -275,6 +294,8 @@ export const useStore = create<AppState>((set, get) => ({
     const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
+    const isFirstMessage = currentChat.messages.length === 0;
+
     const userMsg = await api.sendMessage({
       chat_id: currentChat.id,
       role: 'user',
@@ -289,6 +310,10 @@ export const useStore = create<AppState>((set, get) => ({
       isGenerating: true,
     }));
 
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    let aborted = false;
     try {
       let fullContent = '';
       await api.chatWithAI(
@@ -331,9 +356,17 @@ export const useStore = create<AppState>((set, get) => ({
         },
         () => {
           set({ isGenerating: false });
-        }
+          if (isFirstMessage) {
+            get().autoNameChat(currentChat.id);
+          }
+        },
+        controller.signal
       );
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        set({ isGenerating: false });
+        return;
+      }
       get().addToast(`خطا: ${error.message}`, 'error');
       set(s => {
         if (!s.currentChat) return s;
@@ -344,6 +377,24 @@ export const useStore = create<AppState>((set, get) => ({
         }
         return { currentChat: { ...s.currentChat, messages: msgs }, isGenerating: false };
       });
+    } finally {
+      if (controller.signal.aborted) aborted = true;
+      if (currentAbortController === controller) currentAbortController = null;
+    }
+  },
+
+  // لغو پاسخ در حال تولید — هم fetch کلاینت و هم استریم سرور متوقف می‌شود
+  stopGeneration: async () => {
+    const { currentChat, isGenerating } = get();
+    if (!isGenerating || !currentChat) return;
+    set({ isGenerating: false });
+    // abort کردن fetch باعث بسته شدن اتصال می‌شود؛ سرور از طریق res.on('close') استریم را متوقف و partial را ذخیره می‌کند
+    if (currentAbortController) {
+      currentAbortController.abort();
+    }
+    const lastAssistantMsg = [...currentChat.messages].reverse().find(m => m.role === 'assistant');
+    if (lastAssistantMsg && lastAssistantMsg.content) {
+      try { await api.abortChat(lastAssistantMsg.id); } catch {}
     }
   },
 
@@ -516,14 +567,20 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  setActivePersona: (persona) => set({ activePersona: persona }),
+  setActivePersona: (persona) => {
+    set({ activePersona: persona });
+    try { localStorage.setItem('cozytavern.activePersonaId', persona?.id || ''); } catch {}
+  },
 
   loadLorebooks: async () => {
     const lorebooks = await api.getLorebooks();
     set({ lorebooks });
   },
 
-  setActiveLorebook: (lorebook) => set({ activeLorebook: lorebook }),
+  setActiveLorebook: (lorebook) => {
+    set({ activeLorebook: lorebook });
+    try { localStorage.setItem('cozytavern.activeLorebookId', lorebook?.id || ''); } catch {}
+  },
 
   loadApiSettings: async () => {
     const settings = await api.getApiSettings();
@@ -534,6 +591,16 @@ export const useStore = create<AppState>((set, get) => ({
     await api.saveApiSettings(data);
     set(s => ({ apiSettings: { ...s.apiSettings, openai: data } }));
     get().addToast('تنظیمات ذخیره شد', 'success');
+  },
+
+  autoNameChat: async (chatId) => {
+    try {
+      const updated = await api.autoNameChat(chatId);
+      set(s => ({
+        chats: s.chats.map(c => c.id === chatId ? updated : c),
+        currentChat: s.currentChat?.id === chatId ? { ...s.currentChat, name: updated.name } : s.currentChat,
+      }));
+    } catch {}
   },
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

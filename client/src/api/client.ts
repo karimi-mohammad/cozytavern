@@ -26,6 +26,7 @@ export const api = {
   createChat: (data: any) => request('/chats', { method: 'POST', body: JSON.stringify(data) }),
   deleteChat: (id: string) => request(`/chats/${id}`, { method: 'DELETE' }),
   renameChat: (id: string, name: string) => request(`/chats/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  autoNameChat: (chatId: string) => request(`/chats/${chatId}/auto-name`, { method: 'POST' }),
   updateChat: (id: string, data: any) => request(`/chats/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Messages
@@ -34,6 +35,7 @@ export const api = {
   deleteMessage: (id: string) => request(`/messages/${id}`, { method: 'DELETE' }),
   regenerateMessage: (chatId: string) => request(`/messages/regenerate/${chatId}`, { method: 'POST' }),
   swipeMessage: (id: string, direction: string) => request(`/messages/swipe/${id}`, { method: 'POST', body: JSON.stringify({ direction }) }),
+  abortChat: (messageId: string) => request('/chat/abort', { method: 'POST', body: JSON.stringify({ message_id: messageId }) }),
 
   // API Settings
   getApiSettings: () => request('/api-settings'),
@@ -60,12 +62,14 @@ export const api = {
     data: { chat_id: string; character_id: string; persona_id?: string; lorebook_id?: string; update_message_id?: string },
     onMessageId: (id: string) => void,
     onToken: (token: string) => void,
-    onDone: () => void
+    onDone: () => void,
+    signal?: AbortSignal
   ) => {
     const res = await fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      signal,
     });
 
     if (!res.ok) {
@@ -78,17 +82,26 @@ export const api = {
     if (contentType.includes('text/event-stream')) {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        let result: { done: boolean; value?: Uint8Array };
+        try {
+          result = await reader.read();
+        } catch (e: any) {
+          if (signal?.aborted) throw e;
+          throw e;
+        }
+        if (result.done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(result.value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const data = trimmed.slice(6);
             if (data === '[DONE]') {
               onDone();
               return;

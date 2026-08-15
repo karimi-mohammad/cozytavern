@@ -11,7 +11,7 @@ export default function RightPanel() {
   if (!rightPanelOpen) return null;
 
   return (
-    <div className="w-72 bg-tavern-surface border-l border-tavern-border flex flex-col flex-shrink-0 h-full overflow-hidden">
+    <div className="absolute right-0 top-0 bottom-0 w-72 bg-tavern-surface border-l border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl overflow-hidden">
       {currentCharacter ? (
         <>
           {/* Character Info Header */}

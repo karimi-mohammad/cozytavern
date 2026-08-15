@@ -3,7 +3,7 @@ import { useStore } from '../store/state';
 
 export default function MessageInput() {
   const [content, setContent] = useState('');
-  const { sendMessage, isGenerating, currentCharacter, currentChat, swipeMessage, setSettingsOpen, panelOpen, setActivePanel } = useStore();
+  const { sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat, swipeMessage, setSettingsOpen, panelOpen, setActivePanel } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -34,8 +34,9 @@ export default function MessageInput() {
 
   return (
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
+      <div className="max-w-[50vw] mx-auto">
       {/* Main input row */}
-      <div className="flex items-end gap-2 px-3 py-2">
+      <div className="flex items-end gap-2 px-4 py-2">
         {/* Left: hamburger icon */}
         <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
           <button
@@ -61,18 +62,8 @@ export default function MessageInput() {
           rows={1}
         />
 
-        {/* Right: arrow + send icons */}
-        <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
-          <button
-            onClick={handleSubmit}
-            disabled={!content.trim() || isGenerating}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
-            title="Send arrow"
-          >
-            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </button>
+        {/* Right: send icon */}
+        <div className="flex items-center flex-shrink-0 pb-0.5">
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}
@@ -87,7 +78,7 @@ export default function MessageInput() {
       </div>
 
       {/* Bottom row: swipe controls + Generate button */}
-      <div className="flex items-center justify-between px-3 pb-2">
+      <div className="flex items-center justify-between px-4 pb-2">
         {/* Left: swipe arrows */}
         <div className="flex items-center gap-1">
           {hasSwipes && lastAssistantMsg && (
@@ -117,28 +108,32 @@ export default function MessageInput() {
           )}
         </div>
 
-        {/* Right: Generate button */}
-        <button
-          onClick={handleSubmit}
-          disabled={!content.trim() || isGenerating}
-          className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg ${
-            isGenerating
-              ? 'bg-tavern-accent/20 text-tavern-accent cursor-wait shadow-none'
-              : 'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
-          }`}
-        >
-          {isGenerating ? (
+        {/* Right: Generate / Stop button */}
+        {isGenerating ? (
+          <button
+            onClick={stopGeneration}
+            className="px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg bg-red-500/90 hover:bg-red-500 text-white shadow-red-500/20"
+            title="Stop generation"
+          >
             <span className="flex items-center gap-1.5">
-              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="1" />
               </svg>
-              Generating...
+              Stop
             </span>
-          ) : (
-            'Generate'
-          )}
-        </button>
+          </button>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            disabled={!content.trim() || isGenerating}
+            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg ${
+              'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
+            }`}
+          >
+            Generate
+          </button>
+        )}
+      </div>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@
    ============================================ */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a5e transparent;
+  scrollbar-color: rgb(var(--tavern-border)) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -22,12 +22,112 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #3a3a5e;
+  background-color: rgb(var(--tavern-border));
   border-radius: 3px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: #555577;
+  background-color: rgb(var(--tavern-border-focus));
+}
+
+/* ============================================
+   Theme Tokens (Dark = پیش‌فرض)
+   ============================================ */
+:root,
+.theme-dark {
+  --tavern-bg: 15 15 26;
+  --tavern-surface: 26 26 46;
+  --tavern-surface2: 37 37 64;
+  --tavern-input: 42 42 62;
+  --tavern-hover: 46 46 74;
+  --tavern-sidebar: 26 26 46;
+  --tavern-card: 37 37 64;
+  --tavern-icon-bar: 26 26 46;
+  --tavern-topbar: 26 26 46;
+  --tavern-right-panel: 26 26 46;
+  --tavern-panel-header: 37 37 64;
+  --tavern-border: 58 58 94;
+  --tavern-border-subtle: 42 42 62;
+  --tavern-border-focus: 102 102 204;
+  --tavern-text: 204 204 221;
+  --tavern-text-bright: 224 224 255;
+  --tavern-muted: 136 136 170;
+  --tavern-dim: 102 102 170;
+  --tavern-faint: 85 85 119;
+  --tavern-accent: 102 102 204;
+  --tavern-accent-hover: 119 119 221;
+  --tavern-cta: 255 102 68;
+  --tavern-cta-hover: 255 119 85;
+  --tavern-dialogue: 255 170 68;
+  --tavern-danger: 255 68 68;
+  --tavern-success: 68 204 102;
+  --tavern-info: 68 136 204;
+  --tavern-user: 204 204 221;
+  --tavern-assistant: 26 26 46;
+}
+
+.theme-darker {
+  --tavern-bg: 8 8 14;
+  --tavern-surface: 12 12 22;
+  --tavern-surface2: 18 18 32;
+  --tavern-input: 22 22 36;
+  --tavern-hover: 26 26 42;
+  --tavern-sidebar: 12 12 22;
+  --tavern-card: 18 18 32;
+  --tavern-icon-bar: 12 12 22;
+  --tavern-topbar: 12 12 22;
+  --tavern-right-panel: 12 12 22;
+  --tavern-panel-header: 18 18 32;
+  --tavern-border: 40 40 66;
+  --tavern-border-subtle: 28 28 46;
+  --tavern-border-focus: 90 90 180;
+  --tavern-text: 170 170 200;
+  --tavern-text-bright: 200 200 235;
+  --tavern-muted: 110 110 150;
+  --tavern-dim: 80 80 120;
+  --tavern-faint: 65 65 95;
+  --tavern-accent: 90 90 180;
+  --tavern-accent-hover: 110 110 200;
+  --tavern-cta: 240 90 60;
+  --tavern-cta-hover: 250 110 80;
+  --tavern-dialogue: 235 155 60;
+  --tavern-danger: 235 60 60;
+  --tavern-success: 60 180 95;
+  --tavern-info: 60 120 185;
+  --tavern-user: 170 170 200;
+  --tavern-assistant: 12 12 22;
+}
+
+.theme-light {
+  --tavern-bg: 244 244 248;
+  --tavern-surface: 255 255 255;
+  --tavern-surface2: 240 240 246;
+  --tavern-input: 255 255 255;
+  --tavern-hover: 235 235 242;
+  --tavern-sidebar: 250 250 253;
+  --tavern-card: 255 255 255;
+  --tavern-icon-bar: 250 250 253;
+  --tavern-topbar: 255 255 255;
+  --tavern-right-panel: 250 250 253;
+  --tavern-panel-header: 240 240 246;
+  --tavern-border: 210 210 224;
+  --tavern-border-subtle: 224 224 234;
+  --tavern-border-focus: 102 102 204;
+  --tavern-text: 50 50 70;
+  --tavern-text-bright: 30 30 45;
+  --tavern-muted: 100 100 125;
+  --tavern-dim: 120 120 145;
+  --tavern-faint: 150 150 170;
+  --tavern-accent: 88 88 190;
+  --tavern-accent-hover: 100 100 210;
+  --tavern-cta: 220 90 60;
+  --tavern-cta-hover: 200 75 50;
+  --tavern-dialogue: 210 150 40;
+  --tavern-danger: 210 60 60;
+  --tavern-success: 40 150 80;
+  --tavern-info: 40 110 190;
+  --tavern-user: 50 50 70;
+  --tavern-assistant: 255 255 255;
 }
 
 /* ============================================
@@ -38,18 +138,25 @@ body {
   padding: 0;
   overflow: hidden;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background-color: #0a0b12;
+  background-color: rgb(var(--tavern-bg));
   background-image:
-    radial-gradient(ellipse at 5% 95%, rgba(140, 40, 200, 0.25) 0%, transparent 35%),
-    radial-gradient(ellipse at 95% 5%, rgba(30, 50, 160, 0.2) 0%, transparent 35%),
-    radial-gradient(ellipse at 50% 100%, rgba(80, 20, 120, 0.15) 0%, transparent 40%),
-    radial-gradient(ellipse at 0% 0%, rgba(20, 30, 80, 0.3) 0%, transparent 50%),
-    radial-gradient(circle at 70% 30%, rgba(60, 30, 100, 0.08) 0%, transparent 25%),
-    linear-gradient(180deg, #08091a 0%, #0d0e20 30%, #0f1025 60%, #0a0b15 100%);
+    radial-gradient(ellipse at 5% 95%, rgba(140, 40, 200, 0.18) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 50, 160, 0.14) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 100%, rgba(80, 20, 120, 0.10) 0%, transparent 40%),
+    radial-gradient(ellipse at 0% 0%, rgba(20, 30, 80, 0.20) 0%, transparent 50%),
+    radial-gradient(circle at 70% 30%, rgba(60, 30, 100, 0.05) 0%, transparent 25%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
   background-attachment: fixed;
-  color: #ccccdd;
+  color: rgb(var(--tavern-text));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body.theme-light {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(140, 40, 200, 0.06) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 50, 160, 0.05) 0%, transparent 35%),
+    linear-gradient(180deg, #f4f4f8 0%, #fbfbfd 50%, #eef0f6 100%);
 }
 
 /* Background wallpaper overlay - neon room effect */
@@ -69,6 +176,12 @@ body {
   position: relative;
   width: 100%;
   height: 100vh;
+}
+
+/* در تم روشن والپیپر کمتر دیده شود */
+body.theme-light #root::before {
+  opacity: 0.35;
+  filter: saturate(0.4);
 }
 
 /* ============================================
@@ -258,20 +371,20 @@ body {
    Thinking Block Collapsible
    ============================================ */
 .thinking-block {
-  border-left: 2px solid #3a3a5e;
+  border-left: 2px solid rgb(var(--tavern-border));
   padding-left: 12px;
   margin: 8px 0;
 }
 
 .thinking-block summary {
   cursor: pointer;
-  color: #8888aa;
+  color: rgb(var(--tavern-muted));
   font-size: 13px;
   user-select: none;
 }
 
 .thinking-block summary:hover {
-  color: #ccccdd;
+  color: rgb(var(--tavern-text));
 }
 
 /* ============================================
@@ -281,7 +394,7 @@ input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  background: #3a3a5e;
+  background: rgb(var(--tavern-border));
   border-radius: 2px;
   outline: none;
 }

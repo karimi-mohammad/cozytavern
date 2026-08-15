@@ -89,7 +89,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 router.post('/regenerate/:chatId', (req: Request, res: Response) => {
   const db = getDb();
   const lastMsg = db.prepare(
-    "SELECT * FROM messages WHERE chat_id = ? AND role = 'assistant' ORDER BY send_date DESC LIMIT 1"
+    "SELECT * FROM messages WHERE chat_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 1"
   ).get(req.params.chatId) as any;
 
   if (!lastMsg) {

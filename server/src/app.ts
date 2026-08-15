@@ -9,12 +9,15 @@ import messagesRouter from './routes/messages';
 import apiSettingsRouter from './routes/api-settings';
 import personasRouter from './routes/personas';
 import lorebooksRouter from './routes/lorebooks';
-import { buildEndpoint, buildHeaders, buildRequestBody, parseStreamChunk, parseNonStreamingResponse } from './utils/providers';
+import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunk, parseNonStreamingResponse } from './utils/providers';
 import { buildPrompt, activateWorldInfo } from './utils/prompt-builder';
 import { getDb } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
+
+// رجیستری پاسخ‌های streaming فعال — کلید: message_id
+const activeStreams = new Map<string, AbortController>();
 
 // مطمئن شدن از وجود پوشه data
 const dataDir = path.join(__dirname, '..', 'data');
@@ -45,7 +48,20 @@ app.post('/api/chat', async (req, res) => {
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
   const persona = persona_id ? db.prepare('SELECT * FROM personas WHERE id = ?').get(persona_id) as any : null;
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chat_id) as any;
-  const messages = db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY send_date ASC').all(chat_id) as any[];
+  const messages = db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC').all(chat_id) as any[];
+
+  if (!character) {
+    res.status(400).json({ error: 'کاراکتر پیدا نشد' });
+    return;
+  }
+  if (!chat) {
+    res.status(400).json({ error: 'چت پیدا نشد' });
+    return;
+  }
+  if (persona_id && !persona) {
+    res.status(400).json({ error: 'پرسونا پیدا نشد' });
+    return;
+  }
 
   // دریافت تنظیمات API
   const settings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;
@@ -93,6 +109,7 @@ app.post('/api/chat', async (req, res) => {
       method: 'POST',
       headers,
       body: requestBody,
+      signal: (req as any).signal,
     });
 
     if (!response.ok) {
@@ -122,24 +139,35 @@ app.post('/api/chat', async (req, res) => {
       }
       res.write(`data: ${JSON.stringify({ message_id: msgId })}\n\n`);
 
+      // لغو فعال: کاربر از طریق /api/chat/abort یا قطع اتصال
+      const abortController = new AbortController();
+      activeStreams.set(msgId, abortController);
+      res.on('close', () => {
+        abortController.abort();
+        activeStreams.delete(msgId);
+      });
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
+      let streamAborted = false;
 
       if (reader) {
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          const lineBuffer = createLineBuffer();
+          let done = false;
+          while (!done) {
+            const { done: streamDone, value } = await (reader as any).read({ signal: abortController.signal });
+            if (streamDone) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-
+            const lines = lineBuffer.push(chunk);
             for (const line of lines) {
               const trimmed = line.trim();
               if (trimmed.startsWith('data: ')) {
                 const data = trimmed.slice(6);
                 if (data === '[DONE]') {
+                  done = true;
                   break;
                 }
                 const token = parseStreamChunk(data);
@@ -150,16 +178,25 @@ app.post('/api/chat', async (req, res) => {
               }
             }
           }
-        } catch (streamError) {
-          console.error('Stream error:', streamError);
+        } catch (streamError: any) {
+          // Abort از طرف کاربر یا قطع اتصال — متن partial ذخیره می‌شود
+          if (streamError?.name === 'AbortError') {
+            streamAborted = true;
+            console.log(`Stream aborted for message ${msgId} after ${fullContent.length} chars`);
+          } else {
+            console.error('Stream error:', streamError);
+          }
         }
       }
 
-      // بروزرسانی محتوای پیام
+      // بروزرسانی محتوای پیام (حتی اگر abort شده باشد — متن partial حفظ می‌شود)
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), chat_id);
 
-      res.write('data: [DONE]\n\n');
+      if (!streamAborted) {
+        res.write('data: [DONE]\n\n');
+      }
+      activeStreams.delete(msgId);
       res.end();
     } else {
       // Non-streaming response
@@ -187,6 +224,22 @@ app.post('/api/chat', async (req, res) => {
   } catch (error: any) {
     console.error('API Error:', error);
     res.status(500).json({ error: error.message || 'خطا در اتصال به API' });
+  }
+});
+
+// لغو پاسخ streaming فعال (Stop در UI)
+app.post('/api/chat/abort', (req, res) => {
+  const { message_id } = req.body;
+  if (!message_id) {
+    res.status(400).json({ error: 'message_id الزامی است' });
+    return;
+  }
+  const controller = activeStreams.get(message_id);
+  if (controller) {
+    controller.abort();
+    res.json({ success: true, aborted: true });
+  } else {
+    res.json({ success: true, aborted: false });
   }
 });
 

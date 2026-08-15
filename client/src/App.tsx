@@ -14,7 +14,14 @@ import ConfirmModal from './components/ConfirmModal';
 import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
-  const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings } = useStore();
+  const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings, personas, lorebooks, setActivePersona, setActiveLorebook, theme } = useStore();
+
+  // اعمال تم ذخیره‌شده در اولین رندر
+  useEffect(() => {
+    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light');
+    document.documentElement.classList.add(`theme-${theme}`);
+    document.body.classList.toggle('theme-light', theme === 'light');
+  }, []);
 
   useEffect(() => {
     loadCharacters();
@@ -22,6 +29,22 @@ function App() {
     loadLorebooks();
     loadApiSettings();
   }, []);
+
+  // بازیابی انتخاب‌های فعال (پرسونا/لوربوک) بعد از load دیتا
+  useEffect(() => {
+    try {
+      const personaId = localStorage.getItem('cozytavern.activePersonaId');
+      if (personaId) {
+        const saved = personas.find(p => p.id === personaId);
+        if (saved) setActivePersona(saved);
+      }
+      const lorebookId = localStorage.getItem('cozytavern.activeLorebookId');
+      if (lorebookId) {
+        const saved = lorebooks.find(l => l.id === lorebookId);
+        if (saved) setActiveLorebook(saved);
+      }
+    } catch {}
+  }, [personas, lorebooks]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-tavern-bg">

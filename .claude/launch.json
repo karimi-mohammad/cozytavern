@@ -2,7 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "cozytavern",
+      "name": "cozytavern-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:server"],
+      "port": 3002
+    },
+    {
+      "name": "cozytavern-client",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:client"],
       "port": 5173,

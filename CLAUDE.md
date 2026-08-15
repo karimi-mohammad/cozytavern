@@ -1,4 +1,6 @@
-claude# CozyTavern
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 یک چت‌بات فرانت‌اند سبک مشابه SillyTavern با پشتیبانی از API سازگار با OpenAI و endpoint سفارشی.
 
@@ -8,28 +10,7 @@ claude# CozyTavern
 - **بکند**: Express.js + better-sqlite3 + TypeScript
 - **State Management**: Zustand
 - **Storage**: SQLite (فایلی)
-
-## ساختار پروژه
-
-```
-CozyTavern/
-├── server/                  # Express backend
-│   ├── src/
-│   │   ├── index.ts         # Entry point + /api/chat endpoint
-│   │   ├── db.ts            # SQLite connection + migrations
-│   │   ├── routes/          # Express routers
-│   │   └── utils/           # providers.ts, prompt-builder.ts
-│   └── data/                # SQLite database file
-├── client/                  # React + Vite frontend
-│   ├── src/
-│   │   ├── api/client.ts    # API client functions
-│   │   ├── store/state.ts   # Zustand global state
-│   │   ├── components/      # React components
-│   │   └── types/index.ts   # TypeScript interfaces
-│   └── vite.config.ts       # Dev proxy to server
-├── package.json             # Root scripts (concurrently)
-└── CLAUDE.md
-```
+- **تست**: Vitest + supertest
 
 ## اجرا
 
@@ -42,33 +23,64 @@ npm run build            # build فرانت برای production
 
 ## تست‌نویسی
 
-### اجرای تست‌ها
-
 ```bash
 cd server
 npm test                 # اجرای یکباره همه تست‌ها
 npm run test:watch       # اجرای مداوم (watch mode)
+npx vitest run src/__tests__/providers.test.ts   # یک فایل خاص
+npx vitest run -t "buildEndpoint"                # با کلمه کلیدی
 ```
 
-### ساختار تست‌ها
+**نکات تست:**
+- Vitest با `globals: true` — نیازی به import کردن `describe`/`it`/`expect` نیست
+- اجرای تست‌ها sequential (غیرهمزمان) با timeout 10 ثانیه
+- سه فایل setup جداگانه برای دیتابیس تست: `global-setup.ts`, `chat-setup.ts`, `mc-setup.ts`
+- Mock کردن دیتابیس با `vi.mock('../db')` — testDb از setup import می‌شه
+- Chat tests از `vi.stubGlobal('fetch', ...)` برای mock کردن LLM API استفاده می‌کنن
 
-```
-server/src/__tests__/
-├── providers.test.ts       # تست utility functions (17 تست)
-├── prompt-builder.test.ts  # تست ساخت prompt و لوربوک (14 تست)
-├── characters.test.ts      # تست API کاراکتر (7 تست)
-├── lorebooks.test.ts       # تست API لوربوک (7 تست)
-├── personas.test.ts        # تست API پرسونا (4 تست)
-├── api-settings.test.ts    # تست API تنظیمات (4 تست)
-└── setup.ts                # راه‌اندازی دیتابیس تست
-```
+## معماری
 
-### نکات تست
+### ساختار سرور
 
-- از **vitest** به عنوان test runner استفاده می‌شود
-- دیتابیس تست در `server/data/test.db` ذخیره می‌شود و بعد از تست‌ها حذف می‌شود
-- هر فایل تست یک دیتابیس تمیز دارد
-- Mock کردن دیتابیس با `vi.mock('../db')` انجام می‌شود
+- **Entry point**: `server/src/index.ts` → `app.ts` (Express app + مسیرها)
+- **Database**: `server/src/db.ts` — singleton pattern با `getDb()`، WAL journal mode، foreign keys
+- **Migrations**: Runtime migrations با PRAGMA table_info — ستون‌های جدید خودکار اضافه می‌شن
+- **Routes**: `server/src/routes/` — characters, chats, messages, api-settings, personas, lorebooks
+- **Utils**: `providers.ts` (ساخت درخواست LLM) + `prompt-builder.ts` (ساخت prompt + لوربوک)
+
+### معماری کلاینت
+
+- **Store**: `client/src/store/state.ts` — Zustand store با optimistic updates + rollback در صورت خطا
+- **API Client**: `client/src/api/client.ts` — wrapper ساده روی `fetch` + `chatWithAI()` برای SSE streaming
+- **Layout**: `IconBar` (نوار آیکون چپ) + `ChatView` (مرکز) + `Sidebar` (پنل چپ overlay) + `RightPanel` (پنل راست)
+- **Error Isolation**: هر modal در `ErrorBoundary` جداگانه wrapping شده — crash یک modal کل app رو خراب نمی‌کنه
+- **Themes**: سه تم (`dark`, `darker`, `light`) با CSS custom properties در `index.css` — رنگ‌های `tavern-*` از CSS vars
+
+### سیستم Streaming
+
+- سرور `AbortController` هر stream رو در `Map<string, AbortController>` ذخیره می‌کنه
+- کلاینت از `ReadableStream` + line buffer parser برای خواندن SSE استفاده می‌کنه
+- Abort هم از `/api/chat/abort` و هم از `AbortController.abort()` کلاینت پشتیبانی می‌شه
+
+### ساخت Prompt (ترتیب)
+
+System prompt → اطلاعات کاراکتر → مثال‌های دیالوگ → لوربوک فعال‌شده → اطلاعات پرسونا → تاریخچه چت
+
+ماکروها: `{{char}}` = نام کاراکتر، `{{user}}` = نام پرسونا
+
+### لوربوک / WorldInfo
+
+- قبل از هر درخواست AI، لوربوک entryها با پیام‌های اخیر (بر اساس `scan_depth`) چک می‌شن
+- Entryهای `constant` همیشه فعالن
+- Entryهای `selective` نیاز به match هر دو key اصلی و فرعی دارن
+- اولویت‌بندی بر اساس `insertion_order`
+
+### قابلیت‌های چت
+
+- **ادیت پیام**: ادیت باعث حذف پیام‌های بعدی می‌شه (چون context AI تغییر می‌کنه)
+- **Regenerate**: نسخه قبلی در `swipes` (JSON array) ذخیره می‌شه، پاسخ جدید جایگزین می‌شه
+- **Swipe**: جابجایی بین پاسخ‌ها بدون فراخوانی مجدد API
+- **Branch**: فورک کردن مکالمه — چت جدید با تاریخچه مشترک تا یک نقطه خاص
 
 ## API Routes
 
@@ -86,10 +98,10 @@ server/src/__tests__/
 | CRUD | `/api/personas` | مدیریت پرسونا |
 | CRUD | `/api/lorebooks` | مدیریت لوربوک |
 | POST | `/api/chat` | ارسال پیام به AI (streaming) |
+| POST | `/api/chat/abort` | متوقف کردن stream فعال |
 
 ### POST /api/chat
 
-بادی:
 ```json
 {
   "chat_id": "...",
@@ -100,44 +112,19 @@ server/src/__tests__/
 }
 ```
 
-SEvents:
-- اولین event: `{ "message_id": "..." }` - ID پیام ساخته شده
-- eventهای بعدی: `{ "token": "..." }` - توکن‌های streaming
-- آخرین event: `[DONE]`
-
-اگر `update_message_id` فرستاده بشه، پیام جدید ساخته نمیشه و پیام قبلی آپدیت می‌شه.
+SSE Events: `{ "message_id": "..." }` → `{ "token": "..." }` → `[DONE]`
 
 ## دیتابیس SQLite
 
 جداول: `characters`, `chats`, `messages`, `personas`, `lorebooks`, `lorebook_entries`, `api_settings`
 
+API key و تنظیمات در SQLite ذخیره می‌شن (نه در env vars).
+
 ## Provider های AI
 
-فرمت ارتباطی: **OpenAI-compatible** (فرمت `/v1/chat/completions`)
+فرمت: **OpenAI-compatible** (`/v1/chat/completions`)
 
-پشتیبانی از هر سرویسی که فرمت OpenAI رو رعایت کنه:
-- **OpenAI**: GPT-4, GPT-4o, GPT-3.5-turbo
-- **Ollama**: مدل‌های محلی (llama3, mistral, etc.)
-- **LM Studio**, **text-generation-webui**, **FreeLLMAPI** و هر سرویس سازگار دیگر
-
-## نکات فنی
-
-- سرور روی پورت 3002 اجرا می‌شه (پورت 3001 اشغاله)
-- Vite proxy درخواست‌های `/api` رو به سرور فوروارد می‌کنه
-- Streaming پاسخ‌ها از طریق SSE (Server-Sent Events)
-- لوربوک بر اساس کلمات کلیدی در پیام‌های اخیر فعال می‌شه
-- ماکروها: `{{char}}` = نام کاراکتر، `{{user}}` = نام پرسونا
-- دیتابیس در `server/data/cozytavern.db` ذخیره می‌شه
-- Endpoint سفارشی: اگر خالی باشه از `api.openai.com` استفاده می‌شه
-- اگر فقط host وارد بشه (مثلاً `http://localhost:1234`)، مسیر `/v1/chat/completions` خودکار اضافه می‌شه
-
-## قابلیت‌های چت
-
-- **ارسال پیام**: پیام کاربر ذخیره می‌شه، سرور به AI وصل می‌شه و پاسخ رو streaming می‌فرسته
-- **ادیت پیام**: هم پیام کاربر و هم پیام AI قابل ادیته. ادیت باعث حذف پیام‌های بعدی می‌شه
-- **Regenerate**: نسخه قبلی پاسخ در swipes ذخیره می‌شه و پاسخ جدید جایگزین می‌شه
-- **Swipe**: جابجایی بین پاسخ‌های ذخیره شده در swipes بدون فراخوانی مجدد API
-- **Branch**: فورک کردن مکالمه از یک نقطه خاص (ایجاد چت جدید با تاریخچه مشترک)
+Endpoint سفارشی: اگر خالی باشه از `api.openai.com` استفاده می‌شه. اگر فقط host وارد بشه، مسیر `/v1/chat/completions` خودکار اضافه می‌شه.
 
 ## فرمت کاراکتر
 
@@ -153,28 +140,11 @@ SEvents:
 }
 ```
 
-## راهنمای تست‌نویسی برای Claude
-
-### نحوه اجرای تست‌ها
-
-```bash
-# اجرای همه تست‌ها
-cd server && npm test
-
-# اجرای یک فایل تست خاص
-cd server && npx vitest run src/__tests__/providers.test.ts
-
-# اجرای تست با کلمه کلیدی
-cd server && npx vitest run -t "buildEndpoint"
-
-# اجرای مداوم (برای development)
-cd server && npm run test:watch
-```
+## راهنمای تست‌نویسی
 
 ### ساختار فایل تست
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
 import { testDb } from './global-setup';
 import request from 'supertest';
 import app from '../app';
@@ -189,16 +159,17 @@ describe('نام API', () => {
       .post('/api/endpoint')
       .send({ data: 'test' })
       .expect(200);
-
     expect(res.body.field).toBe('expected value');
   });
 });
 ```
 
-### نکات مهم تست‌نویسی
+**نکات:**
+- هر تست باید مستقل باشه — از `beforeEach` برای پاک کردن دیتابیس استفاده کنید
+- از testDb مستقیم برای دسترسی به دیتابیس تست استفاده کنید
+- Chat tests نیاز به mock کردن `fetch` با `vi.stubGlobal` دارن
+- Utility functions رو مستقیم تست کنید — نیازی به mock نیست
 
-1. **هر تست باید مستقل باشه** - از `beforeEach` برای پاک کردن دیتابیس استفاده کنید
-2. **از testDb مستقیم استفاده کنید** - برای دسترسی به دیتابیس تست از `testDb` استفاده کنید
-3. **Mock کردن دیتابیس** - در `global-setup.ts` با `vi.mock('../db')` دیتابیس mock می‌شود
-4. **تست API ها** - از `supertest` برای تست endpoint ها استفاده کنید
-5. **تست utility functions** - مستقیم توابع رو تست کنید نیازی به mock نیست
+## ابزارها
+
+- `.claude/launch.json`: دو config برای preview — `cozytavern-server` (port 3002) و `cozytavern-client` (port 5173)
