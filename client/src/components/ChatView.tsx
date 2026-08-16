@@ -3,6 +3,7 @@ import { useStore } from '../store/state';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import CharacterAvatar from './CharacterAvatar';
+import { ChatSkeleton } from './LoadingSkeleton';
 
 export default function ChatView() {
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
@@ -14,6 +15,7 @@ export default function ChatView() {
     setCharacterEditorOpen, loadChats,
     editMessage, deleteMessage, branchChat,
     activePersona, isGenerating, showConfirm,
+    loadingMessages, loadingCharacters, loadingChats,
   } = useStore();
 
   const handleBranch = async (messageId: string, sendDate: string) => {
@@ -29,6 +31,35 @@ export default function ChatView() {
 
   // Empty state: no character selected - show welcome screen
   if (!currentCharacter) {
+    if (loadingCharacters) {
+      return (
+        <div className="flex-1 flex flex-col bg-tavern-bg min-w-0 relative overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-[50vw] mx-auto px-6 py-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-tavern-danger/80 flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-sm">ST</span>
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-tavern-text-bright">CozyTavern v0.0.1</h1>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 border border-tavern-border/50 animate-pulse">
+                    <div className="w-10 h-10 rounded-full bg-tavern-hover flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-tavern-hover rounded w-1/3" />
+                      <div className="h-2 bg-tavern-hover rounded w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col bg-tavern-bg min-w-0 relative overflow-hidden">
         <div className="flex-1 overflow-y-auto">
@@ -161,6 +192,7 @@ export default function ChatView() {
             currentChat={currentChat}
             activePersona={activePersona}
             isGenerating={isGenerating}
+            loadingMessages={loadingMessages}
             onEditMessage={editMessage}
             onDeleteMessage={handleDeleteMessage}
             onBranch={handleBranch}
@@ -191,7 +223,9 @@ export default function ChatView() {
             </div>
 
             {/* Chat list */}
-            {chats.length > 0 ? (
+            {loadingChats ? (
+              <ChatSkeleton />
+            ) : chats.length > 0 ? (
               <div className="space-y-2">
                 {chats.map((chat) => (
                   <div

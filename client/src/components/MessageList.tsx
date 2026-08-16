@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Message, Character, Chat, Persona } from '../types';
 import MessageBubble from './MessageBubble';
+import { MessageSkeleton } from './LoadingSkeleton';
 
 interface Props {
   messages: Message[];
@@ -8,13 +9,14 @@ interface Props {
   currentChat: (Chat & { messages: Message[] }) | null;
   activePersona: Persona | null;
   isGenerating: boolean;
+  loadingMessages: boolean;
   onEditMessage: (messageId: string, content: string) => void;
   onDeleteMessage: (messageId: string) => void;
   onBranch: (messageId: string, sendDate: string) => void;
 }
 
 export default function MessageList({
-  messages, currentCharacter, currentChat, activePersona, isGenerating,
+  messages, currentCharacter, currentChat, activePersona, isGenerating, loadingMessages,
   onEditMessage, onDeleteMessage, onBranch,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,10 @@ export default function MessageList({
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto relative z-10">
       <div className="max-w-[50vw] min-w-0 mx-auto px-4 py-4">
-        {messages.map((msg) => (
+        {loadingMessages ? (
+          <MessageSkeleton />
+        ) : (
+          messages.map((msg) => (
           <MessageBubble
             key={msg.id}
             message={msg}
@@ -66,7 +71,8 @@ export default function MessageList({
             activePersona={activePersona}
             isGenerating={isGenerating}
           />
-        ))}
+        ))
+        )}
         <div ref={bottomRef} />
       </div>
     </div>

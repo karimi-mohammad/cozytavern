@@ -24,6 +24,13 @@ interface AppState {
   activeLorebook: Lorebook | null;
   apiSettings: Record<string, ApiSettings>;
 
+  // Loading States
+  loadingCharacters: boolean;
+  loadingChats: boolean;
+  loadingMessages: boolean;
+  loadingPersonas: boolean;
+  loadingLorebooks: boolean;
+
   // UI State
   theme: 'dark' | 'darker' | 'light';
   setTheme: (theme: 'dark' | 'darker' | 'light') => void;
@@ -116,6 +123,13 @@ export const useStore = create<AppState>((set, get) => ({
   activeLorebook: null,
   apiSettings: {},
 
+  // Loading states (از true شروع می‌شه چون لود اولیه دیتا در mount انجام می‌شه)
+  loadingCharacters: true,
+  loadingChats: false,
+  loadingMessages: false,
+  loadingPersonas: true,
+  loadingLorebooks: true,
+
   theme: (localStorage.getItem('cozytavern.theme') as 'dark' | 'darker' | 'light') || 'dark',
   setTheme: (theme) => {
     document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light');
@@ -178,14 +192,23 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   loadCharacters: async () => {
-    const characters = await api.getCharacters();
-    set({ characters });
+    set({ loadingCharacters: true });
+    try {
+      const characters = await api.getCharacters();
+      set({ characters });
+    } finally {
+      set({ loadingCharacters: false });
+    }
   },
 
   selectCharacter: async (character) => {
-    set({ currentCharacter: character, currentChat: null });
-    const chats = await api.getChats(character.id);
-    set({ chats });
+    set({ currentCharacter: character, currentChat: null, loadingChats: true });
+    try {
+      const chats = await api.getChats(character.id);
+      set({ chats });
+    } finally {
+      set({ loadingChats: false });
+    }
   },
 
   createCharacter: async (data) => {
@@ -224,13 +247,23 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   loadChats: async (characterId) => {
-    const chats = await api.getChats(characterId);
-    set({ chats });
+    set({ loadingChats: true });
+    try {
+      const chats = await api.getChats(characterId);
+      set({ chats });
+    } finally {
+      set({ loadingChats: false });
+    }
   },
 
   selectChat: async (chatId) => {
-    const chat = await api.getChat(chatId);
-    set({ currentChat: chat });
+    set({ loadingMessages: true });
+    try {
+      const chat = await api.getChat(chatId);
+      set({ currentChat: chat });
+    } finally {
+      set({ loadingMessages: false });
+    }
   },
 
   createChat: async (characterId) => {
@@ -530,8 +563,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   loadPersonas: async () => {
-    const personas = await api.getPersonas();
-    set({ personas });
+    set({ loadingPersonas: true });
+    try {
+      const personas = await api.getPersonas();
+      set({ personas });
+    } finally {
+      set({ loadingPersonas: false });
+    }
   },
 
   createPersona: async (data) => {
@@ -573,8 +611,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   loadLorebooks: async () => {
-    const lorebooks = await api.getLorebooks();
-    set({ lorebooks });
+    set({ loadingLorebooks: true });
+    try {
+      const lorebooks = await api.getLorebooks();
+      set({ lorebooks });
+    } finally {
+      set({ loadingLorebooks: false });
+    }
   },
 
   setActiveLorebook: (lorebook) => {

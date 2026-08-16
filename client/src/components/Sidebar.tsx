@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
-import { CharacterSkeleton } from './LoadingSkeleton';
+import { CharacterSkeleton, ChatSkeleton, PersonaSkeleton, LorebookSkeleton } from './LoadingSkeleton';
 import { useDebounce } from '../hooks/useDebounce';
 
 export default function Sidebar() {
@@ -15,11 +15,11 @@ export default function Sidebar() {
     showConfirm, addToast,
     activePanel, panelOpen,
     theme, setTheme,
+    loadingCharacters, loadingChats, loadingPersonas, loadingLorebooks,
   } = useStore();
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 150);
-  const [loading] = useState(false);
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [folderMenuChatId, setFolderMenuChatId] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export default function Sidebar() {
             + New
           </button>
         </div>
-        {loading ? (
+        {loadingCharacters ? (
           <CharacterSkeleton />
         ) : (
           filteredCharacters.map(char => (
@@ -189,9 +189,14 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Render grouped chats */}
-        {(() => {
-          const renderChatItem = (chat: typeof chats[0]) => (
+        {/* Loading state */}
+        {loadingChats ? (
+          <ChatSkeleton />
+        ) : (
+          <>
+          {/* Render grouped chats */}
+          {(() => {
+            const renderChatItem = (chat: typeof chats[0]) => (
             <div
               key={chat.id}
               className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between group ${
@@ -334,6 +339,8 @@ export default function Sidebar() {
             </>
           );
         })()}
+          </>
+        )}
       </div>
     );
   };
@@ -393,19 +400,25 @@ export default function Sidebar() {
           + New
         </button>
       </div>
-      {lorebooks.map(l => (
-        <div
-          key={l.id}
-          className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors ${
-            activeLorebook?.id === l.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
-          }`}
-          onClick={() => setActiveLorebook(activeLorebook?.id === l.id ? null : l)}
-        >
-          <span className="text-sm truncate">{l.name}</span>
-        </div>
-      ))}
-      {lorebooks.length === 0 && (
-        <p className="text-xs text-tavern-dim text-center py-4">No lorebooks yet</p>
+      {loadingLorebooks ? (
+        <LorebookSkeleton />
+      ) : (
+        <>
+          {lorebooks.map(l => (
+            <div
+              key={l.id}
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors ${
+                activeLorebook?.id === l.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
+              }`}
+              onClick={() => setActiveLorebook(activeLorebook?.id === l.id ? null : l)}
+            >
+              <span className="text-sm truncate">{l.name}</span>
+            </div>
+          ))}
+          {lorebooks.length === 0 && (
+            <p className="text-xs text-tavern-dim text-center py-4">No lorebooks yet</p>
+          )}
+        </>
       )}
     </div>
   );
@@ -421,35 +434,41 @@ export default function Sidebar() {
           + New
         </button>
       </div>
-      {personas.map(p => (
-        <div
-          key={p.id}
-          className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between ${
-            activePersona?.id === p.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
-          }`}
-          onClick={() => setActivePersona(activePersona?.id === p.id ? null : p)}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-tavern-input border border-tavern-border flex items-center justify-center text-sm font-medium flex-shrink-0">
-              {p.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm truncate font-medium">{p.name}</p>
-              {p.description && <p className="text-xs text-tavern-dim truncate">{p.description}</p>}
-            </div>
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); setPersonaEditorOpen(true, p); }}
-            className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-          </button>
+      {loadingPersonas ? (
+        <PersonaSkeleton />
+      ) : (
+        <>
+          {personas.map(p => (
+            <div
+              key={p.id}
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between ${
+                activePersona?.id === p.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover text-tavern-text'
+              }`}
+              onClick={() => setActivePersona(activePersona?.id === p.id ? null : p)}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-tavern-input border border-tavern-border flex items-center justify-center text-sm font-medium flex-shrink-0">
+                  {p.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm truncate font-medium">{p.name}</p>
+                  {p.description && <p className="text-xs text-tavern-dim truncate">{p.description}</p>}
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPersonaEditorOpen(true, p); }}
+                className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
         </div>
       ))}
-      {personas.length === 0 && (
-        <p className="text-xs text-tavern-dim text-center py-4">No personas yet</p>
+          {personas.length === 0 && (
+            <p className="text-xs text-tavern-dim text-center py-4">No personas yet</p>
+          )}
+        </>
       )}
     </div>
   );
