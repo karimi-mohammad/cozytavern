@@ -109,19 +109,11 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const controller = new AbortController();
-    // لغو درخواست اگر کلاینت اتصال را قطع کند
-    req.on('close', () => {
-      if (!controller.signal.aborted) {
-        console.log(`Client disconnected, aborting fetch for chat ${chat_id}`);
-        controller.abort();
-      }
-    });
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: requestBody,
-      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -153,11 +145,11 @@ app.post('/api/chat', async (req, res) => {
       }
       res.write(`data: ${JSON.stringify({ message_id: msgId })}\n\n`);
 
-      // لغو فعال: کاربر از طریق /api/chat/abort یا قطع اتصال
-      // از همان controller اصلی fetch استفاده کن تا reader هم لغو شود
-      activeStreams.set(msgId, controller);
+      // لغو فعال: کاربر از طریق /api/chat/abort
+      const streamController = new AbortController();
+      activeStreams.set(msgId, streamController);
       res.on('close', () => {
-        controller.abort();
+        streamController.abort();
         activeStreams.delete(msgId);
       });
 
@@ -170,12 +162,35 @@ app.post('/api/chat', async (req, res) => {
         try {
           const lineBuffer = createLineBuffer();
           let done = false;
-          while (!done) {
-            // بررسی abort قبل از هر read (Node 24 با signal مشکل دارد)
-            if (controller.signal.aborted) {
-              streamAborted = true;
-              break;
+          let inThinking = false;
+
+          const processToken = (token: string, rawData: string) => {
+            try {
+              const parsed = JSON.parse(rawData);
+              const delta = parsed.choices?.[0]?.delta;
+              const isReasoning = !!(delta?.reasoning || delta?.reasoning_content);
+              if (isReasoning) {
+                if (!inThinking) {
+                  inThinking = true;
+                  res.write(`data: ${JSON.stringify({ token: '<think>' })}\n\n`);
+                }
+                fullContent += token;
+                res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              } else {
+                if (inThinking) {
+                  inThinking = false;
+                  res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
+                }
+                fullContent += token;
+                res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              }
+            } catch {
+              fullContent += token;
+              res.write(`data: ${JSON.stringify({ token })}\n\n`);
             }
+          };
+
+          while (!done) {
             const { done: streamDone, value } = await (reader as any).read();
             if (streamDone) break;
 
@@ -190,14 +205,14 @@ app.post('/api/chat', async (req, res) => {
                   break;
                 }
                 const token = parseStreamChunk(data);
-                if (token) {
-                  fullContent += token;
-                  res.write(`data: ${JSON.stringify({ token })}\n\n`);
-                }
+                if (token) processToken(token, data);
               }
             }
           }
-          // پردازش باقیمانده buffer (آخرین chunk بدون newline)
+          if (inThinking) {
+            res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
+          }
+          // پردازش باقیمانده buffer
           const remaining = lineBuffer.flush();
           for (const line of remaining) {
             const trimmed = line.trim();
@@ -205,18 +220,16 @@ app.post('/api/chat', async (req, res) => {
               const data = trimmed.slice(6);
               if (data !== '[DONE]') {
                 const token = parseStreamChunk(data);
-                if (token) {
-                  fullContent += token;
-                  res.write(`data: ${JSON.stringify({ token })}\n\n`);
-                }
+                if (token) processToken(token, data);
               }
             }
           }
+          if (inThinking) {
+            res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
+          }
         } catch (streamError: any) {
-          // Abort از طرف کاربر یا قطع اتصال — متن partial ذخیره می‌شود
           if (streamError?.name === 'AbortError') {
             streamAborted = true;
-            console.log(`Stream aborted for message ${msgId} after ${fullContent.length} chars`);
           } else {
             console.error('Stream error:', streamError);
           }
