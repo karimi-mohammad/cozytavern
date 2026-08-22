@@ -110,7 +110,12 @@ app.post('/api/chat', async (req, res) => {
 
     const controller = new AbortController();
     // لغو درخواست اگر کلاینت اتصال را قطع کند
-    req.on('close', () => controller.abort());
+    req.on('close', () => {
+      if (!controller.signal.aborted) {
+        console.log(`Client disconnected, aborting fetch for chat ${chat_id}`);
+        controller.abort();
+      }
+    });
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -130,6 +135,7 @@ app.post('/api/chat', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      console.log(`Starting stream for chat ${chat_id}, model: ${settings.model}`);
 
       // ایجاد یا بروزرسانی پیام
       let msgId: string;
@@ -148,10 +154,10 @@ app.post('/api/chat', async (req, res) => {
       res.write(`data: ${JSON.stringify({ message_id: msgId })}\n\n`);
 
       // لغو فعال: کاربر از طریق /api/chat/abort یا قطع اتصال
-      const abortController = new AbortController();
-      activeStreams.set(msgId, abortController);
+      // از همان controller اصلی fetch استفاده کن تا reader هم لغو شود
+      activeStreams.set(msgId, controller);
       res.on('close', () => {
-        abortController.abort();
+        controller.abort();
         activeStreams.delete(msgId);
       });
 
@@ -165,7 +171,7 @@ app.post('/api/chat', async (req, res) => {
           const lineBuffer = createLineBuffer();
           let done = false;
           while (!done) {
-            const { done: streamDone, value } = await (reader as any).read({ signal: abortController.signal });
+            const { done: streamDone, value } = await (reader as any).read({ signal: controller.signal });
             if (streamDone) break;
 
             const chunk = decoder.decode(value, { stream: true });
@@ -178,6 +184,21 @@ app.post('/api/chat', async (req, res) => {
                   done = true;
                   break;
                 }
+                const token = parseStreamChunk(data);
+                if (token) {
+                  fullContent += token;
+                  res.write(`data: ${JSON.stringify({ token })}\n\n`);
+                }
+              }
+            }
+          }
+          // پردازش باقیمانده buffer (آخرین chunk بدون newline)
+          const remaining = lineBuffer.flush();
+          for (const line of remaining) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const data = trimmed.slice(6);
+              if (data !== '[DONE]') {
                 const token = parseStreamChunk(data);
                 if (token) {
                   fullContent += token;
