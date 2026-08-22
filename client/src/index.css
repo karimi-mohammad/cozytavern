@@ -371,20 +371,12 @@ body.theme-light #root::before {
    Thinking Block Collapsible
    ============================================ */
 .thinking-block {
-  border-left: 2px solid rgb(var(--tavern-border));
-  padding-left: 12px;
-  margin: 8px 0;
-}
-
-.thinking-block summary {
-  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
   color: rgb(var(--tavern-muted));
-  font-size: 13px;
-  user-select: none;
-}
-
-.thinking-block summary:hover {
-  color: rgb(var(--tavern-text));
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ============================================

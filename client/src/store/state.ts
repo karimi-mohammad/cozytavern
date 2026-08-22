@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Character, Chat, Message, Persona, Lorebook, ApiSettings } from '../types';
 import { api } from '../api/client';
+import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
 interface Toast {
   id: string;
@@ -66,6 +67,10 @@ interface AppState {
   // Optimistic state (نیازی به رندر ندارد)
   pendingEdit: Promise<Message> | null;
 
+  // Context usage
+  contextUsage: ContextUsage | null;
+  updateContextUsage: () => void;
+
   // Actions
   loadCharacters: () => Promise<void>;
   selectCharacter: (character: Character) => Promise<void>;
@@ -86,6 +91,8 @@ interface AppState {
   editMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   regenerateMessage: () => Promise<void>;
+  continueGeneration: () => Promise<void>;
+  impersonateMessage: () => Promise<void>;
   swipeMessage: (messageId: string, direction: string) => Promise<void>;
 
   loadPersonas: () => Promise<void>;
@@ -165,6 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
   toasts: [],
   confirmDialog: null,
   pendingEdit: null,
+  contextUsage: null,
 
   addToast: (message, type = 'info') => {
     const id = Math.random().toString(36).slice(2);
@@ -261,6 +269,8 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const chat = await api.getChat(chatId);
       set({ currentChat: chat });
+      // محاسبه context usage بعد از لود چت
+      setTimeout(() => get().updateContextUsage(), 0);
     } finally {
       set({ loadingMessages: false });
     }
@@ -389,6 +399,7 @@ export const useStore = create<AppState>((set, get) => ({
         },
         () => {
           set({ isGenerating: false });
+          get().updateContextUsage();
           if (isFirstMessage) {
             get().autoNameChat(currentChat.id);
           }
@@ -546,10 +557,161 @@ export const useStore = create<AppState>((set, get) => ({
         },
         () => {
           set({ isGenerating: false });
+          get().updateContextUsage();
         }
       );
     } catch (error: any) {
       set({ isGenerating: false });
+    }
+  },
+
+  // ادامه تولید — AI از آخرین پاسخ خود ادامه می‌دهد
+  continueGeneration: async () => {
+    if (get().pendingEdit) {
+      try { await get().pendingEdit; } catch {}
+    }
+    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    if (!currentChat || !currentCharacter || isGenerating) return;
+
+    // پیام آخر assistant پیدا کن
+    const lastAssistantMsg = [...currentChat.messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistantMsg) return;
+
+    set({ isGenerating: true });
+
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    try {
+      let fullContent = lastAssistantMsg.content;
+      await api.chatWithAI(
+        {
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          continue_mode: true,
+        },
+        (messageId) => {
+          // ایجاد پیام assistant جدید برای ادامه
+          const newMsg = {
+            id: messageId,
+            chat_id: currentChat.id,
+            role: 'assistant' as const,
+            content: lastAssistantMsg.content,
+            swipes: [],
+            swipe_id: 0,
+            is_edited: false,
+            is_system: false,
+            send_date: new Date().toISOString(),
+          };
+          set(s => ({
+            currentChat: s.currentChat ? {
+              ...s.currentChat,
+              messages: [...s.currentChat.messages, newMsg],
+            } : null,
+          }));
+        },
+        (token) => {
+          fullContent += token;
+          set(s => {
+            if (!s.currentChat) return s;
+            const msgs = [...s.currentChat.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+            }
+            return { currentChat: { ...s.currentChat, messages: msgs } };
+          });
+        },
+        () => {
+          set({ isGenerating: false });
+          get().updateContextUsage();
+        },
+        controller.signal
+      );
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        set({ isGenerating: false });
+        return;
+      }
+      set({ isGenerating: false });
+    } finally {
+      if (currentAbortController === controller) currentAbortController = null;
+    }
+  },
+
+  // جعل هویت — AI به جای کاربر پیام می‌نویسد
+  impersonateMessage: async () => {
+    if (get().pendingEdit) {
+      try { await get().pendingEdit; } catch {}
+    }
+    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    if (!currentChat || !currentCharacter || isGenerating) return;
+
+    set({ isGenerating: true });
+
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    let aborted = false;
+    try {
+      let fullContent = '';
+      await api.chatWithAI(
+        {
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          impersonate: true,
+        },
+        (messageId) => {
+          const userMsg = {
+            id: messageId,
+            chat_id: currentChat.id,
+            role: 'user' as const,
+            content: '',
+            swipes: [],
+            swipe_id: 0,
+            is_edited: false,
+            is_system: false,
+            send_date: new Date().toISOString(),
+          };
+          set(s => ({
+            currentChat: s.currentChat ? {
+              ...s.currentChat,
+              messages: [...s.currentChat.messages, userMsg],
+            } : null,
+          }));
+        },
+        (token) => {
+          fullContent += token;
+          set(s => {
+            if (!s.currentChat) return s;
+            const msgs = [...s.currentChat.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'user') {
+              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+            }
+            return { currentChat: { ...s.currentChat, messages: msgs } };
+          });
+        },
+        () => {
+          set({ isGenerating: false });
+          get().updateContextUsage();
+        },
+        controller.signal
+      );
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        set({ isGenerating: false });
+        return;
+      }
+      get().addToast(`خطا: ${error.message}`, 'error');
+      set({ isGenerating: false });
+    } finally {
+      if (controller.signal.aborted) aborted = true;
+      if (currentAbortController === controller) currentAbortController = null;
     }
   },
 
@@ -644,6 +806,24 @@ export const useStore = create<AppState>((set, get) => ({
         currentChat: s.currentChat?.id === chatId ? { ...s.currentChat, name: updated.name } : s.currentChat,
       }));
     } catch {}
+  },
+
+  updateContextUsage: () => {
+    const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook } = get();
+    if (!currentChat) {
+      set({ contextUsage: null });
+      return;
+    }
+    const settings = apiSettings['openai'];
+    const lorebookEntries = activeLorebook?.entries || [];
+    const usage = estimateContextUsage(
+      currentChat.messages,
+      settings,
+      currentCharacter,
+      activePersona,
+      lorebookEntries
+    );
+    set({ contextUsage: usage });
   },
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

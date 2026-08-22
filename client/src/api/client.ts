@@ -59,7 +59,7 @@ export const api = {
 
   // Chat with AI
   chatWithAI: async (
-    data: { chat_id: string; character_id: string; persona_id?: string; lorebook_id?: string; update_message_id?: string },
+    data: { chat_id: string; character_id: string; persona_id?: string; lorebook_id?: string; update_message_id?: string; continue_mode?: boolean; impersonate?: boolean },
     onMessageId: (id: string) => void,
     onToken: (token: string) => void,
     onDone: () => void,

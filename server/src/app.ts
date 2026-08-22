@@ -42,7 +42,7 @@ app.use('/api/lorebooks', lorebooksRouter);
 
 // Chat API endpoint (ارسال پیام به AI با streaming)
 app.post('/api/chat', async (req, res) => {
-  const { chat_id, character_id, persona_id, lorebook_id, update_message_id } = req.body;
+  const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate } = req.body;
 
   const db = getDb();
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
@@ -89,7 +89,10 @@ app.post('/api/chat', async (req, res) => {
   }
 
   // ساخت prompt
-  const promptParts = buildPrompt(character, persona, messages, lorebookEntries, settings.system_prompt || '');
+  const promptParts = buildPrompt(character, persona, messages, lorebookEntries, settings.system_prompt || '', {
+    impersonate: !!impersonate,
+    continueMode: !!continue_mode,
+  });
 
   try {
     const endpoint = buildEndpoint(settings.base_url);
@@ -127,6 +130,7 @@ app.post('/api/chat', async (req, res) => {
       // ایجاد یا بروزرسانی پیام
       let msgId: string;
       const now = new Date().toISOString();
+      const msgRole = impersonate ? 'user' : 'assistant';
       if (update_message_id) {
         msgId = update_message_id;
         db.prepare('UPDATE messages SET content = ? WHERE id = ?').run('', msgId);
@@ -134,8 +138,8 @@ app.post('/api/chat', async (req, res) => {
         msgId = uuidv4();
         db.prepare(`
           INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date)
-          VALUES (?, ?, 'assistant', '', '[]', 0, 0, 0, ?)
-        `).run(msgId, chat_id, now);
+          VALUES (?, ?, ?, '', '[]', 0, 0, 0, ?)
+        `).run(msgId, chat_id, msgRole, now);
       }
       res.write(`data: ${JSON.stringify({ message_id: msgId })}\n\n`);
 
@@ -206,6 +210,7 @@ app.post('/api/chat', async (req, res) => {
       // ذخیره یا بروزرسانی پیام
       let msgId: string;
       const now = new Date().toISOString();
+      const msgRole = impersonate ? 'user' : 'assistant';
       if (update_message_id) {
         msgId = update_message_id;
         db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, msgId);
@@ -213,8 +218,8 @@ app.post('/api/chat', async (req, res) => {
         msgId = uuidv4();
         db.prepare(`
           INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date)
-          VALUES (?, ?, 'assistant', ?, '[]', 0, 0, 0, ?)
-        `).run(msgId, chat_id, content, now);
+          VALUES (?, ?, ?, ?, '[]', 0, 0, 0, ?)
+        `).run(msgId, chat_id, msgRole, content, now);
       }
 
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(now, chat_id);

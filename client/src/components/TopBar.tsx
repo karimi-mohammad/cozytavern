@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store/state';
+import { formatTokenCount } from '../utils/tokenEstimate';
 
 export default function TopBar() {
   const {
@@ -8,7 +9,7 @@ export default function TopBar() {
     chats, currentChat, selectChat, createChat,
     setCharacterEditorOpen, editingCharacter,
     activePanel, setActivePanel, panelOpen,
-    regenerateMessage,
+    regenerateMessage, contextUsage,
   } = useStore();
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
@@ -85,9 +86,28 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Center: Model name */}
-      <div className="flex items-center gap-1.5 ml-auto mr-auto">
+      {/* Center: Model name + Context Usage */}
+      <div className="flex items-center gap-2 ml-auto mr-auto">
         <span className="text-[10px] text-tavern-dim font-mono">{model}</span>
+        {contextUsage && currentChat && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-24 h-1.5 bg-tavern-border rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  contextUsage.percentage < 50
+                    ? 'bg-emerald-500'
+                    : contextUsage.percentage < 80
+                    ? 'bg-amber-500'
+                    : 'bg-red-500'
+                }`}
+                style={{ width: `${Math.min(100, contextUsage.percentage)}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-tavern-dim font-mono whitespace-nowrap">
+              {formatTokenCount(contextUsage.used)}/{formatTokenCount(contextUsage.max)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Right: Action buttons */}

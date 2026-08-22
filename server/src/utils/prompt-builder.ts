@@ -10,13 +10,23 @@ export function buildPrompt(
   persona: any,
   chatHistory: any[],
   lorebookEntries: any[],
-  systemPrompt: string
+  systemPrompt: string,
+  options?: { impersonate?: boolean; continueMode?: boolean }
 ): PromptPart[] {
   const parts: PromptPart[] = [];
 
   // 1. System Prompt
   if (systemPrompt) {
     parts.push({ role: 'system', content: systemPrompt });
+  }
+
+  // Impersonate mode: instruct AI to write as the user
+  if (options?.impersonate) {
+    const userName = persona?.name || '{{user}}';
+    parts.push({
+      role: 'system',
+      content: `[دستور ویژه] شما باید به جای کاربر "${userName}" بنویسید. پاسخ بعدی را از دیدگاه کاربر و در نقش او بنویسید. شخصیت، احساسات و سبک صحبت کردن کاربر را رعایت کنید. فقط یک پیام از طرف کاربر بنویسید.`,
+    });
   }
 
   // 2. توضیحات کاراکتر

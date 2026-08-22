@@ -3,7 +3,7 @@ import { useStore } from '../store/state';
 
 export default function MessageInput() {
   const [content, setContent] = useState('');
-  const { sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat, swipeMessage, setSettingsOpen, panelOpen, setActivePanel } = useStore();
+  const { sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat, swipeMessage, continueGeneration, impersonateMessage, setSettingsOpen, panelOpen, setActivePanel } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -23,14 +23,22 @@ export default function MessageInput() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       handleSubmit();
+    }
+    // Alt+Enter: ادامه تولید
+    if (e.key === 'Enter' && e.altKey) {
+      e.preventDefault();
+      if (!isGenerating && currentChat) {
+        continueGeneration();
+      }
     }
   };
 
   const lastAssistantMsg = currentChat?.messages ? [...currentChat.messages].reverse().find(m => m.role === 'assistant') : null;
   const hasSwipes = lastAssistantMsg && lastAssistantMsg.swipes && lastAssistantMsg.swipes.length > 0;
+  const canContinue = !isGenerating && currentChat && lastAssistantMsg && currentChat.messages.length > 0;
 
   return (
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
@@ -79,7 +87,7 @@ export default function MessageInput() {
 
       {/* Bottom row: swipe controls + Generate button */}
       <div className="flex items-center justify-between px-4 pb-2">
-        {/* Left: swipe arrows */}
+        {/* Left: swipe arrows + continue + impersonate */}
         <div className="flex items-center gap-1">
           {hasSwipes && lastAssistantMsg && (
             <>
@@ -105,6 +113,30 @@ export default function MessageInput() {
                 </svg>
               </button>
             </>
+          )}
+          {/* Continue button */}
+          {canContinue && (
+            <button
+              onClick={continueGeneration}
+              className="text-tavern-dim hover:text-tavern-accent p-1 rounded-md hover:bg-tavern-hover transition-colors ml-1"
+              title="Continue generation (Alt+Enter)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </button>
+          )}
+          {/* Impersonate button */}
+          {canContinue && (
+            <button
+              onClick={impersonateMessage}
+              className="text-tavern-dim hover:text-tavern-accent p-1 rounded-md hover:bg-tavern-hover transition-colors"
+              title="Impersonate (AI writes as you)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </button>
           )}
         </div>
 

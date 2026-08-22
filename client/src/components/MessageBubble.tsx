@@ -53,10 +53,23 @@ export default function MessageBubble({
     onBranch(message.id, message.send_date);
   };
 
-  // Extract thinking content
-  const thinkMatch = message.content.match(/<think>([\s\S]*?)<\/think>/);
-  const thinkingContent = thinkMatch ? thinkMatch[1] : null;
-  const mainContent = message.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  // Extract thinking content — supports multiple formats
+  const thinkMatch = message.content.match(/<think>([\s\S]*?)<\/think>/)
+    || message.content.match(/<reasoning>([\s\S]*?)<\/reasoning>/)
+    || message.content.match(/<reflection>([\s\S]*?)<\/reflection>/)
+    || message.content.match(/\[thinking\]([\s\S]*?)\[\/thinking\]/);
+  const thinkingContent = thinkMatch ? thinkMatch[1].trim() : null;
+  const mainContent = message.content
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
+    .replace(/<reflection>[\s\S]*?<\/reflection>/g, '')
+    .replace(/\[thinking\][\s\S]*?\[\/thinking\]/g, '')
+    .trim();
+
+  // تخمین زمان تفکر بر اساس طول محتوا (~50 توکن در ثانیه)
+  const thinkingTimeEstimate = thinkingContent
+    ? Math.max(1, Math.ceil(thinkingContent.length / 200))
+    : 0;
 
   return (
     <div
@@ -114,23 +127,32 @@ export default function MessageBubble({
               <div className="mb-2">
                 <button
                   onClick={() => setShowThought(!showThought)}
-                  className="flex items-center gap-1.5 text-xs text-tavern-dim hover:text-tavern-text bg-tavern-input/60 px-3 py-1.5 rounded-md transition-colors border border-tavern-border/50"
+                  className="flex items-center gap-1.5 text-xs text-tavern-dim hover:text-tavern-accent bg-tavern-input/60 px-3 py-1.5 rounded-md transition-all border border-tavern-border/50 hover:border-tavern-accent/30"
                 >
                   <svg
-                    className={`w-3.5 h-3.5 transition-transform ${showThought ? 'rotate-90' : ''}`}
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${showThought ? 'rotate-90' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  <span>Thought for {Math.floor(Math.random() * 20 + 5)}s</span>
+                  <svg className="w-3.5 h-3.5 text-tavern-accent/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <span>
+                    {showThought ? 'Hide thinking' : `Thought for ~${thinkingTimeEstimate}s`}
+                  </span>
                 </button>
-                {showThought && (
-                  <div className="mt-2 text-sm text-tavern-dim pl-4 border-l-2 border-tavern-accent/30 leading-relaxed thinking-block">
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    showThought ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'
+                  }`}
+                >
+                  <div className="text-sm text-tavern-dim pl-4 border-l-2 border-tavern-accent/40 leading-relaxed thinking-block bg-tavern-input/30 rounded-r-lg p-3">
                     {thinkingContent}
                   </div>
-                )}
+                </div>
               </div>
             )}
 
