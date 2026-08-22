@@ -6,18 +6,23 @@ export function buildEndpoint(customUrl?: string): string {
   if (!customUrl || !customUrl.trim()) return DEFAULT_ENDPOINT;
 
   let url = customUrl.trim();
-  // اگر فقط host وارد شده (بدون path)، مسیر OpenAI رو اضافه کن
-  if (!url.includes('/v1/') && !url.includes('/chat/completions')) {
-    if (url.endsWith('/')) url = url.slice(0, -1);
-    url += '/v1/chat/completions';
-  }
-  // اگر /v1/chat/completions نداره ولی /v1/ داره
-  else if (!url.includes('/chat/completions')) {
-    if (url.endsWith('/')) url = url.slice(0, -1);
-    url += '/chat/completions';
+  if (url.endsWith('/')) url = url.slice(0, -1);
+
+  // اگر قبلاً /chat/completions داره، تغییر نده
+  if (url.includes('/chat/completions')) return url;
+
+  // اگر با /v1 ختم میشه (مثلاً http://host/v1 یا http://host/v1/)
+  if (url.endsWith('/v1')) {
+    return url + '/chat/completions';
   }
 
-  return url;
+  // اگر /v1/ داره ولی chat/completions نداره
+  if (url.includes('/v1/')) {
+    return url + '/chat/completions';
+  }
+
+  // فقط host — مسیر کامل اضافه کن
+  return url + '/v1/chat/completions';
 }
 
 export function buildHeaders(apiKey?: string): Record<string, string> {

@@ -126,6 +126,7 @@ app.post('/api/chat', async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`LLM API error ${response.status}:`, errorText.slice(0, 200));
       res.status(response.status).json({ error: `خطا از API: ${errorText}` });
       return;
     }
