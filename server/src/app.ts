@@ -136,7 +136,6 @@ app.post('/api/chat', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      console.log(`Starting stream for chat ${chat_id}, model: ${settings.model}`);
 
       // ایجاد یا بروزرسانی پیام
       let msgId: string;
@@ -172,7 +171,12 @@ app.post('/api/chat', async (req, res) => {
           const lineBuffer = createLineBuffer();
           let done = false;
           while (!done) {
-            const { done: streamDone, value } = await (reader as any).read({ signal: controller.signal });
+            // بررسی abort قبل از هر read (Node 24 با signal مشکل دارد)
+            if (controller.signal.aborted) {
+              streamAborted = true;
+              break;
+            }
+            const { done: streamDone, value } = await (reader as any).read();
             if (streamDone) break;
 
             const chunk = decoder.decode(value, { stream: true });
