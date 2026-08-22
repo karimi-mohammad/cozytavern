@@ -1,9 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/state';
 
+interface SlashCommand {
+  name: string;
+  aliases: string[];
+  description: string;
+}
+
+const COMMANDS: SlashCommand[] = [
+  { name: '/regenerate', aliases: ['/regen'], description: 'Regenerate last AI response' },
+];
+
 export default function MessageInput() {
   const [content, setContent] = useState('');
-  const { sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat, swipeMessage, continueGeneration, impersonateMessage, setSettingsOpen, panelOpen, setActivePanel } = useStore();
+  const [showCommandPopup, setShowCommandPopup] = useState(false);
+  const [selectedCommandIdx, setSelectedCommandIdx] = useState(0);
+  const {
+    sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat,
+    swipeMessage, continueGeneration, impersonateMessage,
+    regenerateMessage, deleteMessage, addToast,
+    setActivePanel,
+  } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -13,8 +30,69 @@ export default function MessageInput() {
     }
   }, [content]);
 
+  // Show command popup when user types /
+  useEffect(() => {
+    if (content.startsWith('/') && !content.includes(' ')) {
+      setShowCommandPopup(true);
+      setSelectedCommandIdx(0);
+    } else {
+      setShowCommandPopup(false);
+    }
+  }, [content]);
+
+  // Filter commands based on input
+  const filteredCommands = COMMANDS.filter(cmd => {
+    const query = content.toLowerCase();
+    return cmd.name.startsWith(query) || cmd.aliases.some(a => a.startsWith(query));
+  });
+
+  const handleSlashCommand = (input: string) => {
+    const [command, ...args] = input.split(' ');
+    const cmd = command.toLowerCase();
+
+    // Check /regenerate or /regen
+    if (cmd === '/regenerate' || cmd === '/regen') {
+      const messages = currentChat?.messages || [];
+      if (messages.length === 0) {
+        addToast('No messages to regenerate', 'error');
+        return;
+      }
+
+      const lastMsg = messages[messages.length - 1];
+
+      // Case 1: Last message is assistant → regenerate it
+      if (lastMsg.role === 'assistant') {
+        regenerateMessage();
+        return;
+      }
+
+      // Case 2: Last message is user (no response received) → delete and resend
+      if (lastMsg.role === 'user') {
+        deleteMessage(lastMsg.id);
+        setTimeout(() => {
+          sendMessage(lastMsg.content);
+        }, 100);
+        return;
+      }
+    }
+
+    addToast(`Unknown command: ${command}`, 'error');
+  };
+
   const handleSubmit = () => {
     if (!content.trim() || isGenerating) return;
+
+    // Slash command detection
+    if (content.trim().startsWith('/')) {
+      handleSlashCommand(content.trim());
+      setContent('');
+      setShowCommandPopup(false);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      return;
+    }
+
     sendMessage(content.trim());
     setContent('');
     if (textareaRef.current) {
@@ -22,7 +100,37 @@ export default function MessageInput() {
     }
   };
 
+  const selectCommand = (cmd: SlashCommand) => {
+    setContent(cmd.name + ' ');
+    setShowCommandPopup(false);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Command popup keyboard navigation
+    if (showCommandPopup && filteredCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedCommandIdx(i => (i + 1) % filteredCommands.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedCommandIdx(i => (i - 1 + filteredCommands.length) % filteredCommands.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.altKey)) {
+        e.preventDefault();
+        selectCommand(filteredCommands[selectedCommandIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowCommandPopup(false);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       handleSubmit();
@@ -43,6 +151,31 @@ export default function MessageInput() {
   return (
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
       <div className="max-w-[50vw] mx-auto">
+      {/* Slash Command Popup */}
+      {showCommandPopup && filteredCommands.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 mx-4 mb-1">
+          <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl overflow-hidden">
+            <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
+              Commands
+            </div>
+            {filteredCommands.map((cmd, idx) => (
+              <button
+                key={cmd.name}
+                onClick={() => selectCommand(cmd)}
+                className={`w-full px-3 py-2 text-left flex items-center gap-3 transition-colors ${
+                  idx === selectedCommandIdx
+                    ? 'bg-tavern-accent/15 text-tavern-accent'
+                    : 'hover:bg-tavern-hover text-tavern-text'
+                }`}
+              >
+                <span className="text-sm font-mono font-medium min-w-[110px]">{cmd.name}</span>
+                <span className="text-xs text-tavern-dim">{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Main input row */}
       <div className="flex items-end gap-2 px-4 py-2">
         {/* Left: hamburger icon */}
@@ -64,7 +197,7 @@ export default function MessageInput() {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={currentCharacter ? `Message ${currentCharacter.name}...` : 'Type a message, or /? for help'}
+          placeholder={currentCharacter ? `Message ${currentCharacter.name}... or / for commands` : 'Type a message, or /? for help'}
           disabled={isGenerating}
           className="flex-1 bg-tavern-input border border-tavern-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-tavern-accent placeholder-tavern-dim text-tavern-text disabled:opacity-50 min-h-[36px] max-h-[120px]"
           rows={1}
