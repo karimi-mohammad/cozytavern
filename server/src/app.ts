@@ -108,11 +108,15 @@ app.post('/api/chat', async (req, res) => {
       stop: JSON.parse(settings.stop || '[]'),
     });
 
+    const controller = new AbortController();
+    // لغو درخواست اگر کلاینت اتصال را قطع کند
+    req.on('close', () => controller.abort());
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: requestBody,
-      signal: (req as any).signal,
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -227,8 +231,15 @@ app.post('/api/chat', async (req, res) => {
       res.json({ content, message_id: msgId });
     }
   } catch (error: any) {
+    // اگر کلاینت اتصال را قطع کرده، نیازی به پاسخ نیست
+    if (error?.name === 'AbortError') {
+      console.log('Request aborted (client disconnected)');
+      return;
+    }
     console.error('API Error:', error);
-    res.status(500).json({ error: error.message || 'خطا در اتصال به API' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'خطا در اتصال به API' });
+    }
   }
 });
 
