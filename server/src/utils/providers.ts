@@ -86,6 +86,13 @@ export function parseStreamChunk(data: string): string | null {
     if (parsed.choices?.[0]?.delta?.content) {
       return parsed.choices[0].delta.content;
     }
+    // DeepSeek/mimo style: reasoning tokens in stream
+    if (parsed.choices?.[0]?.delta?.reasoning_content) {
+      return parsed.choices[0].delta.reasoning_content;
+    }
+    if (parsed.choices?.[0]?.delta?.reasoning) {
+      return parsed.choices[0].delta.reasoning;
+    }
     //有些 API ها direct content برمیگردونن
     if (parsed.choices?.[0]?.text) {
       return parsed.choices[0].text;
@@ -100,6 +107,13 @@ export function parseNonStreamingResponse(data: any): string {
   // OpenAI-compatible response
   if (data.choices?.[0]?.message?.content) {
     return data.choices[0].message.content;
+  }
+  // DeepSeek/mimo style: reasoning only
+  if (data.choices?.[0]?.message?.reasoning_content) {
+    return data.choices[0].message.reasoning_content;
+  }
+  if (data.choices?.[0]?.message?.reasoning) {
+    return data.choices[0].message.reasoning;
   }
   // Some APIs return content directly
   if (data.choices?.[0]?.text) {
