@@ -9,6 +9,9 @@ import messagesRouter from './routes/messages';
 import apiSettingsRouter from './routes/api-settings';
 import personasRouter from './routes/personas';
 import lorebooksRouter from './routes/lorebooks';
+import chaptersRouter from './routes/chapters';
+import pluginsRouter from './routes/plugins';
+import { getChapterSettingsCompat } from './utils/plugin-store';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunk, parseNonStreamingResponse } from './utils/providers';
 import { buildPrompt, activateWorldInfo } from './utils/prompt-builder';
 import { getDb } from './db';
@@ -39,10 +42,12 @@ app.use('/api/messages', messagesRouter);
 app.use('/api/api-settings', apiSettingsRouter);
 app.use('/api/personas', personasRouter);
 app.use('/api/lorebooks', lorebooksRouter);
+app.use('/api/chapters', chaptersRouter);
+app.use('/api/plugins', pluginsRouter);
 
 // Chat API endpoint (ارسال پیام به AI با streaming)
 app.post('/api/chat', async (req, res) => {
-  const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate } = req.body;
+  const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate, edited_messages } = req.body;
 
   const db = getDb();
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
@@ -51,22 +56,22 @@ app.post('/api/chat', async (req, res) => {
   const messages = db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC').all(chat_id) as any[];
 
   if (!character) {
-    res.status(400).json({ error: 'کاراکتر پیدا نشد' });
+    res.status(400).json({ error: 'Character not found' });
     return;
   }
   if (!chat) {
-    res.status(400).json({ error: 'چت پیدا نشد' });
+    res.status(400).json({ error: 'Chat not found' });
     return;
   }
   if (persona_id && !persona) {
-    res.status(400).json({ error: 'پرسونا پیدا نشد' });
+    res.status(400).json({ error: 'Persona not found' });
     return;
   }
 
   // دریافت تنظیمات API
   const settings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;
   if (!settings) {
-    res.status(400).json({ error: 'تنظیمات API یافت نشد. لطفاً ابتدا تنظیمات API را وارد کنید.' });
+    res.status(400).json({ error: 'API settings not found. Please configure the API first.' });
     return;
   }
 
@@ -88,16 +93,27 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
-  // ساخت prompt
+  // ساخت prompt (با در نظر گرفتن chapter summaries)
+  const chapters = db.prepare('SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC').all(chat_id) as any[];
+  const chapterSettings = getChapterSettingsCompat(db);
+
   const promptParts = buildPrompt(character, persona, messages, lorebookEntries, settings.system_prompt || '', {
     impersonate: !!impersonate,
     continueMode: !!continue_mode,
+    chapters,
+    rawWindow: chapterSettings?.raw_window || 10,
   });
 
   try {
     const endpoint = buildEndpoint(settings.base_url);
     const headers = buildHeaders(settings.api_key);
-    const requestBody = buildRequestBody(promptParts, {
+
+    // اگر کاربر پیام‌ها را ویرایش کرده باشد، به جای promptParts ساخته‌شده از DB از آن‌ها استفاده می‌شود
+    const effectiveParts = edited_messages && Array.isArray(edited_messages) && edited_messages.length > 0
+      ? edited_messages.map((m: any) => ({ role: m.role, content: m.content }))
+      : promptParts;
+
+    const requestBody = buildRequestBody(effectiveParts, {
       model: settings.model,
       temperature: settings.temperature,
       max_tokens: settings.max_tokens,
@@ -107,6 +123,23 @@ app.post('/api/chat', async (req, res) => {
       stream: !!settings.stream,
       stop: JSON.parse(settings.stop || '[]'),
     });
+
+    // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
+    if (req.body?.inspect) {
+      const parsed = JSON.parse(requestBody);
+      const { model, messages, ...params } = parsed;
+      return res.json({
+        inspect: true,
+        source: 'chat',
+        mode: update_message_id
+          ? (continue_mode ? 'continue' : 'regenerate')
+          : impersonate ? 'impersonate' : 'send',
+        endpoint,
+        model,
+        params,
+        messages,
+      });
+    }
 
     const controller = new AbortController();
 
@@ -119,7 +152,7 @@ app.post('/api/chat', async (req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`LLM API error ${response.status}:`, errorText.slice(0, 200));
-      res.status(response.status).json({ error: `خطا از API: ${errorText}` });
+      res.status(response.status).json({ error: `API error: ${errorText}` });
       return;
     }
 
@@ -172,6 +205,7 @@ app.post('/api/chat', async (req, res) => {
               if (isReasoning) {
                 if (!inThinking) {
                   inThinking = true;
+                  fullContent += '<think>';
                   res.write(`data: ${JSON.stringify({ token: '<think>' })}\n\n`);
                 }
                 fullContent += token;
@@ -179,6 +213,7 @@ app.post('/api/chat', async (req, res) => {
               } else {
                 if (inThinking) {
                   inThinking = false;
+                  fullContent += '</think>';
                   res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
                 }
                 fullContent += token;
@@ -210,6 +245,7 @@ app.post('/api/chat', async (req, res) => {
             }
           }
           if (inThinking) {
+            fullContent += '</think>';
             res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
           }
           // پردازش باقیمانده buffer
@@ -225,6 +261,7 @@ app.post('/api/chat', async (req, res) => {
             }
           }
           if (inThinking) {
+            fullContent += '</think>';
             res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
           }
         } catch (streamError: any) {
@@ -277,7 +314,7 @@ app.post('/api/chat', async (req, res) => {
     }
     console.error('API Error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message || 'خطا در اتصال به API' });
+      res.status(500).json({ error: error.message || 'Error connecting to API' });
     }
   }
 });
@@ -286,7 +323,7 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/chat/abort', (req, res) => {
   const { message_id } = req.body;
   if (!message_id) {
-    res.status(400).json({ error: 'message_id الزامی است' });
+    res.status(400).json({ error: 'message_id is required' });
     return;
   }
   const controller = activeStreams.get(message_id);

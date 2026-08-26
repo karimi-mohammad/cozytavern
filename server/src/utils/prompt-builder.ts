@@ -5,13 +5,20 @@ interface PromptPart {
   content: string;
 }
 
+interface BuildPromptOptions {
+  impersonate?: boolean;
+  continueMode?: boolean;
+  chapters?: any[];
+  rawWindow?: number;
+}
+
 export function buildPrompt(
   character: any,
   persona: any,
   chatHistory: any[],
   lorebookEntries: any[],
   systemPrompt: string,
-  options?: { impersonate?: boolean; continueMode?: boolean }
+  options?: BuildPromptOptions
 ): PromptPart[] {
   const parts: PromptPart[] = [];
 
@@ -25,26 +32,26 @@ export function buildPrompt(
     const userName = persona?.name || '{{user}}';
     parts.push({
       role: 'system',
-      content: `[دستور ویژه] شما باید به جای کاربر "${userName}" بنویسید. پاسخ بعدی را از دیدگاه کاربر و در نقش او بنویسید. شخصیت، احساسات و سبک صحبت کردن کاربر را رعایت کنید. فقط یک پیام از طرف کاربر بنویسید.`,
+      content: `[Special Instruction] You must write on behalf of the user "${userName}". Write the next reply from the user's perspective and in their role. Respect the user's personality, emotions, and speaking style. Write only one message as the user.`,
     });
   }
 
-  // 2. توضیحات کاراکتر
+  // 2. Character info
   const charDesc = [
-    `[اطلاعات کاراکتر]`,
-    `نام: ${character.name}`,
-    character.description && `توضیحات: ${character.description}`,
-    character.personality && `شخصیت: ${character.personality}`,
-    character.scenario && `سناریو: ${character.scenario}`,
+    `[Character Info]`,
+    `Name: ${character.name}`,
+    character.description && `Description: ${character.description}`,
+    character.personality && `Personality: ${character.personality}`,
+    character.scenario && `Scenario: ${character.scenario}`,
   ].filter(Boolean).join('\n');
 
   parts.push({ role: 'system', content: charDesc });
 
-  // 3. مثال‌های دیالوگ
+  // 3. Example dialogues
   if (character.mes_example) {
     parts.push({
       role: 'system',
-      content: `[مثال‌های دیالوگ]\n${character.mes_example}`,
+      content: `[Example Dialogues]\n${character.mes_example}`,
     });
   }
 
@@ -55,7 +62,7 @@ export function buildPrompt(
       .join('\n');
     parts.push({
       role: 'system',
-      content: `[اطلاعات دنیا]\n${loreText}`,
+      content: `[World Info]\n${loreText}`,
     });
   }
 
@@ -63,16 +70,46 @@ export function buildPrompt(
   if (persona) {
     parts.push({
       role: 'system',
-      content: `[اطلاعات کاربر]\nنام: ${persona.name}\n${persona.description}`,
+      content: `[User Info]\nName: ${persona.name}\n${persona.description}`,
     });
   }
 
-  // 6. تاریخچه چت
-  for (const msg of chatHistory) {
-    parts.push({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    });
+  // 6. تاریخچه چت (با در نظر گرفتن chapter summaries)
+  const rawWindow = options?.rawWindow || 0;
+  const chapters = options?.chapters || [];
+
+  if (chapters.length > 0 && rawWindow > 0 && chatHistory.length > rawWindow) {
+    // Find which messages belong to chapters vs raw window
+    const totalMessages = chatHistory.length;
+    const rawStartIndex = Math.max(0, totalMessages - rawWindow);
+
+    // Insert chapter summaries (in chronological order)
+    for (const chapter of chapters) {
+      if (chapter.summary) {
+        const title = chapter.title || `Chapter`;
+        parts.push({
+          role: 'system',
+          content: `[${title}]\n${chapter.summary}`,
+        });
+      }
+    }
+
+    // Insert raw messages (recent window only)
+    for (let i = rawStartIndex; i < totalMessages; i++) {
+      const msg = chatHistory[i];
+      parts.push({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      });
+    }
+  } else {
+    // No chapters or no raw window — send all messages as before
+    for (const msg of chatHistory) {
+      parts.push({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      });
+    }
   }
 
   // جایگزینی ماکروها

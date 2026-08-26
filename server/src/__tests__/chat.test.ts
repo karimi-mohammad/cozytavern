@@ -59,7 +59,7 @@ describe('Chat API', () => {
       .post('/api/chat')
       .send({ chat_id: chatId, character_id: charId })
       .expect(400);
-    expect(res.body.error).toContain('تنظیمات API');
+    expect(res.body.error).toContain('API settings');
   });
 
   it('باید با streaming پاسخ بده و توکن‌ها رو پارس کنه', async () => {

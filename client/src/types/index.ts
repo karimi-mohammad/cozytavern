@@ -89,3 +89,59 @@ export interface PromptPart {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
+
+// ─── Prompt Inspector ───
+export type InspectionSource = 'chat' | 'title' | 'chapter';
+
+// payload بازگشتی از dry-run سرور (قبل از ارسال واقعی به LLM)
+export interface PromptInspectionPayload {
+  inspect: boolean;
+  source: InspectionSource;
+  mode?: string;
+  endpoint: string;
+  model: string;
+  params: Record<string, any>;
+  messages: PromptPart[];
+}
+
+// entry پنل بازرس — شامل متادیتا برای تاریخچه
+export interface PromptInspection {
+  id: string;
+  source: InspectionSource;
+  label: string; // 'Chat' | 'Chat Title' | 'Chapter Summary'
+  mode?: string; // send | regenerate | continue | impersonate
+  endpoint: string;
+  model: string;
+  params: Record<string, any>;
+  messages: PromptPart[];
+  created_at: string;
+}
+
+export interface Chapter {
+  id: string;
+  chat_id: string;
+  start_message_id: string;
+  end_message_id: string;
+  title: string;
+  summary: string;
+  generation_model: string;
+  generation_prompt_version: string;
+  manually_edited: boolean;
+  regeneration_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChapterSettings {
+  raw_window: number;
+  auto_detect_enabled: boolean;
+  trigger_phrases: string[];
+  summarizer_model: string;
+  summarizer_base_url: string;
+  summarizer_api_key: string;
+}
+
+export interface LorebookPluginSettings {
+  default_scan_depth: number;
+  default_token_budget: number;
+}

@@ -63,13 +63,13 @@ export default function ConfirmModal() {
             onClick={() => close(false)}
             className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm rounded-lg hover:bg-tavern-hover transition-colors"
           >
-            لغو
+            Cancel
           </button>
           <button
             onClick={() => close(true)}
             className="px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white text-sm rounded-lg transition-colors"
           >
-            تایید
+            Confirm
           </button>
         </div>
       </div>

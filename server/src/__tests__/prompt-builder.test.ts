@@ -51,7 +51,7 @@ describe('Prompt Builder', () => {
 
     it('باید مثال‌های دیالوگ رو اضافه کنه', () => {
       const result = buildPrompt(character, null, chatHistory, [], '');
-      const examplePart = result.find(p => p.content.includes('مثال'));
+      const examplePart = result.find(p => p.content.includes('Example Dialogues'));
       expect(examplePart).toBeDefined();
     });
   });

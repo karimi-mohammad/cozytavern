@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
+import PluginsPanel from './PluginsPanel';
 import { CharacterSkeleton, ChatSkeleton, PersonaSkeleton, LorebookSkeleton } from './LoadingSkeleton';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -8,7 +9,7 @@ export default function Sidebar() {
   const {
     characters, currentCharacter, chats, currentChat,
     selectCharacter, selectChat, createChat, deleteCharacter, deleteChat, renameChat, moveChatToFolder,
-    setCharacterEditorOpen, setSettingsOpen,
+    setCharacterEditorOpen, setSettingsOpen, setActivePanel,
     personas, activePersona, setActivePersona,
     lorebooks, activeLorebook, setActiveLorebook,
     loadLorebooks, setLorebookEditorOpen, setPersonaEditorOpen,
@@ -16,6 +17,7 @@ export default function Sidebar() {
     activePanel, panelOpen,
     theme, setTheme,
     loadingCharacters, loadingChats, loadingPersonas, loadingLorebooks,
+    chapters, chapterSettings,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -165,7 +167,12 @@ export default function Sidebar() {
               className="flex-1 bg-tavern-input border border-tavern-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-tavern-accent text-tavern-text placeholder-tavern-dim"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newFolderName.trim()) {
-                  setCollapsedFolders(prev => ({ ...prev, [newFolderName.trim()]: false }));
+                  const folderName = newFolderName.trim();
+                  setCollapsedFolders(prev => ({ ...prev, [folderName]: false }));
+                  // Move the current chat into the new folder so it actually appears
+                  if (currentChat) {
+                    moveChatToFolder(currentChat.id, folderName);
+                  }
                   setNewFolderName('');
                   setShowNewFolderInput(false);
                 } else if (e.key === 'Escape') {
@@ -177,7 +184,11 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 if (newFolderName.trim()) {
-                  setCollapsedFolders(prev => ({ ...prev, [newFolderName.trim()]: false }));
+                  const folderName = newFolderName.trim();
+                  setCollapsedFolders(prev => ({ ...prev, [folderName]: false }));
+                  if (currentChat) {
+                    moveChatToFolder(currentChat.id, folderName);
+                  }
                   setNewFolderName('');
                   setShowNewFolderInput(false);
                 }
@@ -473,53 +484,94 @@ export default function Sidebar() {
     </div>
   );
 
-  const renderExtensionsPanel = () => (
-    <div className="flex-1 overflow-y-auto p-4">
-      <h3 className="text-sm font-medium mb-3 text-tavern-text-bright">Extensions</h3>
-      <div className="space-y-2">
-        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-tavern-text">Prompt Builder</p>
-              <p className="text-xs text-tavern-dim">Configure system prompts</p>
-            </div>
-            <div className="w-9 h-5 bg-tavern-accent rounded-full relative cursor-pointer">
-              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" />
-            </div>
-          </div>
+  const renderChaptersPanel = () => {
+    if (!currentChat) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-4">
+          <p className="text-sm text-tavern-dim text-center">Select a chat first</p>
         </div>
-        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-tavern-text">Lorebook Scanner</p>
-              <p className="text-xs text-tavern-dim">Auto-inject lore entries</p>
-            </div>
-            <div className="w-9 h-5 bg-tavern-accent rounded-full relative cursor-pointer">
-              <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform" />
-            </div>
-          </div>
+      );
+    }
+
+    return (
+      <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-tavern-dim font-medium">Chapters</span>
         </div>
-        <div className="p-3 bg-tavern-input border border-tavern-border rounded-lg opacity-50">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-tavern-text">Voice Synthesis</p>
-              <p className="text-xs text-tavern-dim">Coming soon</p>
-            </div>
-            <div className="w-9 h-5 bg-tavern-border rounded-full relative cursor-pointer">
-              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-tavern-dim rounded-full transition-transform" />
-            </div>
+
+        {chapters.length === 0 ? (
+          <div className="text-center py-8">
+            <svg className="w-10 h-10 mx-auto mb-2 text-tavern-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <p className="text-xs text-tavern-dim">No chapters yet</p>
+            <p className="text-[10px] text-tavern-faint mt-1">Create chapters from messages</p>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-1">
+            {chapters.map((ch) => (
+              <div
+                key={ch.id}
+                className="p-2.5 rounded-lg cursor-pointer mb-1 transition-colors hover:bg-tavern-hover text-tavern-text group"
+                onClick={() => {
+                  // اسکرول به chapter marker در message list
+                  const marker = document.getElementById(`chapter-marker-${ch.id}`);
+                  if (marker) {
+                    marker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                  closeSidebarIfMobile();
+                }}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3 h-3 text-tavern-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      <span className="text-sm truncate font-medium">
+                        {ch.title || `Chapter ${chapters.indexOf(ch) + 1}`}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[10px] text-tavern-faint">
+                      <span>{ch.created_at ? new Date(ch.created_at).toLocaleDateString('en-US') : ''}</span>
+                      {ch.manually_edited && <span className="text-tavern-accent">edited</span>}
+                      {ch.generation_model && (
+                        <span className="truncate max-w-[80px]" title={ch.generation_model}>{ch.generation_model}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* اطلاعات تنظیمات */}
+        {chapterSettings && (
+          <div className="mt-4 pt-3 border-t border-tavern-border">
+            <div className="text-[10px] text-tavern-faint space-y-0.5">
+              <p>Raw message window: {chapterSettings.raw_window}</p>
+              <p>Auto detection: {chapterSettings.auto_detect_enabled ? 'On' : 'Off'}</p>
+            </div>
+            <button
+              onClick={() => setActivePanel('plugins')}
+              className="mt-2 text-[10px] text-tavern-accent hover:underline"
+            >
+              Settings are in the Plugins section
+            </button>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const panelTitles: Record<string, string> = {
     characters: 'Characters',
     chats: 'Chats',
     personas: 'Personas',
     lorebooks: 'Lorebooks',
-    extensions: 'Extensions',
+    chapters: 'Chapters',
+    plugins: 'Plugins',
     settings: 'Settings',
   };
 
@@ -543,7 +595,8 @@ export default function Sidebar() {
       {activePanel === 'chats' && renderChatsPanel()}
       {activePanel === 'personas' && renderPersonasPanel()}
       {activePanel === 'lorebooks' && renderLorebooksPanel()}
-      {activePanel === 'extensions' && renderExtensionsPanel()}
+      {activePanel === 'plugins' && <PluginsPanel />}
+      {activePanel === 'chapters' && renderChaptersPanel()}
       {activePanel === 'settings' && renderSettingsPanel()}
     </div>
   );

@@ -234,7 +234,7 @@ describe('Messages & Chats API', () => {
         .post('/api/chats')
         .send({ character_id: charId })
         .expect(201);
-      expect(res.body.name).toContain('چت با');
+      expect(res.body.name).toContain('Chat with');
     });
 
     it('باید 400 برگردونه اگر character_id نباشه', async () => {

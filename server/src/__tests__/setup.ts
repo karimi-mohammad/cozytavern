@@ -18,7 +18,7 @@ try {
   }
 } catch {}
 
-const testDb = new Database(TEST_DB_PATH);
+const testDb: Database.Database = new Database(TEST_DB_PATH);
 testDb.pragma('journal_mode = WAL');
 testDb.pragma('foreign_keys = ON');
 
@@ -110,6 +110,40 @@ testDb.exec(`
     presence_penalty REAL DEFAULT 0,
     stream INTEGER DEFAULT 1,
     stop TEXT DEFAULT '[]'
+  );
+
+  CREATE TABLE IF NOT EXISTS chapters (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    start_message_id TEXT NOT NULL,
+    end_message_id TEXT NOT NULL,
+    title TEXT DEFAULT '',
+    summary TEXT DEFAULT '',
+    generation_model TEXT DEFAULT '',
+    generation_prompt_version TEXT DEFAULT '',
+    manually_edited INTEGER DEFAULT 0,
+    regeneration_count INTEGER DEFAULT 0,
+    summary_generation_time INTEGER DEFAULT 0,
+    summary_generation_tokens INTEGER DEFAULT 0,
+    generated_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS chapter_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    raw_window INTEGER DEFAULT 10,
+    auto_detect_enabled INTEGER DEFAULT 1,
+    trigger_phrases TEXT DEFAULT '["next day","next morning","later that day","meanwhile"]',
+    summarizer_model TEXT DEFAULT '',
+    summarizer_base_url TEXT DEFAULT '',
+    summarizer_api_key TEXT DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS plugin_settings (
+    plugin_id TEXT PRIMARY KEY,
+    settings_json TEXT NOT NULL DEFAULT '{}'
   );
 `);
 

@@ -19,7 +19,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
   if (!chat) {
-    res.status(404).json({ error: 'چت پیدا نشد' });
+    res.status(404).json({ error: 'Chat not found' });
     return;
   }
   const messages = db.prepare(
@@ -41,12 +41,12 @@ router.post('/', (req: Request, res: Response) => {
   const { character_id, name, branch_from, lorebook_id } = req.body;
 
   if (!character_id) {
-    res.status(400).json({ error: 'character_id الزامی است' });
+    res.status(400).json({ error: 'character_id is required' });
     return;
   }
 
   const character = db.prepare('SELECT name FROM characters WHERE id = ?').get(character_id) as any;
-  const chatName = name || (character ? `چت با ${character.name}` : 'چت جدید');
+  const chatName = name || (character ? `Chat with ${character.name}` : 'New Chat');
 
   db.prepare(`
     INSERT INTO chats (id, character_id, name, branch_from, lorebook_id, created_at, updated_at)
@@ -90,7 +90,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const result = db.prepare('DELETE FROM chats WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: 'چت پیدا نشد' });
+    res.status(404).json({ error: 'Chat not found' });
     return;
   }
   res.json({ success: true });
@@ -101,7 +101,7 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
   const db = getDb();
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
   if (!chat) {
-    res.status(404).json({ error: 'چت پیدا نشد' });
+    res.status(404).json({ error: 'Chat not found' });
     return;
   }
 
@@ -110,13 +110,13 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
   ).all(req.params.id) as any[];
 
   if (messages.length === 0) {
-    res.status(400).json({ error: 'چت پیامی ندارد' });
+    res.status(400).json({ error: 'Chat has no messages' });
     return;
   }
 
   const settings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;
   if (!settings) {
-    res.status(400).json({ error: 'تنظیمات API یافت نشد' });
+    res.status(400).json({ error: 'API settings not found' });
     return;
   }
 
@@ -128,25 +128,45 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
   const endpoint = buildEndpoint(settings.base_url);
   const headers = buildHeaders(settings.api_key);
 
+  // اگر کاربر پیام‌ها را ویرایش کرده باشد، از آن‌ها استفاده می‌شود
+  const editedMessages = req.body?.edited_messages;
+  const defaultMessages = [
+    { role: 'system', content: 'Generate a short title (max 5 words) for this conversation. Reply ONLY with the title text.' },
+    { role: 'user', content: conversation },
+  ];
+
+  const llmBody = {
+    model: settings.model,
+    messages: (editedMessages && Array.isArray(editedMessages) && editedMessages.length > 0)
+      ? editedMessages.map((m: any) => ({ role: m.role, content: m.content }))
+      : defaultMessages,
+    max_tokens: 500,
+    temperature: 0.3,
+    stream: false,
+  };
+
+  // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
+  if (req.body?.inspect) {
+    return res.json({
+      inspect: true,
+      source: 'title',
+      endpoint,
+      model: llmBody.model,
+      params: { temperature: llmBody.temperature, max_tokens: llmBody.max_tokens, stream: false },
+      messages: llmBody.messages,
+    });
+  }
+
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        model: settings.model,
-        messages: [
-          { role: 'system', content: 'Generate a short title (max 5 words) for this conversation. Reply ONLY with the title text.' },
-          { role: 'user', content: conversation },
-        ],
-        max_tokens: 500,
-        temperature: 0.3,
-        stream: false,
-      }),
+      body: JSON.stringify(llmBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      res.status(500).json({ error: `خطا از API: ${response.status}` });
+      res.status(500).json({ error: `API error: ${response.status}` });
       return;
     }
 
@@ -159,10 +179,10 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
       const updated = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id);
       res.json(updated);
     } else {
-      res.status(500).json({ error: 'نامی تولید نشد' });
+      res.status(500).json({ error: 'Failed to generate a name' });
     }
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'خطا در نام‌گذاری' });
+    res.status(500).json({ error: error.message || 'Error auto-naming chat' });
   }
 });
 
@@ -173,11 +193,11 @@ router.put('/:id', (req: Request, res: Response) => {
   const now = new Date().toISOString();
   const existing = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
   if (!existing) {
-    res.status(404).json({ error: 'چت پیدا نشد' });
+    res.status(404).json({ error: 'Chat not found' });
     return;
   }
   db.prepare('UPDATE chats SET name=?, lorebook_id=?, folder=?, updated_at=? WHERE id=?').run(
-    name ?? existing.name ?? 'چت',
+    name ?? existing.name ?? 'Chat',
     lorebook_id ?? existing.lorebook_id ?? '',
     folder ?? existing.folder ?? '',
     now, req.params.id

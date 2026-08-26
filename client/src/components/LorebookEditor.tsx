@@ -73,7 +73,7 @@ export default function LorebookEditor() {
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 md:p-4">
       <div className="bg-tavern-card rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b border-tavern-border flex items-center justify-between flex-shrink-0">
-          <h2 className="text-lg font-bold">لوربوک (World Info)</h2>
+          <h2 className="text-lg font-bold">Lorebooks (World Info)</h2>
           <button onClick={() => { setLorebookEditorOpen(false); setSelectedId(null); }} className="text-tavern-muted hover:text-tavern-text">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -89,7 +89,7 @@ export default function LorebookEditor() {
               mobileTab === 'list' ? 'text-tavern-accent border-b-2 border-tavern-accent' : 'text-tavern-muted'
             }`}
           >
-            لیست
+            List
           </button>
           <button
             onClick={() => setMobileTab('detail')}
@@ -98,7 +98,7 @@ export default function LorebookEditor() {
             }`}
             disabled={!selectedId}
           >
-            جزئیات
+            Details
           </button>
         </div>
 
@@ -111,7 +111,7 @@ export default function LorebookEditor() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateLorebook()}
                 className="flex-1 bg-tavern-bg border border-tavern-border rounded px-2 py-1 text-xs focus:outline-none focus:border-tavern-accent"
-                placeholder="نام جدید"
+                placeholder="New name"
               />
               <button onClick={handleCreateLorebook} className="bg-tavern-accent text-white px-2 py-1 rounded text-xs">+</button>
             </div>
@@ -141,7 +141,7 @@ export default function LorebookEditor() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  بازگشت به لیست
+                  Back to list
                 </button>
 
                 {/* entries موجود */}
@@ -156,7 +156,7 @@ export default function LorebookEditor() {
                               <span key={i} className="bg-tavern-accent/20 text-tavern-accent px-1.5 py-0.5 rounded">{k}</span>
                             ))}
                           </div>
-                          <button onClick={() => handleDeleteEntry(entry.id)} className="text-red-400 hover:text-red-300">حذف</button>
+                          <button onClick={() => handleDeleteEntry(entry.id)} className="text-red-400 hover:text-red-300">Delete</button>
                         </div>
                         <p className="text-tavern-muted mt-1 line-clamp-2">{entry.content}</p>
                       </div>
@@ -166,43 +166,43 @@ export default function LorebookEditor() {
 
                 {/* فرم entry جدید */}
                 <div className="border-t border-tavern-border pt-4">
-                  <h3 className="text-sm font-medium mb-2">Entry جدید</h3>
+                  <h3 className="text-sm font-medium mb-2">New Entry</h3>
                   <div className="space-y-2">
                     <input
                       value={entryForm.key}
                       onChange={(e) => setEntryForm(f => ({ ...f, key: e.target.value }))}
                       className="w-full bg-tavern-bg border border-tavern-border rounded px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
-                      placeholder="کلمات کلیدی (با کاما جدا کنید)"
+                      placeholder="Keywords (comma-separated)"
                     />
                     <input
                       value={entryForm.keysecondary}
                       onChange={(e) => setEntryForm(f => ({ ...f, keysecondary: e.target.value }))}
                       className="w-full bg-tavern-bg border border-tavern-border rounded px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
-                      placeholder="کلمات کلیدی ثانویه (اختیاری)"
+                      placeholder="Secondary keywords (optional)"
                     />
                     <textarea
                       value={entryForm.content}
                       onChange={(e) => setEntryForm(f => ({ ...f, content: e.target.value }))}
                       className="w-full bg-tavern-bg border border-tavern-border rounded px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
                       rows={3}
-                      placeholder="محتوا (به context AI اضافه می‌شود)"
+                      placeholder="Content (added to the AI's context)"
                     />
                     <div className="flex flex-wrap items-center gap-4 text-sm">
                       <label className="flex items-center gap-1">
                         <input type="checkbox" checked={entryForm.constant} onChange={(e) => setEntryForm(f => ({ ...f, constant: e.target.checked }))} className="accent-tavern-accent" />
-                        همیشه فعال
+                        Always active
                       </label>
                       <label className="flex items-center gap-1">
                         <input type="checkbox" checked={entryForm.selective} onChange={(e) => setEntryForm(f => ({ ...f, selective: e.target.checked }))} className="accent-tavern-accent" />
-                        انتخابی
+                        Selective
                       </label>
                       <select
                         value={entryForm.position}
                         onChange={(e) => setEntryForm(f => ({ ...f, position: e.target.value as any }))}
                         className="bg-tavern-bg border border-tavern-border rounded px-2 py-1 text-xs"
                       >
-                        <option value="before_main">قبل از چت</option>
-                        <option value="after_main">بعد از چت</option>
+                        <option value="before_main">Before chat</option>
+                        <option value="after_main">After chat</option>
                       </select>
                     </div>
                     <button
@@ -210,14 +210,14 @@ export default function LorebookEditor() {
                       disabled={!entryForm.content.trim()}
                       className="w-full bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded py-2 text-sm"
                     >
-                      اضافه کردن Entry
+                      Add Entry
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="text-center text-tavern-muted text-sm py-8">
-                یک لوربوک انتخاب کنید یا جدید بسازید
+                Select a lorebook or create a new one
               </div>
             )}
           </div>

@@ -39,11 +39,11 @@ export function buildRequestBody(
     model: string;
     temperature: number;
     max_tokens: number;
-    top_p: number;
-    frequency_penalty: number;
-    presence_penalty: number;
-    stream: boolean;
-    stop: string[];
+    top_p?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    stream?: boolean;
+    stop?: string[];
   }
 ): string {
   const body: any = {
@@ -51,7 +51,7 @@ export function buildRequestBody(
     messages: messages.map(m => ({ role: m.role, content: m.content })),
     temperature: settings.temperature,
     max_tokens: settings.max_tokens,
-    stream: settings.stream,
+    stream: settings.stream ?? true,
   };
 
   if (settings.top_p !== undefined && settings.top_p < 1) body.top_p = settings.top_p;

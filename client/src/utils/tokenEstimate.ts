@@ -1,4 +1,4 @@
-import { Message, Character, Persona, ApiSettings } from '../types';
+import { Message, Character, Persona, ApiSettings, Chapter } from '../types';
 
 // تخمین توکن: ~4 کاراکتر برای انگلیسی، ~2 کاراکتر برای فارسی/عربی
 function estimateTokens(text: string): number {
@@ -38,6 +38,7 @@ export interface ContextUsage {
     character: number;
     lorebook: number;
     persona: number;
+    chapters: number;
     history: number;
     overhead: number;
   };
@@ -48,7 +49,9 @@ export function estimateContextUsage(
   settings: ApiSettings | undefined,
   character: Character | null,
   persona: Persona | null,
-  lorebookEntries: { content: string }[]
+  lorebookEntries: { content: string }[],
+  chapters?: Chapter[],
+  rawWindow?: number,
 ): ContextUsage {
   const max = getMaxContext(settings?.model || '');
 
@@ -73,13 +76,34 @@ export function estimateContextUsage(
     ? estimateTokens(`[اطلاعات کاربر]\nنام: ${persona.name}\n${persona.description}`)
     : 0;
 
-  // Chat history
-  const historyTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+  // Chapter summaries vs raw messages
+  let chapterTokens = 0;
+  let historyTokens = 0;
+
+  if (chapters && chapters.length > 0 && rawWindow && rawWindow > 0) {
+    // Chapter summaries are sent instead of their covered messages
+    chapterTokens = chapters.reduce((sum, c) => {
+      const title = c.title || 'Chapter';
+      return sum + estimateTokens(`[${title}]\n${c.summary}`);
+    }, 0);
+
+    // Only raw window messages are sent
+    const rawStartIndex = Math.max(0, messages.length - rawWindow);
+    for (let i = rawStartIndex; i < messages.length; i++) {
+      historyTokens += estimateTokens(messages[i].content);
+    }
+  } else {
+    // No chapters — all messages are raw
+    historyTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+  }
 
   // Overhead: role labels, formatting, API overhead (~4 tokens per message)
-  const overhead = messages.length * 4 + 10;
+  const rawMessageCount = chapters && chapters.length > 0 && rawWindow
+    ? Math.min(rawWindow, messages.length)
+    : messages.length;
+  const overhead = rawMessageCount * 4 + 10;
 
-  const used = systemTokens + characterTokens + lorebookTokens + personaTokens + historyTokens + overhead;
+  const used = systemTokens + characterTokens + lorebookTokens + personaTokens + chapterTokens + historyTokens + overhead;
   const percentage = Math.min(100, Math.round((used / max) * 100));
 
   return {
@@ -91,6 +115,7 @@ export function estimateContextUsage(
       character: characterTokens,
       lorebook: lorebookTokens,
       persona: personaTokens,
+      chapters: chapterTokens,
       history: historyTokens,
       overhead,
     },

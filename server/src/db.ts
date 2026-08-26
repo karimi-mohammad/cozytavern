@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import { migrateLegacyChapterSettings } from './utils/plugin-store';
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'cozytavern.db');
 
@@ -88,6 +89,32 @@ export function initDb(): void {
       FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS chapters (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      start_message_id TEXT NOT NULL,
+      end_message_id TEXT NOT NULL,
+      title TEXT DEFAULT '',
+      summary TEXT DEFAULT '',
+      generation_model TEXT DEFAULT '',
+      generation_prompt_version TEXT DEFAULT '',
+      manually_edited INTEGER DEFAULT 0,
+      regeneration_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS chapter_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      raw_window INTEGER DEFAULT 10,
+      auto_detect_enabled INTEGER DEFAULT 1,
+      trigger_phrases TEXT DEFAULT '["next day","next morning","later that day","meanwhile"]',
+      summarizer_model TEXT DEFAULT '',
+      summarizer_base_url TEXT DEFAULT '',
+      summarizer_api_key TEXT DEFAULT ''
+    );
+
     CREATE TABLE IF NOT EXISTS api_settings (
       id TEXT PRIMARY KEY,
       provider TEXT NOT NULL DEFAULT 'openai',
@@ -102,7 +129,15 @@ export function initDb(): void {
       stream INTEGER DEFAULT 1,
       stop TEXT DEFAULT '[]'
     );
+
+    CREATE TABLE IF NOT EXISTS plugin_settings (
+      plugin_id TEXT PRIMARY KEY,
+      settings_json TEXT NOT NULL DEFAULT '{}'
+    );
   `);
+
+  // Migration: انتقال chapter_settings قدیمی به plugin_settings ('chapters')
+  migrateLegacyChapterSettings(database);
 
   // Migration: اضافه کردن lorebook_id به characters و chats
   const charCols = database.prepare("PRAGMA table_info(characters)").all() as any[];
@@ -123,5 +158,17 @@ export function initDb(): void {
   const chatFolderCols = database.prepare("PRAGMA table_info(chats)").all() as any[];
   if (!chatFolderCols.some(c => c.name === 'folder')) {
     database.exec("ALTER TABLE chats ADD COLUMN folder TEXT DEFAULT ''");
+  }
+
+  // Migration: observability fields for chapters
+  const chapterCols = database.prepare("PRAGMA table_info(chapters)").all() as any[];
+  if (!chapterCols.some(c => c.name === 'summary_generation_time')) {
+    database.exec("ALTER TABLE chapters ADD COLUMN summary_generation_time INTEGER DEFAULT 0");
+  }
+  if (!chapterCols.some(c => c.name === 'summary_generation_tokens')) {
+    database.exec("ALTER TABLE chapters ADD COLUMN summary_generation_tokens INTEGER DEFAULT 0");
+  }
+  if (!chapterCols.some(c => c.name === 'generated_at')) {
+    database.exec("ALTER TABLE chapters ADD COLUMN generated_at TEXT DEFAULT ''");
   }
 }

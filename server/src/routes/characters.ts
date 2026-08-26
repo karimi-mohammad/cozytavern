@@ -20,7 +20,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(req.params.id) as any;
   if (!character) {
-    res.status(404).json({ error: 'کاراکتر پیدا نشد' });
+    res.status(404).json({ error: 'Character not found' });
     return;
   }
   res.json({ ...character, tags: JSON.parse(character.tags || '[]') });
@@ -47,7 +47,7 @@ router.put('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const existing = db.prepare('SELECT * FROM characters WHERE id = ?').get(req.params.id);
   if (!existing) {
-    res.status(404).json({ error: 'کاراکتر پیدا نشد' });
+    res.status(404).json({ error: 'Character not found' });
     return;
   }
 
@@ -81,7 +81,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const result = db.prepare('DELETE FROM characters WHERE id = ?').run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: 'کاراکتر پیدا نشد' });
+    res.status(404).json({ error: 'Character not found' });
     return;
   }
   res.json({ success: true });

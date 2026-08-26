@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Character, Chat, Message, Persona, Lorebook, ApiSettings } from '../types';
+import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart } from '../types';
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
@@ -25,6 +25,17 @@ interface AppState {
   activeLorebook: Lorebook | null;
   apiSettings: Record<string, ApiSettings>;
 
+  // Chapter Memory
+  chapters: Chapter[];
+  chapterSettings: ChapterSettings | null;
+  chapterSuggestion: { trigger_message_id: string; trigger_phrase: string } | null;
+  // انتخاب دستی مرزهای فصل (start/end) روی پیام‌ها
+  chapterStartId: string | null;
+  chapterEndId: string | null;
+
+  // Plugins (تنظیمات پلاگین لوربوک)
+  lorebookPluginSettings: LorebookPluginSettings | null;
+
   // Loading States
   loadingCharacters: boolean;
   loadingChats: boolean;
@@ -46,13 +57,21 @@ interface AppState {
   galleryView: boolean;
   toggleGallery: () => void;
   setGalleryView: (open: boolean) => void;
-  activePanel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'extensions' | 'settings' | null;
+  activePanel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'plugins' | 'settings' | 'chapters' | null;
   panelOpen: boolean;
   rightPanelOpen: boolean;
-  setActivePanel: (panel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'extensions' | 'settings' | null) => void;
+  setActivePanel: (panel: 'characters' | 'chats' | 'personas' | 'lorebooks' | 'plugins' | 'settings' | 'chapters' | null) => void;
   togglePanel: () => void;
   toggleRightPanel: () => void;
   setRightPanelOpen: (open: boolean) => void;
+
+  // Prompt Inspector — پیش‌نمایش پرامپت قبل از ارسال به LLM
+  promptInspectEnabled: boolean;
+  togglePromptInspect: () => void;
+  promptInspection: PromptInspection | null;      // entry در انتظار تصمیم کاربر
+  promptInspectHistory: PromptInspection[];       // آخرین ۲۰ بازرسی، جدیدترین اول
+  requestInspection: (entry: Omit<PromptInspection, 'id' | 'created_at'>) => Promise<boolean | PromptInspection['messages']>;
+  resolveInspection: (send: boolean, editedMessages?: PromptInspection['messages']) => void;
 
   // Toast
   toasts: Toast[];
@@ -108,6 +127,22 @@ interface AppState {
   saveApiSettings: (data: any) => Promise<void>;
   autoNameChat: (chatId: string) => Promise<void>;
 
+  // Chapter Memory
+  loadChapters: (chatId: string) => Promise<void>;
+  createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; title?: string }) => Promise<Chapter>;
+  updateChapter: (id: string, data: { title?: string; summary?: string }) => Promise<void>;
+  deleteChapter: (id: string) => Promise<void>;
+  regenerateChapter: (id: string) => Promise<void>;
+  loadChapterSettings: () => Promise<void>;
+  updateChapterSettings: (data: Partial<ChapterSettings>) => Promise<void>;
+  loadLorebookPluginSettings: () => Promise<void>;
+  updateLorebookPluginSettings: (data: Partial<LorebookPluginSettings>) => Promise<void>;
+  checkChapterTrigger: (chatId: string) => Promise<void>;
+  dismissChapterSuggestion: () => void;
+  markChapterBoundary: (kind: 'start' | 'end', messageId: string) => void;
+  clearChapterSelection: () => void;
+  createChapterFromSelection: () => Promise<void>;
+
   setSidebarOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setCharacterEditorOpen: (open: boolean, character?: Character | null) => void;
@@ -119,6 +154,32 @@ interface AppState {
 let confirmResolver: ((result: boolean) => void) | null = null;
 let currentAbortController: AbortController | null = null;
 
+// ─── Prompt Inspector gate ───
+// resolver بازرسی فعلی + صف FIFO برای بازرسی‌های همزمان (مثلاً عنوان بعد از پایان چت)
+let inspectionResolver: ((send: boolean, editedMessages?: PromptInspection['messages']) => void) | null = null;
+const inspectionQueue: { entry: PromptInspection; resolve: (v: boolean, editedMessages?: PromptInspection['messages']) => void }[] = [];
+
+function promoteNextInspection() {
+  const next = inspectionQueue.shift();
+  if (!next) return;
+  inspectionResolver = next.resolve;
+  useStore.setState({ promptInspection: next.entry });
+}
+
+// تبدیل payload سرور به entry پنل (label بر اساس source)
+export function inspectionEntryFromPayload(payload: PromptInspectionPayload): Omit<PromptInspection, 'id' | 'created_at'> {
+  const labels: Record<string, string> = { chat: 'Chat', title: 'Chat Title', chapter: 'Chapter Summary' };
+  return {
+    source: payload.source,
+    label: labels[payload.source] || payload.source,
+    mode: payload.mode,
+    endpoint: payload.endpoint,
+    model: payload.model,
+    params: payload.params,
+    messages: payload.messages,
+  };
+}
+
 export const useStore = create<AppState>((set, get) => ({
   characters: [],
   currentCharacter: null,
@@ -129,6 +190,16 @@ export const useStore = create<AppState>((set, get) => ({
   lorebooks: [],
   activeLorebook: null,
   apiSettings: {},
+
+  // Chapter Memory
+  chapters: [],
+  chapterSettings: null,
+  chapterSuggestion: null,
+  chapterStartId: null,
+  chapterEndId: null,
+
+  // Plugins
+  lorebookPluginSettings: null,
 
   // Loading states (از true شروع می‌شه چون لود اولیه دیتا در mount انجام می‌شه)
   loadingCharacters: true,
@@ -168,6 +239,47 @@ export const useStore = create<AppState>((set, get) => ({
   togglePanel: () => set(s => ({ panelOpen: !s.panelOpen })),
   toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),
   setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
+
+  // ─── Prompt Inspector ───
+  promptInspectEnabled: (() => {
+    try { return localStorage.getItem('cozytavern.promptInspect') === '1'; } catch { return false; }
+  })(),
+  togglePromptInspect: () => set(s => {
+    const v = !s.promptInspectEnabled;
+    try { localStorage.setItem('cozytavern.promptInspect', v ? '1' : '0'); } catch {}
+    return { promptInspectEnabled: v };
+  }),
+
+  promptInspection: null,
+  promptInspectHistory: [],
+
+  requestInspection: (entry) =>
+    new Promise<boolean | PromptInspection['messages']>((resolve) => {
+      const full: PromptInspection = {
+        ...entry,
+        id: Math.random().toString(36).slice(2),
+        created_at: new Date().toISOString(),
+      };
+      // تاریخچه حتی برای موارد لغوشده هم پر می‌شود (قابل مرور)
+      set(s => ({ promptInspectHistory: [full, ...s.promptInspectHistory].slice(0, 20) }));
+      // بسته‌بندی resolve تا editedMessages هم به promise برسد
+      const wrappedResolve = (send: boolean, editedMessages?: PromptPart[]) => {
+        resolve(send && editedMessages && editedMessages.length > 0 ? editedMessages : send);
+      };
+      inspectionQueue.push({ entry: full, resolve: wrappedResolve });
+      if (!get().promptInspection) {
+        promoteNextInspection();
+      }
+    }),
+
+  resolveInspection: (send, editedMessages) => {
+    if (!inspectionResolver) return; // stale resolver — نادیده گرفته می‌شود
+    const r = inspectionResolver;
+    inspectionResolver = null;
+    set({ promptInspection: null });
+    r(send, editedMessages);
+    promoteNextInspection(); // مورد بعدی صف، اگر باشد
+  },
 
   toasts: [],
   confirmDialog: null,
@@ -222,7 +334,7 @@ export const useStore = create<AppState>((set, get) => ({
   createCharacter: async (data) => {
     const character = await api.createCharacter(data);
     set(s => ({ characters: [character, ...s.characters] }));
-    get().addToast('کاراکتر ایجاد شد', 'success');
+    get().addToast('Character created', 'success');
     return character;
   },
 
@@ -232,7 +344,7 @@ export const useStore = create<AppState>((set, get) => ({
       characters: s.characters.map(c => c.id === id ? updated : c),
       currentCharacter: s.currentCharacter?.id === id ? updated : s.currentCharacter,
     }));
-    get().addToast('کاراکتر ذخیره شد', 'success');
+    get().addToast('Character saved', 'success');
   },
 
   deleteCharacter: async (id) => {
@@ -244,13 +356,13 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     try {
       await api.deleteCharacter(id);
-      get().addToast('کاراکتر حذف شد', 'success');
+      get().addToast('Character deleted', 'success');
     } catch (error: any) {
       set(s => ({
         characters: [deleted, ...s.characters],
         currentCharacter: s.currentCharacter ?? deleted,
       }));
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
     }
   },
 
@@ -268,7 +380,10 @@ export const useStore = create<AppState>((set, get) => ({
     set({ loadingMessages: true });
     try {
       const chat = await api.getChat(chatId);
-      set({ currentChat: chat });
+      set({ currentChat: chat, chapterStartId: null, chapterEndId: null, chapterSuggestion: null });
+      // لود فصل‌ها و تنظیمات
+      get().loadChapters(chatId);
+      get().loadChapterSettings();
       // محاسبه context usage بعد از لود چت
       setTimeout(() => get().updateContextUsage(), 0);
     } finally {
@@ -303,13 +418,13 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     try {
       await api.deleteChat(id);
-      get().addToast('چت حذف شد', 'success');
+      get().addToast('Chat deleted', 'success');
     } catch (error: any) {
       set(s => ({
         chats: [deleted, ...s.chats],
         currentChat: s.currentChat ?? get().currentChat,
       }));
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
     }
   },
 
@@ -357,7 +472,29 @@ export const useStore = create<AppState>((set, get) => ({
     currentAbortController = controller;
 
     let aborted = false;
+    let editedMessages: PromptPart[] | undefined;
     try {
+      // ─── Prompt Inspector gate: پیش‌نمایش payload قبل از ارسال واقعی ───
+      if (get().promptInspectEnabled) {
+        let approved: boolean | PromptPart[] = false;
+        try {
+          const payload = await api.inspectChat({
+            chat_id: currentChat.id,
+            character_id: currentCharacter.id,
+            persona_id: activePersona?.id,
+            lorebook_id: activeLorebook?.id,
+          });
+          approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+        } catch (e: any) {
+          get().addToast(`Error previewing prompt: ${e.message}`, 'error');
+        }
+        if (!approved) {
+          set({ isGenerating: false });
+          return; // پیام user ذخیره‌شده می‌ماند (مطابق رفتار خطای LLM)
+        }
+        if (Array.isArray(approved)) editedMessages = approved;
+      }
+
       let fullContent = '';
       await api.chatWithAI(
         {
@@ -365,6 +502,7 @@ export const useStore = create<AppState>((set, get) => ({
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
           lorebook_id: activeLorebook?.id,
+          ...(editedMessages && { edited_messages: editedMessages }),
         },
         (messageId) => {
           const assistantMsg = {
@@ -403,6 +541,8 @@ export const useStore = create<AppState>((set, get) => ({
           if (isFirstMessage) {
             get().autoNameChat(currentChat.id);
           }
+          // Check for chapter trigger suggestion
+          get().checkChapterTrigger(currentChat.id);
         },
         controller.signal
       );
@@ -411,13 +551,13 @@ export const useStore = create<AppState>((set, get) => ({
         set({ isGenerating: false });
         return;
       }
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
       set(s => {
         if (!s.currentChat) return s;
         const msgs = [...s.currentChat.messages];
         const lastMsg = msgs[msgs.length - 1];
         if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
-          msgs[msgs.length - 1] = { ...lastMsg, content: `خطا: ${error.message}` };
+          msgs[msgs.length - 1] = { ...lastMsg, content: `Error: ${error.message}` };
         }
         return { currentChat: { ...s.currentChat, messages: msgs }, isGenerating: false };
       });
@@ -429,6 +569,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   // لغو پاسخ در حال تولید — هم fetch کلاینت و هم استریم سرور متوقف می‌شود
   stopGeneration: async () => {
+    // اگر پنل بازرسی باز باشد، Stop = لغو بازرسی
+    if (get().promptInspection) {
+      get().resolveInspection(false);
+      return;
+    }
     const { currentChat, isGenerating } = get();
     if (!isGenerating || !currentChat) return;
     set({ isGenerating: false });
@@ -479,7 +624,7 @@ export const useStore = create<AppState>((set, get) => ({
         if (idx !== -1) msgs[idx] = original;
         return { currentChat: { ...s.currentChat, messages: msgs } };
       });
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
     } finally {
       set({ pendingEdit: null });
     }
@@ -515,7 +660,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
         return { currentChat: { ...s.currentChat, messages: msgs } };
       });
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
     }
   },
 
@@ -532,6 +677,29 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ isGenerating: true });
 
+    // ─── Prompt Inspector gate: قبل از push swipes تا لغو کاملاً تمیز باشد ───
+    let editedMessages2: PromptPart[] | undefined;
+    if (get().promptInspectEnabled) {
+      let approved: boolean | PromptPart[] = false;
+      try {
+        const payload = await api.inspectChat({
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          update_message_id: lastAssistantMsg.id,
+        });
+        approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+      } catch (e: any) {
+        get().addToast(`Error previewing prompt: ${e.message}`, 'error');
+      }
+      if (!approved) {
+        set({ isGenerating: false });
+        return;
+      }
+      if (Array.isArray(approved)) editedMessages2 = approved;
+    }
+
     try {
       await api.regenerateMessage(currentChat.id);
 
@@ -543,6 +711,7 @@ export const useStore = create<AppState>((set, get) => ({
           persona_id: activePersona?.id,
           lorebook_id: activeLorebook?.id,
           update_message_id: lastAssistantMsg.id,
+          ...(editedMessages2 && { edited_messages: editedMessages2 }),
         },
         () => {},
         (token) => {
@@ -579,6 +748,29 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ isGenerating: true });
 
+    // ─── Prompt Inspector gate ───
+    let editedMessages3: PromptPart[] | undefined;
+    if (get().promptInspectEnabled) {
+      let approved: boolean | PromptPart[] = false;
+      try {
+        const payload = await api.inspectChat({
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          continue_mode: true,
+        });
+        approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+      } catch (e: any) {
+        get().addToast(`Error previewing prompt: ${e.message}`, 'error');
+      }
+      if (!approved) {
+        set({ isGenerating: false });
+        return;
+      }
+      if (Array.isArray(approved)) editedMessages3 = approved;
+    }
+
     const controller = new AbortController();
     currentAbortController = controller;
 
@@ -591,6 +783,7 @@ export const useStore = create<AppState>((set, get) => ({
           persona_id: activePersona?.id,
           lorebook_id: activeLorebook?.id,
           continue_mode: true,
+          ...(editedMessages3 && { edited_messages: editedMessages3 }),
         },
         (messageId) => {
           // ایجاد پیام assistant جدید برای ادامه
@@ -651,6 +844,29 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ isGenerating: true });
 
+    // ─── Prompt Inspector gate ───
+    let editedMessages4: PromptPart[] | undefined;
+    if (get().promptInspectEnabled) {
+      let approved: boolean | PromptPart[] = false;
+      try {
+        const payload = await api.inspectChat({
+          chat_id: currentChat.id,
+          character_id: currentCharacter.id,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+          impersonate: true,
+        });
+        approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+      } catch (e: any) {
+        get().addToast(`Error previewing prompt: ${e.message}`, 'error');
+      }
+      if (!approved) {
+        set({ isGenerating: false });
+        return;
+      }
+      if (Array.isArray(approved)) editedMessages4 = approved;
+    }
+
     const controller = new AbortController();
     currentAbortController = controller;
 
@@ -664,6 +880,7 @@ export const useStore = create<AppState>((set, get) => ({
           persona_id: activePersona?.id,
           lorebook_id: activeLorebook?.id,
           impersonate: true,
+          ...(editedMessages4 && { edited_messages: editedMessages4 }),
         },
         (messageId) => {
           const userMsg = {
@@ -707,7 +924,7 @@ export const useStore = create<AppState>((set, get) => ({
         set({ isGenerating: false });
         return;
       }
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
       set({ isGenerating: false });
     } finally {
       if (controller.signal.aborted) aborted = true;
@@ -737,7 +954,7 @@ export const useStore = create<AppState>((set, get) => ({
   createPersona: async (data) => {
     const persona = await api.createPersona(data);
     set(s => ({ personas: [persona, ...s.personas] }));
-    get().addToast('پرسونا ایجاد شد', 'success');
+    get().addToast('Persona created', 'success');
   },
 
   updatePersona: async (id, data) => {
@@ -745,7 +962,7 @@ export const useStore = create<AppState>((set, get) => ({
     set(s => ({
       personas: s.personas.map(p => p.id === id ? updated : p),
     }));
-    get().addToast('پرسونا ذخیره شد', 'success');
+    get().addToast('Persona saved', 'success');
   },
 
   deletePersona: async (id) => {
@@ -757,13 +974,13 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     try {
       await api.deletePersona(id);
-      get().addToast('پرسونا حذف شد', 'success');
+      get().addToast('Persona deleted', 'success');
     } catch (error: any) {
       set(s => ({
         personas: [deleted, ...s.personas],
         activePersona: s.activePersona ?? deleted,
       }));
-      get().addToast(`خطا: ${error.message}`, 'error');
+      get().addToast(`Error: ${error.message}`, 'error');
     }
   },
 
@@ -795,12 +1012,20 @@ export const useStore = create<AppState>((set, get) => ({
   saveApiSettings: async (data) => {
     await api.saveApiSettings(data);
     set(s => ({ apiSettings: { ...s.apiSettings, openai: data } }));
-    get().addToast('تنظیمات ذخیره شد', 'success');
+    get().addToast('Settings saved', 'success');
   },
 
   autoNameChat: async (chatId) => {
     try {
-      const updated = await api.autoNameChat(chatId);
+      // ─── Prompt Inspector gate ───
+      let editedMessages5: PromptPart[] | undefined;
+      if (get().promptInspectEnabled) {
+        const payload = await api.inspectAutoName(chatId);
+        const approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+        if (!approved) return; // لغو بی‌صدا — caller fire-and-forget است
+        if (Array.isArray(approved)) editedMessages5 = approved;
+      }
+      const updated = await api.autoNameChat(chatId, editedMessages5);
       set(s => ({
         chats: s.chats.map(c => c.id === chatId ? updated : c),
         currentChat: s.currentChat?.id === chatId ? { ...s.currentChat, name: updated.name } : s.currentChat,
@@ -809,7 +1034,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateContextUsage: () => {
-    const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook } = get();
+    const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook, chapters, chapterSettings } = get();
     if (!currentChat) {
       set({ contextUsage: null });
       return;
@@ -821,9 +1046,181 @@ export const useStore = create<AppState>((set, get) => ({
       settings,
       currentCharacter,
       activePersona,
-      lorebookEntries
+      lorebookEntries,
+      chapters,
+      chapterSettings?.raw_window
     );
     set({ contextUsage: usage });
+  },
+
+  // ─── Chapter Memory Actions ───
+
+  loadChapters: async (chatId) => {
+    try {
+      const chapters = await api.getChapters(chatId);
+      set({ chapters });
+    } catch {
+      set({ chapters: [] });
+    }
+  },
+
+  createChapter: async (data) => {
+    const chapter = await api.createChapter(data);
+    set(s => ({ chapters: [...s.chapters, chapter].sort((a, b) => a.created_at.localeCompare(b.created_at)) }));
+    get().addToast('Chapter created', 'success');
+    get().updateContextUsage();
+    return chapter;
+  },
+
+  updateChapter: async (id, data) => {
+    const updated = await api.updateChapter(id, data);
+    set(s => ({
+      chapters: s.chapters.map(c => c.id === id ? updated : c),
+    }));
+    get().addToast('Chapter saved', 'success');
+    get().updateContextUsage();
+  },
+
+  deleteChapter: async (id) => {
+    const deleted = get().chapters.find(c => c.id === id);
+    if (!deleted) return;
+    set(s => ({ chapters: s.chapters.filter(c => c.id !== id) }));
+    try {
+      await api.deleteChapter(id);
+      get().addToast('Chapter deleted', 'success');
+      get().updateContextUsage();
+    } catch (error: any) {
+      set(s => ({ chapters: [...s.chapters, deleted].sort((a, b) => a.created_at.localeCompare(b.created_at)) }));
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  regenerateChapter: async (id) => {
+    try {
+      // ─── Prompt Inspector gate ───
+      let editedMessages6: PromptPart[] | undefined;
+      if (get().promptInspectEnabled) {
+        const payload = await api.inspectRegenerateChapter(id);
+        const approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+        if (!approved) return;
+        if (Array.isArray(approved)) editedMessages6 = approved;
+      }
+      const updated = await api.regenerateChapter(id, editedMessages6);
+      set(s => ({ chapters: s.chapters.map(c => c.id === id ? updated : c) }));
+      get().addToast('Summary regenerated', 'success');
+      get().updateContextUsage();
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  loadChapterSettings: async () => {
+    try {
+      const settings = await api.getChapterSettings();
+      set({ chapterSettings: settings });
+    } catch {
+      set({ chapterSettings: null });
+    }
+  },
+
+  updateChapterSettings: async (data) => {
+    try {
+      const updated = await api.updateChapterSettings(data);
+      set({ chapterSettings: updated });
+      get().addToast('Settings saved', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  loadLorebookPluginSettings: async () => {
+    try {
+      const settings = await api.getPluginSettings('lorebook_scanner');
+      set({ lorebookPluginSettings: settings });
+    } catch {
+      set({ lorebookPluginSettings: null });
+    }
+  },
+
+  updateLorebookPluginSettings: async (data) => {
+    try {
+      const updated = await api.updatePluginSettings('lorebook_scanner', data);
+      set({ lorebookPluginSettings: updated });
+      get().addToast('Settings saved', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  checkChapterTrigger: async (chatId) => {
+    const { chapterSettings } = get();
+    if (!chapterSettings?.auto_detect_enabled) return;
+    try {
+      const result = await api.detectTrigger(chatId);
+      if (result.suggested) {
+        set({ chapterSuggestion: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase } });
+      }
+    } catch {}
+  },
+
+  dismissChapterSuggestion: () => set({ chapterSuggestion: null }),
+
+  // علامت‌گذاری مرز فصل روی یک پیام — کلیک دوباره روی همان مرز آن را برمی‌دارد
+  markChapterBoundary: (kind, messageId) => {
+    const key = kind === 'start' ? 'chapterStartId' : 'chapterEndId';
+    const otherKey = kind === 'start' ? 'chapterEndId' : 'chapterStartId';
+    const patch: any = { [key]: get()[key] === messageId ? null : messageId };
+    // اگر انتخاب جدید با مرز دیگر ترتیب معکوس داشت، مرز دیگر پاک شود
+    const { currentChat } = get();
+    const thisId = patch[key];
+    const otherId = get()[otherKey];
+    if (thisId && otherId && currentChat) {
+      const idx = (id: string) => currentChat.messages.findIndex(m => m.id === id);
+      const i1 = idx(thisId), i2 = idx(otherId);
+      if (i1 !== -1 && i2 !== -1 && i1 > i2) {
+        patch[otherKey] = null;
+      }
+    }
+    set(patch);
+  },
+
+  clearChapterSelection: () => set({ chapterStartId: null, chapterEndId: null }),
+
+  createChapterFromSelection: async () => {
+    const { currentChat, chapterSettings, chapterStartId, chapterEndId } = get();
+    if (!currentChat || !chapterStartId || !chapterEndId) return;
+    const rawWindow = chapterSettings?.raw_window || 10;
+    const messages = currentChat.messages;
+    const endIdx = messages.findIndex(m => m.id === chapterEndId);
+    if (endIdx !== -1 && messages.length - endIdx - 1 < rawWindow) {
+      get().addToast(`Chapter must end at least ${rawWindow} messages before the last message`, 'error');
+      return;
+    }
+    try {
+      // ─── Prompt Inspector gate: قبل از createChapter تا لغو، فصل نسازد ───
+      let editedMessages7: PromptPart[] | undefined;
+      if (get().promptInspectEnabled) {
+        const payload = await api.inspectCreateChapter({
+          chat_id: currentChat.id,
+          start_message_id: chapterStartId,
+          end_message_id: chapterEndId,
+        });
+        const approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+        if (!approved) {
+          set({ chapterStartId: null, chapterEndId: null });
+          get().addToast('Chapter creation cancelled', 'info');
+          return;
+        }
+        if (Array.isArray(approved)) editedMessages7 = approved;
+      }
+      await get().createChapter({
+        chat_id: currentChat.id,
+        start_message_id: chapterStartId,
+        end_message_id: chapterEndId,
+        ...(editedMessages7 && { edited_messages: editedMessages7 }),
+      });
+      set({ chapterStartId: null, chapterEndId: null });
+    } catch {}
   },
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

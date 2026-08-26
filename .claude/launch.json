@@ -13,6 +13,10 @@
       "runtimeArgs": ["run", "dev:client"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "cozytavern-client-existing",
+      "url": "http://localhost:5173"
     }
   ]
 }

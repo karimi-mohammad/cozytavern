@@ -63,7 +63,7 @@ export default function CharacterEditor() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      addToast('حجم عکس باید کمتر از 2MB باشد', 'error');
+      addToast('Image must be smaller than 2MB', 'error');
       return;
     }
     const reader = new FileReader();
@@ -78,7 +78,7 @@ export default function CharacterEditor() {
       <div className="bg-tavern-card rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-4 border-b border-tavern-border flex items-center justify-between sticky top-0 bg-tavern-card z-10">
           <h2 className="text-lg font-bold">
-            {editingCharacter ? 'ادیت کاراکتر' : 'کاراکتر جدید'}
+            {editingCharacter ? 'Edit Character' : 'New Character'}
           </h2>
           <button
             onClick={() => setCharacterEditorOpen(false)}
@@ -113,107 +113,107 @@ export default function CharacterEditor() {
               className="hidden"
             />
             <div className="text-xs text-tavern-muted">
-              <p>روی آیکون کلیک کنید برای آپلود عکس</p>
-              <p>حداکثر 2 مگابایت</p>
+              <p>Click the icon to upload a photo</p>
+              <p>Max 2MB</p>
             </div>
           </div>
 
-          {/* نام */}
+          {/* Name */}
           <div>
-            <label className="block text-sm font-medium mb-1">نام کاراکتر *</label>
+            <label className="block text-sm font-medium mb-1">Character Name *</label>
             <input
               value={form.name}
               onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
-              placeholder="نام کاراکتر"
+              placeholder="Character name"
             />
           </div>
 
-          {/* توضیحات */}
+          {/* Description */}
           <div>
-            <label className="block text-sm font-medium mb-1">توضیحات</label>
+            <label className="block text-sm font-medium mb-1">Description</label>
             <textarea
               value={form.description}
               onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
               rows={4}
-              placeholder="ظاهر فیزیکی، شخصیت پایه، ویژگی‌های کلیدی..."
+              placeholder="Physical appearance, core personality, key traits..."
             />
           </div>
 
-          {/* شخصیت */}
+          {/* Personality */}
           <div>
-            <label className="block text-sm font-medium mb-1">صفات شخصیتی</label>
+            <label className="block text-sm font-medium mb-1">Personality Traits</label>
             <input
               value={form.personality}
               onChange={(e) => setForm(f => ({ ...f, personality: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
-              placeholder="مثلاً: مرموز، مهربان، باهوش"
+              placeholder="e.g. mysterious, kind, clever"
             />
           </div>
 
-          {/* سناریو */}
+          {/* Scenario */}
           <div>
-            <label className="block text-sm font-medium mb-1">سناریو</label>
+            <label className="block text-sm font-medium mb-1">Scenario</label>
             <textarea
               value={form.scenario}
               onChange={(e) => setForm(f => ({ ...f, scenario: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
               rows={2}
-              placeholder="موقعیت و شرایط اولیه مکالمه"
+              placeholder="The opening situation of the conversation"
             />
           </div>
 
-          {/* پیام اول */}
+          {/* First message */}
           <div>
-            <label className="block text-sm font-medium mb-1">اولین پیام</label>
+            <label className="block text-sm font-medium mb-1">First Message</label>
             <textarea
               value={form.first_mes}
               onChange={(e) => setForm(f => ({ ...f, first_mes: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
               rows={3}
-              placeholder="پیام شروع کاراکتر"
+              placeholder="The character's opening message"
             />
           </div>
 
-          {/* مثال‌های دیالوگ */}
+          {/* Dialogue examples */}
           <div>
-            <label className="block text-sm font-medium mb-1">مثال‌های دیالوگ</label>
+            <label className="block text-sm font-medium mb-1">Example Dialogues</label>
             <textarea
               value={form.mes_example}
               onChange={(e) => setForm(f => ({ ...f, mes_example: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none font-mono text-xs"
               rows={5}
-              placeholder={`<START>\n{{char}}: سلام...\n{{user}}: سلام...\n<END>`}
+              placeholder={`<START>\n{{char}}: Hello...\n{{user}}: Hi...\n<END>`}
             />
           </div>
 
-          {/* لوربوک */}
+          {/* Lorebook */}
           <div>
-            <label className="block text-sm font-medium mb-1">لوربوک پیش‌فرض</label>
+            <label className="block text-sm font-medium mb-1">Default Lorebook</label>
             <select
               value={form.lorebook_id}
               onChange={(e) => setForm(f => ({ ...f, lorebook_id: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
             >
-              <option value="">بدون لوربوک</option>
+              <option value="">No lorebook</option>
               {lorebooks.map(lb => (
                 <option key={lb.id} value={lb.id}>{lb.name}</option>
               ))}
             </select>
-            <p className="text-xs text-tavern-muted mt-1">لوربوک انتخاب شده در همه چت‌های این کاراکتر فعال می‌شه</p>
+            <p className="text-xs text-tavern-muted mt-1">The selected lorebook is active in all chats with this character</p>
           </div>
 
-          {/* برچسب‌ها */}
+          {/* Tags */}
           <div>
-            <label className="block text-sm font-medium mb-1">برچسب‌ها</label>
+            <label className="block text-sm font-medium mb-1">Tags</label>
             <div className="flex gap-2">
               <input
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
                 className="flex-1 bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
-                placeholder="اضافه کردن برچسب"
+                placeholder="Add a tag"
               />
               <button onClick={addTag} className="bg-tavern-accent text-white px-3 py-2 rounded-lg text-sm">
                 +
@@ -237,15 +237,15 @@ export default function CharacterEditor() {
             </div>
           </div>
 
-          {/* یادداشت سازنده */}
+          {/* Creator notes */}
           <div>
-            <label className="block text-sm font-medium mb-1">یادداشت‌های سازنده</label>
+            <label className="block text-sm font-medium mb-1">Creator Notes</label>
             <textarea
               value={form.creator_notes}
               onChange={(e) => setForm(f => ({ ...f, creator_notes: e.target.value }))}
               className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
               rows={2}
-              placeholder="یادداشت‌ها (به AI ارسال نمی‌شود)"
+              placeholder="Notes (not sent to the AI)"
             />
           </div>
         </div>
@@ -255,14 +255,14 @@ export default function CharacterEditor() {
             onClick={() => setCharacterEditorOpen(false)}
             className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm"
           >
-            لغو
+            Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!form.name.trim()}
             className="px-6 py-2 bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded-lg text-sm font-medium"
           >
-            {editingCharacter ? 'ذخیره' : 'ایجاد'}
+            {editingCharacter ? 'Save' : 'Create'}
           </button>
         </div>
       </div>

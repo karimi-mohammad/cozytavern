@@ -34,7 +34,9 @@ export default function MessageBubble({
   onEditMessage, onDeleteMessage, onBranch,
   currentCharacter, currentChat, activePersona, isGenerating,
 }: Props) {
-  const { swipeMessage, regenerateMessage } = useStore();
+  const { swipeMessage, regenerateMessage, markChapterBoundary, chapterStartId, chapterEndId } = useStore();
+  const isMarkedStart = chapterStartId === message.id;
+  const isMarkedEnd = chapterEndId === message.id;
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [showControls, setShowControls] = useState(false);
@@ -200,6 +202,38 @@ export default function MessageBubble({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
               </svg>
             </button>
+            {/* Chapter start / end markers */}
+            {currentChat && (
+              <>
+                <div className="w-px h-3.5 bg-tavern-border/50 mx-0.5" />
+                <button
+                  onClick={() => markChapterBoundary('start', message.id)}
+                  className={`p-1 rounded-md transition-colors ${
+                    isMarkedStart
+                      ? 'bg-emerald-500/20 text-emerald-400 opacity-100'
+                      : `text-tavern-dim hover:text-emerald-400 hover:bg-tavern-hover ${showControls ? 'opacity-100' : 'opacity-0'}`
+                  }`}
+                  title={isMarkedStart ? 'Remove chapter start marker' : 'Start chapter here'}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => markChapterBoundary('end', message.id)}
+                  className={`p-1 rounded-md transition-colors ${
+                    isMarkedEnd
+                      ? 'bg-red-500/20 text-red-400 opacity-100'
+                      : `text-tavern-dim hover:text-red-400 hover:bg-tavern-hover ${showControls ? 'opacity-100' : 'opacity-0'}`
+                  }`}
+                  title={isMarkedEnd ? 'Remove chapter end marker' : 'End chapter here'}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
             {/* Regenerate - only for assistant last message */}
             {isAssistant && isLast && !isGenerating && (
               <button

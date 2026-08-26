@@ -14,7 +14,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(req.params.id);
   if (!persona) {
-    res.status(404).json({ error: 'پرسونا پیدا نشد' });
+    res.status(404).json({ error: 'Persona not found' });
     return;
   }
   res.json(persona);

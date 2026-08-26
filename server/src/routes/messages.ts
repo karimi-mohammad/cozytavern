@@ -11,7 +11,7 @@ router.post('/', (req: Request, res: Response) => {
   const { chat_id, role, content, is_system } = req.body;
 
   if (!chat_id || !role) {
-    res.status(400).json({ error: 'chat_id و role الزامی هستند' });
+    res.status(400).json({ error: 'chat_id and role are required' });
     return;
   }
 
@@ -38,7 +38,7 @@ router.put('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
   if (!message) {
-    res.status(404).json({ error: 'پیام پیدا نشد' });
+    res.status(404).json({ error: 'Message not found' });
     return;
   }
 
@@ -74,7 +74,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
   if (!message) {
-    res.status(404).json({ error: 'پیام پیدا نشد' });
+    res.status(404).json({ error: 'Message not found' });
     return;
   }
 
@@ -93,7 +93,7 @@ router.post('/regenerate/:chatId', (req: Request, res: Response) => {
   ).get(req.params.chatId) as any;
 
   if (!lastMsg) {
-    res.status(404).json({ error: 'پیامی برای بازسازی پیدا نشد' });
+    res.status(404).json({ error: 'No message to regenerate was found' });
     return;
   }
 
@@ -119,7 +119,7 @@ router.post('/swipe/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
   if (!message) {
-    res.status(404).json({ error: 'پیام پیدا نشد' });
+    res.status(404).json({ error: 'Message not found' });
     return;
   }
 

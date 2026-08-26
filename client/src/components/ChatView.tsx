@@ -4,9 +4,13 @@ import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import CharacterAvatar from './CharacterAvatar';
 import { ChatSkeleton } from './LoadingSkeleton';
+import { Chapter } from '../types';
+import ChapterEditor from './ChapterEditor';
+import ChapterSuggestion from './ChapterSuggestion';
 
 export default function ChatView() {
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
+  const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
 
   const {
     currentCharacter, currentChat, characters, chats,
@@ -16,6 +20,7 @@ export default function ChatView() {
     editMessage, deleteMessage, branchChat,
     activePersona, isGenerating, showConfirm,
     loadingMessages, loadingCharacters, loadingChats,
+    chapters,
   } = useStore();
 
   const handleBranch = async (messageId: string, sendDate: string) => {
@@ -193,11 +198,20 @@ export default function ChatView() {
             activePersona={activePersona}
             isGenerating={isGenerating}
             loadingMessages={loadingMessages}
+            chapters={chapters}
             onEditMessage={editMessage}
             onDeleteMessage={handleDeleteMessage}
             onBranch={handleBranch}
+            onChapterClick={(ch) => setEditingChapter(ch)}
           />
           <MessageInput />
+          <ChapterSuggestion />
+          {editingChapter && (
+            <ChapterEditor
+              chapter={editingChapter}
+              onClose={() => setEditingChapter(null)}
+            />
+          )}
         </>
       ) : (
         <div className="flex-1 overflow-y-auto">

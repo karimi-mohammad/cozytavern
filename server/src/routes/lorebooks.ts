@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { getPluginSettings } from '../utils/plugin-store';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(req.params.id) as any;
   if (!lorebook) {
-    res.status(404).json({ error: 'لوربوک پیدا نشد' });
+    res.status(404).json({ error: 'Lorebook not found' });
     return;
   }
   const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ? ORDER BY insertion_order ASC')
@@ -31,17 +32,24 @@ router.get('/:id', (req: Request, res: Response) => {
   res.json({ ...lorebook, entries });
 });
 
-// ایجاد لوربوک جدید
+// ایجاد لوربوک جدید (پیش‌فرض‌های scan_depth/token_budget از پلاگین lorebook_scanner)
 router.post('/', (req: Request, res: Response) => {
   const db = getDb();
   const id = uuidv4();
   const now = new Date().toISOString();
   const { name, scan_depth, token_budget } = req.body;
+  const scannerDefaults = getPluginSettings(db, 'lorebook_scanner');
 
   db.prepare(`
     INSERT INTO lorebooks (id, name, scan_depth, token_budget, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(id, name || 'لوربوک جدید', scan_depth ?? 50, token_budget ?? 500, now);
+  `).run(
+    id,
+    name || 'New Lorebook',
+    scan_depth ?? scannerDefaults?.default_scan_depth ?? 50,
+    token_budget ?? scannerDefaults?.default_token_budget ?? 500,
+    now,
+  );
 
   const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(id);
   res.status(201).json(lorebook);

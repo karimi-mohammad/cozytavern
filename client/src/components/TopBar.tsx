@@ -10,6 +10,7 @@ export default function TopBar() {
     setCharacterEditorOpen, editingCharacter,
     activePanel, setActivePanel, panelOpen,
     regenerateMessage, contextUsage,
+    promptInspectEnabled, togglePromptInspect,
   } = useStore();
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
@@ -90,22 +91,42 @@ export default function TopBar() {
       <div className="flex items-center gap-2 ml-auto mr-auto">
         <span className="text-[10px] text-tavern-dim font-mono">{model}</span>
         {contextUsage && currentChat && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-24 h-1.5 bg-tavern-border rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  contextUsage.percentage < 50
-                    ? 'bg-emerald-500'
-                    : contextUsage.percentage < 80
-                    ? 'bg-amber-500'
-                    : 'bg-red-500'
-                }`}
-                style={{ width: `${Math.min(100, contextUsage.percentage)}%` }}
-              />
+          <div className="relative group">
+            <div className="flex items-center gap-1.5 cursor-default">
+              <div className="w-24 h-1.5 bg-tavern-border rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    contextUsage.percentage < 50
+                      ? 'bg-emerald-500'
+                      : contextUsage.percentage < 80
+                      ? 'bg-amber-500'
+                      : 'bg-red-500'
+                  }`}
+                  style={{ width: `${Math.min(100, contextUsage.percentage)}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-tavern-dim font-mono whitespace-nowrap">
+                {formatTokenCount(contextUsage.used)}/{formatTokenCount(contextUsage.max)}
+              </span>
             </div>
-            <span className="text-[10px] text-tavern-dim font-mono whitespace-nowrap">
-              {formatTokenCount(contextUsage.used)}/{formatTokenCount(contextUsage.max)}
-            </span>
+            {/* Tooltip with breakdown */}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl p-3 text-[10px] space-y-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[180px]">
+              <div className="font-medium text-tavern-text mb-1.5">Context Breakdown</div>
+              {[
+                { label: 'System', value: contextUsage.breakdown.system },
+                { label: 'Character', value: contextUsage.breakdown.character },
+                { label: 'Lorebook', value: contextUsage.breakdown.lorebook },
+                { label: 'Persona', value: contextUsage.breakdown.persona },
+                { label: 'Chapters', value: contextUsage.breakdown.chapters },
+                { label: 'History', value: contextUsage.breakdown.history },
+                { label: 'Overhead', value: contextUsage.breakdown.overhead },
+              ].filter(item => item.value > 0).map(item => (
+                <div key={item.label} className="flex justify-between text-tavern-textDim">
+                  <span>{item.label}</span>
+                  <span className="font-mono">{formatTokenCount(item.value)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -141,6 +162,20 @@ export default function TopBar() {
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+
+        <button
+          onClick={togglePromptInspect}
+          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+            promptInspectEnabled
+              ? 'bg-tavern-accent/20 text-tavern-accent'
+              : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'
+          }`}
+          title="Preview the prompt before sending (/inspect)"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l-3 3 3 3m8-6l3 3-3 3M13 6l-2 12" />
           </svg>
         </button>
 

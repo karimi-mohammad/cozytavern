@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '../store/state';
 
 interface SlashCommand {
@@ -9,17 +9,20 @@ interface SlashCommand {
 
 const COMMANDS: SlashCommand[] = [
   { name: '/regenerate', aliases: ['/regen'], description: 'Regenerate last AI response' },
+  { name: '/inspect', aliases: ['/debug'], description: 'Preview the prompt before each LLM request' },
 ];
 
 export default function MessageInput() {
   const [content, setContent] = useState('');
   const [showCommandPopup, setShowCommandPopup] = useState(false);
   const [selectedCommandIdx, setSelectedCommandIdx] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const {
     sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat,
     swipeMessage, continueGeneration, impersonateMessage,
     regenerateMessage, deleteMessage, addToast,
-    setActivePanel,
+    setActivePanel, togglePromptInspect, promptInspectEnabled,
   } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -39,6 +42,18 @@ export default function MessageInput() {
       setShowCommandPopup(false);
     }
   }, [content]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
 
   // Filter commands based on input
   const filteredCommands = COMMANDS.filter(cmd => {
@@ -74,6 +89,14 @@ export default function MessageInput() {
         }, 100);
         return;
       }
+    }
+
+    // Toggle prompt inspector
+    if (cmd === '/inspect' || cmd === '/debug') {
+      togglePromptInspect();
+      const next = useStore.getState().promptInspectEnabled;
+      addToast(next ? 'Prompt preview enabled' : 'Prompt preview disabled', 'info');
+      return;
     }
 
     addToast(`Unknown command: ${command}`, 'error');
@@ -178,10 +201,10 @@ export default function MessageInput() {
 
       {/* Main input row */}
       <div className="flex items-end gap-2 px-4 py-2">
-        {/* Left: hamburger icon */}
-        <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
+        {/* Left: hamburger icon + command menu */}
+        <div className="flex items-center gap-1 flex-shrink-0 pb-0.5 relative" ref={menuRef}>
           <button
-            onClick={() => setActivePanel('chats')}
+            onClick={() => setShowMenu(!showMenu)}
             className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
             title="Menu"
           >
@@ -189,6 +212,44 @@ export default function MessageInput() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+
+          {/* Command menu popover */}
+          {showMenu && (
+            <div className="absolute bottom-full left-0 mb-2 min-w-[180px]">
+              <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl overflow-hidden">
+                <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
+                  Commands
+                </div>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    handleSlashCommand('/regenerate');
+                  }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2.5 hover:bg-tavern-hover text-tavern-text transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-sm">Regenerate</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    handleSlashCommand('/inspect');
+                  }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2.5 hover:bg-tavern-hover text-tavern-text transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l-3 3 3 3m8-6l3 3-3 3M13 6l-2 12" />
+                  </svg>
+                  <span className="text-sm flex-1">Prompt Preview</span>
+                  {promptInspectEnabled && (
+                    <span className="w-2 h-2 rounded-full bg-tavern-accent flex-shrink-0" title="Active" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Center: textarea */}
