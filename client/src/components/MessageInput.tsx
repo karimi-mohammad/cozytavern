@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '../store/state';
+import type { QuickReplySettings } from '../types';
+import CharacterAvatar from './CharacterAvatar';
 
 interface SlashCommand {
   name: string;
@@ -17,12 +19,16 @@ export default function MessageInput() {
   const [showCommandPopup, setShowCommandPopup] = useState(false);
   const [selectedCommandIdx, setSelectedCommandIdx] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [showGroupCharPicker, setShowGroupCharPicker] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const groupPickerRef = useRef<HTMLDivElement>(null);
   const {
     sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat,
     swipeMessage, continueGeneration, impersonateMessage,
     regenerateMessage, deleteMessage, addToast,
     setActivePanel, togglePromptInspect, promptInspectEnabled,
+    quickReplySettings,
+    groupChatParticipants, characters, generateGroupResponse, selectedCharacterForResponse, setSelectedCharacterForResponse,
   } = useStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -54,6 +60,22 @@ export default function MessageInput() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
+
+  // Close group char picker when clicking outside
+  useEffect(() => {
+    if (!showGroupCharPicker) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (groupPickerRef.current && !groupPickerRef.current.contains(e.target as Node)) {
+        setShowGroupCharPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showGroupCharPicker]);
+
+  // Check if current chat is a group chat
+  const isGroupChat = !!currentChat?.is_group_chat;
+  const activeParticipants = groupChatParticipants.filter(p => p.is_active);
 
   // Filter commands based on input
   const filteredCommands = COMMANDS.filter(cmd => {
@@ -171,15 +193,41 @@ export default function MessageInput() {
   const hasSwipes = lastAssistantMsg && lastAssistantMsg.swipes && lastAssistantMsg.swipes.length > 0;
   const canContinue = !isGenerating && currentChat && lastAssistantMsg && currentChat.messages.length > 0;
 
+  // Group chat selected character for response
+  const handleGroupGenerate = () => {
+    if (!currentChat || !selectedCharacterForResponse) return;
+    generateGroupResponse(currentChat.id, selectedCharacterForResponse);
+  };
+
   return (
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
+      {/* Quick Reply Bar */}
+      {quickReplySettings?.enabled && quickReplySettings.replies.length > 0 && !isGenerating && currentChat && (
+        <div className="border-b border-tavern-border/50 px-4 py-1.5 overflow-x-auto">
+          <div className="flex gap-1.5 min-w-0">
+            {quickReplySettings.replies.map((r, i) => (
+              <button
+                key={`${r.label}-${i}`}
+                onClick={() => sendMessage(r.message)}
+                className="flex-shrink-0 px-3 py-1 bg-tavern-card border border-tavern-border/60 rounded-full text-xs text-tavern-dim hover:text-tavern-accent hover:border-tavern-accent/30 transition-colors whitespace-nowrap"
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="max-w-[50vw] mx-auto">
       {/* Slash Command Popup */}
       {showCommandPopup && filteredCommands.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 mx-4 mb-1">
-          <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl overflow-hidden">
-            <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
-              Commands
+          <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 overflow-hidden animate-pop-up origin-bottom-left">
+            <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50 flex items-center justify-between">
+              <span>Commands</span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-px bg-tavern-input border border-tavern-border rounded text-[9px] font-mono">↑↓</kbd>
+                <kbd className="px-1 py-px bg-tavern-input border border-tavern-border rounded text-[9px] font-mono">Tab</kbd>
+              </span>
             </div>
             {filteredCommands.map((cmd, idx) => (
               <button
@@ -216,7 +264,7 @@ export default function MessageInput() {
           {/* Command menu popover */}
           {showMenu && (
             <div className="absolute bottom-full left-0 mb-2 min-w-[180px]">
-              <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl overflow-hidden">
+              <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 overflow-hidden animate-pop-up origin-bottom-left">
                 <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
                   Commands
                 </div>
@@ -244,7 +292,7 @@ export default function MessageInput() {
                   </svg>
                   <span className="text-sm flex-1">Prompt Preview</span>
                   {promptInspectEnabled && (
-                    <span className="w-2 h-2 rounded-full bg-tavern-accent flex-shrink-0" title="Active" />
+                    <span className="w-2 h-2 rounded-full bg-tavern-accent flex-shrink-0 animate-pulse" title="Active" />
                   )}
                 </button>
               </div>
@@ -269,10 +317,10 @@ export default function MessageInput() {
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-accent hover:text-tavern-accent-hover hover:bg-tavern-accent/10 transition-colors disabled:opacity-30"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-accent hover:text-tavern-accent-hover hover:bg-tavern-accent/10 transition-all active:scale-90 disabled:opacity-30"
             title="Send"
           >
-            <svg className="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-[18px] h-[18px] ${content.trim() && !isGenerating ? 'drop-shadow-[0_0_4px_rgba(102,102,204,0.5)]' : ''}`} fill="currentColor" viewBox="0 0 24 24">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
             </svg>
           </button>
@@ -281,8 +329,77 @@ export default function MessageInput() {
 
       {/* Bottom row: swipe controls + Generate button */}
       <div className="flex items-center justify-between px-4 pb-2">
-        {/* Left: swipe arrows + continue + impersonate */}
+        {/* Left: swipe arrows + continue + impersonate + group chat char picker */}
         <div className="flex items-center gap-1">
+          {/* Group Chat Character Picker */}
+          {isGroupChat && activeParticipants.length > 0 && (
+            <div className="relative" ref={groupPickerRef}>
+              <button
+                onClick={() => setShowGroupCharPicker(!showGroupCharPicker)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-tavern-input border border-tavern-border hover:border-tavern-accent/50 transition-colors"
+                title="Select character to respond"
+              >
+                {selectedCharacterForResponse ? (
+                  (() => {
+                    const char = characters.find(c => c.id === selectedCharacterForResponse);
+                    const participant = groupChatParticipants.find(p => p.character_id === selectedCharacterForResponse);
+                    return (
+                      <>
+                        <CharacterAvatar
+                          name={char?.name || participant?.display_name || '?'}
+                          avatar={char?.avatar || participant?.display_avatar}
+                          size="sm"
+                        />
+                        <span className="text-xs text-tavern-text truncate max-w-[60px]">
+                          {char?.name || participant?.display_name}
+                        </span>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <span className="text-xs text-tavern-dim">Select char...</span>
+                )}
+                <svg className="w-3 h-3 text-tavern-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showGroupCharPicker && (
+                <div className="absolute bottom-full left-0 mb-2 min-w-[160px]">
+                  <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 overflow-hidden animate-pop-up origin-bottom-left">
+                    <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
+                      Respond as...
+                    </div>
+                    {activeParticipants.map(p => {
+                      const char = characters.find(c => c.id === p.character_id);
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedCharacterForResponse(p.character_id);
+                            setShowGroupCharPicker(false);
+                          }}
+                          className={`w-full px-3 py-2 text-left flex items-center gap-2 transition-colors ${
+                            selectedCharacterForResponse === p.character_id
+                              ? 'bg-tavern-accent/15 text-tavern-accent'
+                              : 'hover:bg-tavern-hover text-tavern-text'
+                          }`}
+                        >
+                          <CharacterAvatar
+                            name={char?.name || p.display_name}
+                            avatar={char?.avatar || p.display_avatar}
+                            size="sm"
+                          />
+                          <span className="text-sm truncate">{char?.name || p.display_name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {hasSwipes && lastAssistantMsg && (
             <>
               <button
@@ -309,7 +426,7 @@ export default function MessageInput() {
             </>
           )}
           {/* Continue button */}
-          {canContinue && (
+          {canContinue && !isGroupChat && (
             <button
               onClick={continueGeneration}
               className="text-tavern-dim hover:text-tavern-accent p-1 rounded-md hover:bg-tavern-hover transition-colors ml-1"
@@ -321,7 +438,7 @@ export default function MessageInput() {
             </button>
           )}
           {/* Impersonate button */}
-          {canContinue && (
+          {canContinue && !isGroupChat && (
             <button
               onClick={impersonateMessage}
               className="text-tavern-dim hover:text-tavern-accent p-1 rounded-md hover:bg-tavern-hover transition-colors"
@@ -338,7 +455,7 @@ export default function MessageInput() {
         {isGenerating ? (
           <button
             onClick={stopGeneration}
-            className="px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg bg-red-500/90 hover:bg-red-500 text-white shadow-red-500/20"
+            className="px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg bg-red-500/90 hover:bg-red-500 text-white shadow-red-500/20 active:scale-[0.97] animate-fade-in"
             title="Stop generation"
           >
             <span className="flex items-center gap-1.5">
@@ -348,12 +465,22 @@ export default function MessageInput() {
               Stop
             </span>
           </button>
+        ) : isGroupChat ? (
+          <button
+            onClick={handleGroupGenerate}
+            disabled={!selectedCharacterForResponse || isGenerating}
+            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg active:scale-[0.97] ${
+              'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 hover:shadow-tavern-cta/40 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
+            }`}
+          >
+            Generate as Character
+          </button>
         ) : (
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}
-            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg ${
-              'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
+            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg active:scale-[0.97] ${
+              'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 hover:shadow-tavern-cta/40 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
             }`}
           >
             Generate

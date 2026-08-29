@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
 import PluginsPanel from './PluginsPanel';
@@ -10,14 +10,16 @@ export default function Sidebar() {
     characters, currentCharacter, chats, currentChat,
     selectCharacter, selectChat, createChat, deleteCharacter, deleteChat, renameChat, moveChatToFolder,
     setCharacterEditorOpen, setSettingsOpen, setActivePanel,
+    exportChatAction, importChatFile, importCharacterFromFile, exportCharacter,
     personas, activePersona, setActivePersona,
     lorebooks, activeLorebook, setActiveLorebook,
     loadLorebooks, setLorebookEditorOpen, setPersonaEditorOpen,
+    exportBackup, restoreBackupFile, setTheme, theme,
     showConfirm, addToast,
     activePanel, panelOpen,
-    theme, setTheme,
     loadingCharacters, loadingChats, loadingPersonas, loadingLorebooks,
     chapters, chapterSettings,
+    createGroupChat, selectChat: selectChatAction,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -29,6 +31,10 @@ export default function Sidebar() {
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
   const [folderDropdownChatId, setFolderDropdownChatId] = useState<string | null>(null);
+  const [showGroupChatDialog, setShowGroupChatDialog] = useState(false);
+  const [groupChatName, setGroupChatName] = useState('');
+  const [selectedGroupChars, setSelectedGroupChars] = useState<string[]>([]);
+  const chatImportRef = useRef<HTMLInputElement>(null);
 
   const isMobile = () => window.innerWidth < 768;
   const closeSidebarIfMobile = () => { if (isMobile()) useStore.setState({ panelOpen: false }); };
@@ -55,8 +61,6 @@ export default function Sidebar() {
     if (ok) deleteChat(id);
   };
 
-  if (!panelOpen) return null;
-
   const renderCharactersPanel = () => (
     <div className="flex-1 overflow-y-auto">
       {/* Search */}
@@ -73,12 +77,32 @@ export default function Sidebar() {
       <div className="px-3 pb-2">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-tavern-dim font-medium">Characters</span>
-          <button
-            onClick={() => setCharacterEditorOpen(true)}
-            className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
-          >
-            + New
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,.png';
+                input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) importCharacterFromFile(file);
+                };
+                input.click();
+              }}
+              className="text-tavern-dim hover:text-tavern-accent text-xs font-medium px-1.5 py-0.5 rounded hover:bg-tavern-hover transition-colors"
+              title="Import Character (JSON or PNG)"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setCharacterEditorOpen(true)}
+              className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
+            >
+              + New
+            </button>
+          </div>
         </div>
         {loadingCharacters ? (
           <CharacterSkeleton />
@@ -86,7 +110,7 @@ export default function Sidebar() {
           filteredCharacters.map(char => (
             <div
               key={char.id}
-              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors ${
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-all duration-150 group relative overflow-hidden ${
                 currentCharacter?.id === char.id
                   ? 'bg-tavern-accent/20 text-tavern-accent'
                   : 'hover:bg-tavern-hover text-tavern-text'
@@ -98,18 +122,38 @@ export default function Sidebar() {
                   <CharacterAvatar name={char.name} avatar={char.avatar} size="sm" />
                   <span className="text-sm truncate font-medium">{char.name}</span>
                 </div>
-                <div className="flex gap-0.5 flex-shrink-0">
+                <div className="flex gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => { e.stopPropagation(); setCharacterEditorOpen(true, char); }}
-                    className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
+                    className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors active:scale-90"
+                    title="Edit"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
                   </button>
                   <button
+                    onClick={(e) => { e.stopPropagation(); exportCharacter(char.id, 'json'); }}
+                    className="text-tavern-dim hover:text-tavern-accent text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors active:scale-90"
+                    title="Export JSON"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); exportCharacter(char.id, 'png'); }}
+                    className="text-tavern-dim hover:text-tavern-accent text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors active:scale-90"
+                    title="Export PNG"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteCharacter(char.id); }}
-                    className="text-tavern-dim hover:text-tavern-danger text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
+                    className="text-tavern-dim hover:text-tavern-danger text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors active:scale-90"
+                    title="Delete"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -148,11 +192,38 @@ export default function Sidebar() {
               </svg>
             </button>
             <button
+              onClick={() => setShowGroupChatDialog(true)}
+              className="text-tavern-dim hover:text-tavern-accent text-xs px-1.5 py-0.5 rounded border border-tavern-border hover:border-tavern-accent/30 transition-colors"
+              title="New group chat"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <button
               onClick={() => createChat(currentCharacter.id)}
               className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
             >
               + New
             </button>
+            <button
+              onClick={() => chatImportRef.current?.click()}
+              className="text-tavern-dim hover:text-tavern-accent text-xs px-1.5 py-0.5 rounded border border-tavern-border hover:border-tavern-accent/30 transition-colors"
+              title="Import chat from file"
+            >
+              ↓
+            </button>
+            <input
+              ref={chatImportRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && currentCharacter) importChatFile(currentCharacter.id, file);
+                e.target.value = '';
+              }}
+            />
           </div>
         </div>
 
@@ -210,7 +281,7 @@ export default function Sidebar() {
             const renderChatItem = (chat: typeof chats[0]) => (
             <div
               key={chat.id}
-              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-colors flex items-center justify-between group ${
+              className={`p-2.5 rounded-lg cursor-pointer mb-1 transition-all duration-150 flex items-center justify-between group ${
                 currentChat?.id === chat.id
                   ? 'bg-tavern-accent/20 text-tavern-accent'
                   : 'hover:bg-tavern-hover text-tavern-text'
@@ -270,33 +341,46 @@ export default function Sidebar() {
                     </svg>
                   </button>
                   {folderDropdownChatId === chat.id && (
-                    <div className="absolute left-0 top-full mt-1 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl z-50 py-1 min-w-[140px]">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          moveChatToFolder(chat.id, '');
-                          setFolderDropdownChatId(null);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors ${!chat.folder ? 'text-tavern-accent' : 'text-tavern-text'}`}
-                      >
-                        No folder
-                      </button>
-                      {chatFolders.map(folder => (
+                    <>
+                      {/* لایه نامرئی برای بستن منو با کلیک بیرون */}
+                      <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setFolderDropdownChatId(null); }} />
+                      <div className="absolute left-0 top-full mt-1 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 z-50 py-1 min-w-[140px] animate-pop-in origin-top-left">
                         <button
-                          key={folder}
                           onClick={(e) => {
                             e.stopPropagation();
-                            moveChatToFolder(chat.id, folder);
+                            moveChatToFolder(chat.id, '');
                             setFolderDropdownChatId(null);
                           }}
-                          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors ${chat.folder === folder ? 'text-tavern-accent' : 'text-tavern-text'}`}
+                          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors ${!chat.folder ? 'text-tavern-accent' : 'text-tavern-text'}`}
                         >
-                          {folder}
+                          No folder
                         </button>
-                      ))}
-                    </div>
+                        {chatFolders.map(folder => (
+                          <button
+                            key={folder}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveChatToFolder(chat.id, folder);
+                              setFolderDropdownChatId(null);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors ${chat.folder === folder ? 'text-tavern-accent' : 'text-tavern-text'}`}
+                          >
+                            {folder}
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); exportChatAction(chat.id, chat.name); }}
+                  className="text-tavern-dim hover:text-tavern-accent text-xs p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-tavern-hover"
+                  title="Export chat"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }}
                   className="text-tavern-dim hover:text-tavern-danger text-xs p-1.5 rounded-md hover:bg-tavern-hover transition-colors"
@@ -356,6 +440,8 @@ export default function Sidebar() {
     );
   };
 
+  const backupImportRef = useRef<HTMLInputElement>(null);
+
   const renderSettingsPanel = () => (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {/* API Settings */}
@@ -386,6 +472,43 @@ export default function Sidebar() {
               {t}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Backup & Restore */}
+      <div>
+        <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">Backup & Restore</h3>
+        <div className="space-y-2">
+          <button
+            onClick={() => exportBackup()}
+            className="w-full p-2.5 bg-tavern-input border border-tavern-border rounded-lg text-sm hover:bg-tavern-hover transition-colors text-left text-tavern-text flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-tavern-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download Backup
+          </button>
+          <button
+            onClick={() => backupImportRef.current?.click()}
+            className="w-full p-2.5 bg-tavern-input border border-tavern-border rounded-lg text-sm hover:bg-tavern-hover transition-colors text-left text-tavern-text flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-tavern-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Restore from Backup
+          </button>
+          <input
+            ref={backupImportRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) restoreBackupFile(file);
+              e.target.value = '';
+            }}
+          />
+          <p className="text-[10px] text-tavern-muted">⚠ Restore replaces ALL data including characters, chats, and settings.</p>
         </div>
       </div>
 
@@ -575,7 +698,7 @@ export default function Sidebar() {
     settings: 'Settings',
   };
 
-  return (
+  return panelOpen ? (
     <div className="absolute left-0 top-0 bottom-0 w-72 bg-tavern-surface border-r border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl">
       {/* Panel Header */}
       <div className="h-[50px] border-b border-tavern-border flex items-center justify-between px-3 flex-shrink-0">
@@ -598,6 +721,114 @@ export default function Sidebar() {
       {activePanel === 'plugins' && <PluginsPanel />}
       {activePanel === 'chapters' && renderChaptersPanel()}
       {activePanel === 'settings' && renderSettingsPanel()}
+
+      {/* Group Chat Creation Dialog */}
+      {showGroupChatDialog && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-tavern-surface border border-tavern-border rounded-xl shadow-2xl w-80 max-h-[80vh] overflow-hidden animate-pop-in">
+            <div className="px-4 py-3 border-b border-tavern-border flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-tavern-text-bright">Create Group Chat</h3>
+              <button
+                onClick={() => { setShowGroupChatDialog(false); setSelectedGroupChars([]); setGroupChatName(''); }}
+                className="text-tavern-dim hover:text-tavern-text p-1 rounded hover:bg-tavern-hover transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Chat name */}
+              <div>
+                <label className="text-xs text-tavern-dim mb-1 block">Chat Name (optional)</label>
+                <input
+                  value={groupChatName}
+                  onChange={(e) => setGroupChatName(e.target.value)}
+                  placeholder="Group Chat..."
+                  className="w-full bg-tavern-input border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent text-tavern-text placeholder-tavern-dim"
+                />
+              </div>
+
+              {/* Character selection */}
+              <div>
+                <label className="text-xs text-tavern-dim mb-1 block">
+                  Select Characters ({selectedGroupChars.length} selected)
+                </label>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {characters.map(char => {
+                    const isSelected = selectedGroupChars.includes(char.id);
+                    return (
+                      <button
+                        key={char.id}
+                        onClick={() => {
+                          setSelectedGroupChars(prev =>
+                            isSelected ? prev.filter(id => id !== char.id) : [...prev, char.id]
+                          );
+                        }}
+                        className={`w-full flex items-center gap-2 p-2 rounded-lg transition-all text-left ${
+                          isSelected
+                            ? 'bg-tavern-accent/20 border border-tavern-accent/30'
+                            : 'hover:bg-tavern-hover border border-transparent'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                          isSelected ? 'bg-tavern-accent border-tavern-accent' : 'border-tavern-border'
+                        }`}>
+                          {isSelected && (
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <CharacterAvatar name={char.name} avatar={char.avatar} size="sm" />
+                        <span className="text-sm text-tavern-text truncate">{char.name}</span>
+                      </button>
+                    );
+                  })}
+                  {characters.length === 0 && (
+                    <p className="text-xs text-tavern-dim text-center py-4">No characters created yet</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-4 py-3 border-t border-tavern-border flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowGroupChatDialog(false); setSelectedGroupChars([]); setGroupChatName(''); }}
+                className="px-4 py-1.5 text-sm text-tavern-dim hover:text-tavern-text rounded-lg hover:bg-tavern-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (selectedGroupChars.length < 1) {
+                    addToast('Select at least one character', 'error');
+                    return;
+                  }
+                  try {
+                    const chat = await createGroupChat({
+                      name: groupChatName.trim() || undefined,
+                      character_ids: selectedGroupChars,
+                    });
+                    await selectChatAction(chat.id);
+                    setShowGroupChatDialog(false);
+                    setSelectedGroupChars([]);
+                    setGroupChatName('');
+                  } catch (error: any) {
+                    addToast(`Error: ${error.message}`, 'error');
+                  }
+                }}
+                disabled={selectedGroupChars.length < 1}
+                className="px-4 py-1.5 text-sm bg-tavern-accent text-white rounded-lg font-medium hover:bg-tavern-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Create ({selectedGroupChars.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  ) : null;
 }

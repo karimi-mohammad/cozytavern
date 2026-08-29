@@ -10,12 +10,150 @@ import apiSettingsRouter from './routes/api-settings';
 import personasRouter from './routes/personas';
 import lorebooksRouter from './routes/lorebooks';
 import chaptersRouter from './routes/chapters';
+import groupChatsRouter from './routes/group-chats';
 import pluginsRouter from './routes/plugins';
+import backupRouter from './routes/backup';
+import storyStateRouter from './routes/story-state';
 import { getChapterSettingsCompat } from './utils/plugin-store';
-import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunk, parseNonStreamingResponse } from './utils/providers';
-import { buildPrompt, activateWorldInfo } from './utils/prompt-builder';
+import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } from './utils/providers';
+import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition } from './utils/prompt-builder';
 import { getDb } from './db';
 import { v4 as uuidv4 } from 'uuid';
+
+// Extract state from text response (fallback when tool calling is not available)
+function extractStateFromText(text: string, characterName: string): any {
+  const state: any = {
+    characters: {},
+    relationships: {},
+    current_situation: '',
+    rules: [],
+  };
+
+  // Extract location patterns
+  const locationPatterns = [
+    new RegExp(`${characterName}\\s+(?:goes?|moves?|walks?|enters?|leaves?|arrives?|is\\s+(?:in|at|on))\\s+(?:the\\s+)?([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    new RegExp(`${characterName}(?:'s)?\\s+location\\s+(?:is|was|becomes?)\\s+(?:the\\s+)?([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    /(?:location|place|room):\s*([^\n.]+)/i,
+  ];
+
+  for (const pattern of locationPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      state.characters[characterName] = {
+        ...(state.characters[characterName] || {}),
+        location: match[1].trim(),
+      };
+      break;
+    }
+  }
+
+  // Extract clothing patterns
+  const clothingPatterns = [
+    new RegExp(`${characterName}\\s+(?:wears?|puts?\\s+on|is\\s+wearing|dressed\\s+(?:in|as))\\s+(?:a\\s+)?([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    new RegExp(`${characterName}(?:'s)?\\s+clothing\\s+(?:is|was|becomes?)\\s+([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    /(?:clothing|outfit|wear|dressed):\s*([^\n.]+)/i,
+  ];
+
+  for (const pattern of clothingPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      state.characters[characterName] = {
+        ...(state.characters[characterName] || {}),
+        clothing: match[1].trim(),
+      };
+      break;
+    }
+  }
+
+  // Extract position patterns
+  const positionPatterns = [
+    new RegExp(`${characterName}\\s+(?:sits?|stands?|lies?|kneels?|falls?|sleeps?)\\s+(?:on|in|at|near|beside|next to|behind|in front of)\\s+(?:the\\s+)?([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    new RegExp(`${characterName}(?:'s)?\\s+position\\s+(?:is|was|becomes?)\\s+([\\w\\s]+?)(?:\\.|,|!|\\?|$)`, 'i'),
+    /(?:position|posture|stance):\s*([^\n.]+)/i,
+  ];
+
+  for (const pattern of positionPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      state.characters[characterName] = {
+        ...(state.characters[characterName] || {}),
+        position: match[1].trim(),
+      };
+      break;
+    }
+  }
+
+  // Only return state if we found something
+  if (Object.keys(state.characters[characterName] || {}).length > 0) {
+    return state;
+  }
+
+  return null;
+}
+
+// Parse tool calls from text response (fallback when model outputs tool calls as text)
+function parseToolCallsFromText(text: string): any[] {
+  const toolCalls: any[] = [];
+  
+  // Pattern to match JSON-like tool call blocks in text
+  const toolCallPattern = /(?:<\|tool_call_begin\|>|<\|tool_call_begin\|>|\[TOOL_CALL\]|```json\s*\{\s*"name"\s*:\s*"update_story_state")/i;
+  
+  // Try to find update_story_state tool calls in text
+  const patterns = [
+    // Pattern 1: Standard function calling format in text
+    /update_story_state\s*\(\s*(\{[\s\S]*?\})\s*\)/gi,
+    // Pattern 2: JSON code block with function call
+    /```json\s*\{\s*"name"\s*:\s*"update_story_state"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/gi,
+    // Pattern 3: Direct JSON object with update_story_state
+    /\{\s*"name"\s*:\s*"update_story_state"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/gi,
+    // Pattern 4: <tool_call> tags (some models)
+    /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      try {
+        const argsStr = match[1];
+        const args = JSON.parse(argsStr);
+        toolCalls.push({
+          id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function',
+          function: {
+            name: 'update_story_state',
+            arguments: JSON.stringify(args),
+          },
+        });
+      } catch (e) {
+        console.log('[StoryState] Failed to parse tool call from text:', e);
+      }
+    }
+  }
+
+  return toolCalls;
+}
+
+// Deep merge for story state
+function deepMergeState(target: any, source: any): any {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return source;
+
+  const result = { ...target };
+
+  for (const key of Object.keys(source)) {
+    if (source[key] === null || source[key] === undefined) {
+      continue;
+    }
+
+    if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
+      result[key] = deepMergeState(result[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+
+  return result;
+}
 
 const app = express();
 
@@ -43,7 +181,10 @@ app.use('/api/api-settings', apiSettingsRouter);
 app.use('/api/personas', personasRouter);
 app.use('/api/lorebooks', lorebooksRouter);
 app.use('/api/chapters', chaptersRouter);
+app.use('/api/group-chats', groupChatsRouter);
 app.use('/api/plugins', pluginsRouter);
+app.use('/api/backup', backupRouter);
+app.use('/api/story-state', storyStateRouter);
 
 // Chat API endpoint (ارسال پیام به AI با streaming)
 app.post('/api/chat', async (req, res) => {
@@ -75,6 +216,20 @@ app.post('/api/chat', async (req, res) => {
     return;
   }
 
+  // دریافت Story State (حافظه وضعیت داستان)
+  const storyStateRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+  let storyState = {
+    characters: {},
+    relationships: {},
+    current_situation: '',
+    rules: [],
+  };
+  if (storyStateRow) {
+    try {
+      storyState = JSON.parse(storyStateRow.state_json);
+    } catch {}
+  }
+
   // لوربوک (اولویت: lorebook_id مستقیم > لینک چت > لینک کاراکتر)
   const effectiveLorebookId = lorebook_id || chat?.lorebook_id || character?.lorebook_id;
   let lorebookEntries: any[] = [];
@@ -93,15 +248,53 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
-  // ساخت prompt (با در نظر گرفتن chapter summaries)
+  // ساخت prompt (با در نظر گرفتن chapter summaries + raw window دینامیک)
   const chapters = db.prepare('SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC').all(chat_id) as any[];
   const chapterSettings = getChapterSettingsCompat(db);
 
-  const promptParts = buildPrompt(character, persona, messages, lorebookEntries, settings.system_prompt || '', {
+  // فیلتر کردن پیام‌ها برای regenerate: حذف محتوای قدیمی پیام آخر assistant
+  let filteredMessages = messages;
+  if (update_message_id && !continue_mode) {
+    // در حالت regenerate، محتوای پیام هدف رو خالی کن تا AI محتوای قدیمی رو نبینه
+    filteredMessages = messages.map(m =>
+      m.id === update_message_id ? { ...m, content: '' } : m
+    );
+
+    // Rollback state به snapshot قبل از پیامی که داریم regenerate می‌کنیم
+    console.log(`[StoryState] Regenerating message ${update_message_id}, rolling back state...`);
+    const snapshotToRestore = db.prepare(
+      'SELECT * FROM chat_state_snapshots WHERE chat_id = ? AND message_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(chat_id, update_message_id) as any;
+
+    if (snapshotToRestore) {
+      console.log(`[StoryState] Found snapshot, restoring state...`);
+      db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+        .run(snapshotToRestore.state_json, new Date().toISOString(), chat_id);
+    } else {
+      console.log(`[StoryState] No snapshot found for this message`);
+    }
+  }
+
+  const promptParts = buildPrompt(character, persona, filteredMessages, lorebookEntries, settings.system_prompt || '', {
     impersonate: !!impersonate,
     continueMode: !!continue_mode,
     chapters,
-    rawWindow: chapterSettings?.raw_window || 10,
+    storyState,
+    rawWindowSettings: {
+      raw_mode: chapterSettings?.raw_mode || 'count',
+      raw_window: chapterSettings?.raw_window || 10,
+      raw_token_budget: chapterSettings?.raw_token_budget || 3000,
+      raw_min_messages: chapterSettings?.raw_min_messages || 3,
+      raw_max_messages: chapterSettings?.raw_max_messages || 20,
+    },
+    // Author's Note چت — در صورت وجود محتوا تزریق می‌شود
+    ...(chat?.authors_note && {
+      authorsNote: {
+        content: chat.authors_note,
+        depth: typeof chat.authors_note_depth === 'number' ? chat.authors_note_depth : 4,
+        position: chat.authors_note_position === 'after_char' ? 'after_char' as const : 'in_chat' as const,
+      },
+    }),
   });
 
   try {
@@ -113,7 +306,22 @@ app.post('/api/chat', async (req, res) => {
       ? edited_messages.map((m: any) => ({ role: m.role, content: m.content }))
       : promptParts;
 
-    const requestBody = buildRequestBody(effectiveParts, {
+    // ابزار update_story_state
+    const characterNames = [character.name];
+    const storyStateTool = getStoryStateToolDefinition(characterNames);
+    console.log(`[StoryState] Tool definition for characters:`, JSON.stringify(characterNames));
+    console.log(`[StoryState] Story state in prompt:`, storyState ? 'YES' : 'NO');
+    if (storyState) {
+      console.log(`[StoryState] Current state:`, JSON.stringify(storyState).slice(0, 500));
+    }
+
+    // اضافه کردن دستور استفاده از tool به انتهای پرامپت
+    const toolInstruction = {
+      role: 'system' as const,
+      content: `[MANDATORY TOOL USE]\nYou MUST call update_story_state in EVERY response. Track ALL of these:\n\n1. CHARACTERS: location, position, clothing changes\n2. RELATIONSHIPS: "A-B": "description"\n3. RELATIONSHIP_DETAILS: Emotions 0-100 scale\n   - love, trust, anger, fear, respect, affection, shame, jealousy, gratitude\n   - summary: brief emotional state description\n4. CURRENT_SITUATION: What is happening NOW\n5. RULES: Persistent world rules\n6. MEMORIES: Important events that matter later\n   Format: [{content: "event", importance: "high|medium|low"}]\n\nMEMORY EXAMPLES:\n- "User saved Elena from assassination" (high)\n- "Elena learned User is a mage" (high)\n- "User promised to return before sunrise" (medium)\n\nALWAYS call the tool, even if only one thing changes. This is REQUIRED.`,
+    };
+
+    const requestBody = buildRequestBody([...effectiveParts, toolInstruction], {
       model: settings.model,
       temperature: settings.temperature,
       max_tokens: settings.max_tokens,
@@ -122,6 +330,8 @@ app.post('/api/chat', async (req, res) => {
       presence_penalty: settings.presence_penalty,
       stream: !!settings.stream,
       stop: JSON.parse(settings.stop || '[]'),
+      tools: [storyStateTool],
+      tool_choice: 'auto',
     });
 
     // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
@@ -190,6 +400,7 @@ app.post('/api/chat', async (req, res) => {
       const decoder = new TextDecoder();
       let fullContent = '';
       let streamAborted = false;
+      let toolCalls: any[] = [];
 
       if (reader) {
         try {
@@ -197,31 +408,73 @@ app.post('/api/chat', async (req, res) => {
           let done = false;
           let inThinking = false;
 
-          const processToken = (token: string, rawData: string) => {
+          // ارسال token به client با مدیریت تگ‌های thinking
+          const sendToken = (token: string, isReasoning: boolean) => {
+            if (isReasoning) {
+              if (!inThinking) {
+                inThinking = true;
+                fullContent += '<think>';
+                res.write(`data: ${JSON.stringify({ token: '<think>' })}\n\n`);
+              }
+            } else {
+              if (inThinking) {
+                inThinking = false;
+                fullContent += '</think>';
+                res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
+              }
+            }
+            fullContent += token;
+            res.write(`data: ${JSON.stringify({ token })}\n\n`);
+          };
+
+          // Tool calls collection
+          let currentToolCall: any = null;
+          let chunkCount = 0;
+
+          const processChunk = (rawData: string) => {
+            chunkCount++;
             try {
               const parsed = JSON.parse(rawData);
               const delta = parsed.choices?.[0]?.delta;
-              const isReasoning = !!(delta?.reasoning || delta?.reasoning_content);
-              if (isReasoning) {
-                if (!inThinking) {
-                  inThinking = true;
-                  fullContent += '<think>';
-                  res.write(`data: ${JSON.stringify({ token: '<think>' })}\n\n`);
-                }
-                fullContent += token;
-                res.write(`data: ${JSON.stringify({ token })}\n\n`);
-              } else {
-                if (inThinking) {
-                  inThinking = false;
-                  fullContent += '</think>';
-                  res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
-                }
-                fullContent += token;
-                res.write(`data: ${JSON.stringify({ token })}\n\n`);
+
+              // Debug logging for first few chunks
+              if (chunkCount <= 3) {
+                console.log(`[StoryState] Chunk ${chunkCount}:`, JSON.stringify(delta).slice(0, 300));
               }
+
+              // Check for tool calls
+              if (delta?.tool_calls) {
+                console.log(`[StoryState] Tool call detected in chunk ${chunkCount}`);
+                for (const tc of delta.tool_calls) {
+                  if (tc.index !== undefined) {
+                    // New tool call or continuation
+                    if (!toolCalls[tc.index]) {
+                      toolCalls[tc.index] = {
+                        id: tc.id || '',
+                        type: 'function',
+                        function: {
+                          name: tc.function?.name || '',
+                          arguments: tc.function?.arguments || '',
+                        },
+                      };
+                    } else {
+                      // Append to existing tool call
+                      if (tc.id) toolCalls[tc.index].id = tc.id;
+                      if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                      if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                    }
+                  }
+                }
+                return; // Don't send tool call tokens to client
+              }
+
+              // Regular content tokens
+              const parsed2 = parseStreamChunkFull(rawData);
+              if (parsed2) sendToken(parsed2.token, parsed2.isReasoning);
             } catch {
-              fullContent += token;
-              res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              // Fallback to simple parsing
+              const parsed = parseStreamChunkFull(rawData);
+              if (parsed) sendToken(parsed.token, parsed.isReasoning);
             }
           };
 
@@ -239,10 +492,11 @@ app.post('/api/chat', async (req, res) => {
                   done = true;
                   break;
                 }
-                const token = parseStreamChunk(data);
-                if (token) processToken(token, data);
+                processChunk(data);
               }
             }
+            // Break outer loop if done
+            if (done) break;
           }
           if (inThinking) {
             fullContent += '</think>';
@@ -255,8 +509,7 @@ app.post('/api/chat', async (req, res) => {
             if (trimmed.startsWith('data: ')) {
               const data = trimmed.slice(6);
               if (data !== '[DONE]') {
-                const token = parseStreamChunk(data);
-                if (token) processToken(token, data);
+                processChunk(data);
               }
             }
           }
@@ -275,8 +528,133 @@ app.post('/api/chat', async (req, res) => {
 
       // بروزرسانی محتوای پیام (حتی اگر abort شده باشد — متن partial حفظ می‌شود)
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
+      // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
+      if (update_message_id && fullContent) {
+        const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
+        if (msg) {
+          const swipes = JSON.parse(msg.swipes || '[]');
+          swipes.push(fullContent);
+          db.prepare('UPDATE messages SET swipes = ?, swipe_id = ? WHERE id = ?')
+            .run(JSON.stringify(swipes), swipes.length - 1, msgId);
+        }
+      }
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), chat_id);
 
+      // پردازش tool calls (update_story_state)
+      let storyStateUpdated = false;
+      let newStoryState = null;
+      console.log(`[StoryState] Tool calls received: ${toolCalls.length}`);
+
+      // ذخیره snapshot قبل از آپدیت state (برای امکان rollback)
+      if (toolCalls.length > 0 || fullContent) {
+        const existingRowForSnapshot = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+        if (existingRowForSnapshot) {
+          const snapshotId = uuidv4();
+          db.prepare(`
+            INSERT INTO chat_state_snapshots (id, chat_id, message_id, state_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(snapshotId, chat_id, msgId, existingRowForSnapshot.state_json, new Date().toISOString());
+          console.log(`[StoryState] Snapshot saved for message: ${msgId}`);
+        }
+      }
+
+      for (const toolCall of toolCalls) {
+        console.log(`[StoryState] Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
+        if (toolCall.function?.name === 'update_story_state') {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            // دریافت state موجود
+            const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+            let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+            if (existingRow) {
+              try { currentState = JSON.parse(existingRow.state_json); } catch {}
+            }
+            // Deep merge
+            newStoryState = deepMergeState(currentState, args);
+            // ذخیره
+            const now = new Date().toISOString();
+            if (existingRow) {
+              db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                .run(JSON.stringify(newStoryState), now, chat_id);
+            } else {
+              db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
+            }
+            storyStateUpdated = true;
+            console.log(`[StoryState] State updated via tool call`);
+          } catch (e) {
+            console.error('Failed to process update_story_state:', e);
+          }
+        }
+      }
+
+      // Fallback: parse tool calls from text if no tool calls were detected
+      if (!storyStateUpdated && fullContent) {
+        console.log(`[StoryState] No tool calls detected in stream, trying text parsing...`);
+        const textToolCalls = parseToolCallsFromText(fullContent);
+        console.log(`[StoryState] Found ${textToolCalls.length} tool calls in text`);
+        
+        for (const toolCall of textToolCalls) {
+          console.log(`[StoryState] Text Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
+          if (toolCall.function?.name === 'update_story_state') {
+            try {
+              const args = JSON.parse(toolCall.function.arguments);
+              const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+              let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+              if (existingRow) {
+                try { currentState = JSON.parse(existingRow.state_json); } catch {}
+              }
+              newStoryState = deepMergeState(currentState, args);
+              const now = new Date().toISOString();
+              if (existingRow) {
+                db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                  .run(JSON.stringify(newStoryState), now, chat_id);
+              } else {
+                db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                  .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
+              }
+              storyStateUpdated = true;
+              console.log(`[StoryState] State updated via text parsing`);
+            } catch (e) {
+              console.error('Failed to process update_story_state from text:', e);
+            }
+          }
+        }
+      }
+
+      // Fallback: if still no tool calls, try regex extraction from text
+      if (!storyStateUpdated && fullContent) {
+        console.log(`[StoryState] No tool calls in text, trying regex extraction...`);
+        const extractedState = extractStateFromText(fullContent, character.name);
+        if (extractedState) {
+          console.log(`[StoryState] Extracted from text:`, JSON.stringify(extractedState));
+          const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+          let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+          if (existingRow) {
+            try { currentState = JSON.parse(existingRow.state_json); } catch {}
+          }
+          newStoryState = deepMergeState(currentState, extractedState);
+          const now = new Date().toISOString();
+          if (existingRow) {
+            db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+              .run(JSON.stringify(newStoryState), now, chat_id);
+          } else {
+            db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+              .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
+          }
+          storyStateUpdated = true;
+          console.log(`[StoryState] State updated via text extraction`);
+        } else {
+          console.log(`[StoryState] No state changes detected in text`);
+        }
+      }
+
+      // ارسال story state update قبل از DONE
+      if (storyStateUpdated && newStoryState) {
+        res.write(`data: ${JSON.stringify({ story_state_updated: true, state: newStoryState })}\n\n`);
+      }
+
+      // ارسال DONE و بستن اتصال
       if (!streamAborted) {
         res.write('data: [DONE]\n\n');
       }
@@ -294,6 +672,16 @@ app.post('/api/chat', async (req, res) => {
       if (update_message_id) {
         msgId = update_message_id;
         db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, msgId);
+        // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
+        if (content) {
+          const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
+          if (msg) {
+            const swipes = JSON.parse(msg.swipes || '[]');
+            swipes.push(content);
+            db.prepare('UPDATE messages SET swipes = ?, swipe_id = ? WHERE id = ?')
+              .run(JSON.stringify(swipes), swipes.length - 1, msgId);
+          }
+        }
       } else {
         msgId = uuidv4();
         db.prepare(`

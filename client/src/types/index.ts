@@ -1,12 +1,19 @@
 export interface Character {
   id: string;
   name: string;
+  nickname: string;
   description: string;
   personality: string;
   scenario: string;
   first_mes: string;
   mes_example: string;
   creator_notes: string;
+  system_prompt: string;
+  post_history_instructions: string;
+  alternate_greetings: string[];
+  group_only_greetings: string[];
+  creator: string;
+  character_version: string;
   tags: string[];
   avatar: string;
   lorebook_id: string;
@@ -24,6 +31,10 @@ export interface Message {
   is_edited: boolean;
   is_system: boolean;
   send_date: string;
+  // Group chat sender info
+  sender_name?: string;
+  sender_avatar?: string;
+  sender_character_id?: string;
 }
 
 export interface Chat {
@@ -33,6 +44,11 @@ export interface Chat {
   lorebook_id: string;
   folder: string;
   branch_from?: string;
+  authors_note: string;
+  authors_note_depth: number;
+  authors_note_position: 'after_char' | 'in_chat';
+  is_group_chat: boolean;
+  group_chat_name: string;
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +74,9 @@ export interface LorebookEntry {
   position: 'before_main' | 'after_main';
   disable: boolean;
   comment: string;
+  case_sensitive: boolean;
+  use_regex: boolean;
+  probability: number;
 }
 
 export interface Lorebook {
@@ -77,6 +96,7 @@ export interface ApiSettings {
   base_url: string;
   temperature: number;
   max_tokens: number;
+  max_context: number;
   top_p: number;
   frequency_penalty: number;
   presence_penalty: number;
@@ -134,6 +154,10 @@ export interface Chapter {
 
 export interface ChapterSettings {
   raw_window: number;
+  raw_mode: 'count' | 'tokens';
+  raw_token_budget: number;
+  raw_min_messages: number;
+  raw_max_messages: number;
   auto_detect_enabled: boolean;
   trigger_phrases: string[];
   summarizer_model: string;
@@ -141,7 +165,115 @@ export interface ChapterSettings {
   summarizer_api_key: string;
 }
 
+// ─── Chapter Creation Flow ───
+
+export interface ChapterPreviewData {
+  character: {
+    name: string;
+    description: string;
+    personality: string;
+  } | null;
+  previous_summaries: string[];
+  messages_preview: Message[];
+  total_messages: number;
+  settings: {
+    model: string;
+    temperature: number;
+    max_tokens: number;
+  };
+  full_payload: {
+    model: string;
+    messages: { role: string; content: string }[];
+    temperature: number;
+    max_tokens: number;
+    stream: boolean;
+  };
+}
+
+export interface ChapterSummaryResult {
+  summary: string;
+  model: string;
+  generation_time: number;
+  generation_tokens: number;
+}
+
 export interface LorebookPluginSettings {
   default_scan_depth: number;
   default_token_budget: number;
+}
+
+export interface QuickReply {
+  label: string;
+  message: string;
+}
+
+export interface QuickReplySettings {
+  enabled: boolean;
+  replies: QuickReply[];
+}
+
+export interface SearchResult {
+  id: string;
+  chat_id: string;
+  chat_name: string;
+  character_name: string;
+  character_avatar: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  snippet: string;
+  send_date: string;
+  is_edited: boolean;
+}
+
+export interface ChatParticipant {
+  id: string;
+  chat_id: string;
+  character_id: string;
+  display_name: string;
+  display_avatar: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface GroupChat extends Chat {
+  is_group_chat: boolean;
+  group_chat_name: string;
+  participants: ChatParticipant[];
+}
+
+export interface CharacterState {
+  location?: string;
+  position?: string;
+  clothing?: string;
+}
+
+export interface RelationshipDetail {
+  anger?: number;        // 0-100
+  shame?: number;        // 0-100
+  love?: number;         // 0-100
+  affection?: number;    // 0-100
+  trust?: number;        // 0-100
+  fear?: number;         // 0-100
+  respect?: number;      // 0-100
+  jealousy?: number;     // 0-100
+  gratitude?: number;    // 0-100
+  summary?: string;      // Text description
+}
+
+export interface ImportantMemory {
+  id?: string;
+  content: string;
+  timestamp?: string;
+  importance?: 'low' | 'medium' | 'high';
+}
+
+export interface StoryState {
+  chat_id?: string;
+  characters: Record<string, CharacterState>;
+  relationships: Record<string, string>;
+  relationship_details?: Record<string, RelationshipDetail>;
+  current_situation: string;
+  rules: string[];
+  memories?: ImportantMemory[];
+  updated_at?: string;
 }

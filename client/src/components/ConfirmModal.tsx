@@ -46,7 +46,7 @@ export default function ConfirmModal() {
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4 ${closing ? 'modal-exit-overlay' : 'modal-enter-overlay'}`}
+      className={`fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[90] flex items-center justify-center p-4 ${closing ? 'modal-exit-overlay' : 'modal-enter-overlay'}`}
       onClick={(e) => { if (e.target === overlayRef.current) close(false); }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
@@ -54,20 +54,27 @@ export default function ConfirmModal() {
     >
       <div
         ref={cardRef}
-        className={`bg-tavern-card rounded-xl w-full max-w-sm p-6 shadow-2xl ${closing ? 'modal-exit-card' : 'modal-enter-card'}`}
+        className={`bg-tavern-card border border-tavern-border rounded-xl w-full max-w-sm p-5 shadow-2xl shadow-black/40 ${closing ? 'modal-exit-card' : 'modal-enter-card'}`}
         onAnimationEnd={handleAnimationEnd}
       >
-        <p className="text-tavern-text text-sm leading-6 mb-6">{confirmDialog.message}</p>
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-9 h-9 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <p className="text-tavern-text text-sm leading-6 pt-1">{confirmDialog.message}</p>
+        </div>
         <div className="flex gap-2 justify-end">
           <button
             onClick={() => close(false)}
-            className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm rounded-lg hover:bg-tavern-hover transition-colors"
+            className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm rounded-lg hover:bg-tavern-hover transition-colors active:scale-[0.97]"
           >
             Cancel
           </button>
           <button
             onClick={() => close(true)}
-            className="px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white text-sm rounded-lg transition-colors"
+            className="px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white text-sm rounded-lg transition-all active:scale-[0.97] shadow-lg shadow-red-500/20"
           >
             Confirm
           </button>

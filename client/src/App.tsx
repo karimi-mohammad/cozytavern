@@ -10,12 +10,16 @@ import ChatSettings from './components/ChatSettings';
 import PromptInspectorModal from './components/PromptInspectorModal';
 import LorebookEditor from './components/LorebookEditor';
 import PersonaEditor from './components/PersonaEditor';
+import StoryStateMonitor from './components/StoryStateMonitor';
+import SearchPanel from './components/SearchPanel';
 import Toast from './components/Toast';
 import ConfirmModal from './components/ConfirmModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import ChapterPreviewModal from './components/ChapterPreviewModal';
+import ChapterReviewModal from './components/ChapterReviewModal';
 
 function App() {
-  const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings, personas, lorebooks, setActivePersona, setActiveLorebook, theme } = useStore();
+  const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings, loadQuickReplies, personas, lorebooks, setActivePersona, setActiveLorebook, theme, _initStoryStateListener } = useStore();
 
   // اعمال تم ذخیره‌شده در اولین رندر
   useEffect(() => {
@@ -29,6 +33,8 @@ function App() {
     loadPersonas();
     loadLorebooks();
     loadApiSettings();
+    loadQuickReplies();
+    _initStoryStateListener();
   }, []);
 
   // بازیابی انتخاب‌های فعال (پرسونا/لوربوک) بعد از load دیتا
@@ -62,6 +68,9 @@ function App() {
           {/* Main Chat Area - always full width */}
           <ChatView />
 
+          {/* Search Panel - absolutely positioned overlay */}
+          <SearchPanel />
+
           {/* Sidebar - absolutely positioned overlay */}
           <Sidebar />
 
@@ -76,6 +85,9 @@ function App() {
       <ErrorBoundary label="PromptInspector"><PromptInspectorModal /></ErrorBoundary>
       <ErrorBoundary label="LorebookEditor"><LorebookEditor /></ErrorBoundary>
       <ErrorBoundary label="PersonaEditor"><PersonaEditor /></ErrorBoundary>
+      <ErrorBoundary label="StoryStateMonitor"><StoryStateMonitor /></ErrorBoundary>
+      <ErrorBoundary label="ChapterPreview"><ChapterPreviewModal /></ErrorBoundary>
+      <ErrorBoundary label="ChapterReview"><ChapterReviewModal /></ErrorBoundary>
       <ErrorBoundary label="Toast"><Toast /></ErrorBoundary>
       <ErrorBoundary label="ConfirmModal"><ConfirmModal /></ErrorBoundary>
     </div>

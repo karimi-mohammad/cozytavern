@@ -3,6 +3,7 @@ import { useStore } from '../store/state';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import CharacterAvatar from './CharacterAvatar';
+import GroupChatManager from './GroupChatManager';
 import { ChatSkeleton } from './LoadingSkeleton';
 import { Chapter } from '../types';
 import ChapterEditor from './ChapterEditor';
@@ -11,6 +12,7 @@ import ChapterSuggestion from './ChapterSuggestion';
 export default function ChatView() {
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
+  const [showGroupManager, setShowGroupManager] = useState(false);
 
   const {
     currentCharacter, currentChat, characters, chats,
@@ -21,6 +23,7 @@ export default function ChatView() {
     activePersona, isGenerating, showConfirm,
     loadingMessages, loadingCharacters, loadingChats,
     chapters,
+    setStoryStateOpen,
   } = useStore();
 
   const handleBranch = async (messageId: string, sendDate: string) => {
@@ -51,11 +54,11 @@ export default function ChatView() {
               </div>
               <div className="space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 border border-tavern-border/50 animate-pulse">
-                    <div className="w-10 h-10 rounded-full bg-tavern-hover flex-shrink-0" />
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 border border-tavern-border/50 animate-fade-in-up" style={{ animationDelay: `${i * 70}ms` }}>
+                    <div className="skeleton-shimmer rounded-full w-10 h-10 flex-shrink-0" />
                     <div className="flex-1 space-y-2">
-                      <div className="h-3 bg-tavern-hover rounded w-1/3" />
-                      <div className="h-2 bg-tavern-hover rounded w-1/2" />
+                      <div className="skeleton-shimmer rounded h-3 w-1/3" />
+                      <div className="skeleton-shimmer rounded h-2 w-1/2" />
                     </div>
                   </div>
                 ))}
@@ -90,7 +93,7 @@ export default function ChatView() {
             </div>
 
             {/* Quick action buttons */}
-            <div className="flex items-center gap-3 mb-6 text-sm">
+            <div className="flex items-center gap-3 mb-6 text-sm animate-fade-in-up" style={{ animationDelay: '60ms' }}>
               <button
                 onClick={() => setSettingsOpen(true)}
                 className="flex items-center gap-1.5 text-tavern-dim hover:text-tavern-accent transition-colors px-3 py-1.5 rounded-lg bg-tavern-input border border-tavern-border hover:border-tavern-accent/50"
@@ -112,16 +115,17 @@ export default function ChatView() {
             </div>
 
             {/* Recent Chats */}
-            <h2 className="text-base font-semibold text-tavern-text-bright mb-3">Recent Chats</h2>
+            <h2 className="text-base font-semibold text-tavern-text-bright mb-3 animate-fade-in-up" style={{ animationDelay: '120ms' }}>Recent Chats</h2>
             <div className="space-y-2">
-              {characters.map((char) => {
+              {characters.map((char, idx) => {
                 const charChats = chats.filter(c => c.character_id === char.id);
                 if (charChats.length === 0) return null;
                 const latestChat = charChats[0];
                 return (
                   <div
                     key={char.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 hover:bg-tavern-hover cursor-pointer transition-colors group border border-tavern-border/50"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 hover:bg-tavern-hover cursor-pointer transition-all duration-150 group border border-tavern-border/50 hover:border-tavern-accent/40 hover:translate-x-0.5 animate-fade-in-up"
+                    style={{ animationDelay: `${160 + idx * 50}ms` }}
                     onClick={() => {
                       selectCharacter(char).then(() => loadChats(char.id));
                     }}
@@ -191,6 +195,35 @@ export default function ChatView() {
     <div className="flex-1 flex flex-col bg-tavern-bg min-w-0 relative overflow-hidden">
       {currentChat ? (
         <>
+          {/* Group Chat Manager - shown when toggled */}
+          {showGroupManager && (
+            <GroupChatManager onClose={() => setShowGroupManager(false)} />
+          )}
+
+          {/* Action Buttons Row */}
+          {!showGroupManager && (
+            <div className="flex items-center justify-center gap-2 px-4 py-2 border-b border-tavern-border bg-tavern-bg">
+              <button
+                onClick={() => setStoryStateOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-tavern-surface border border-tavern-border rounded-lg text-tavern-text text-xs font-medium hover:bg-tavern-hover transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Story State
+              </button>
+              <button
+                onClick={() => setShowGroupManager(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-tavern-accent/10 border border-tavern-accent/30 rounded-lg text-tavern-accent text-xs font-medium hover:bg-tavern-accent/20 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {currentChat.is_group_chat ? 'Manage Group' : 'Add Character'}
+              </button>
+            </div>
+          )}
+
           <MessageList
             messages={currentChat.messages}
             currentCharacter={currentCharacter}
@@ -241,10 +274,11 @@ export default function ChatView() {
               <ChatSkeleton />
             ) : chats.length > 0 ? (
               <div className="space-y-2">
-                {chats.map((chat) => (
+                {chats.map((chat, idx) => (
                   <div
                     key={chat.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 hover:bg-tavern-hover cursor-pointer transition-colors group border border-tavern-border/50"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-tavern-surface2/60 hover:bg-tavern-hover cursor-pointer transition-all duration-150 group border border-tavern-border/50 hover:border-tavern-accent/40 hover:translate-x-0.5 animate-fade-in-up"
+                    style={{ animationDelay: `${idx * 40}ms` }}
                     onClick={() => { setMenuChatId(null); selectChat(chat.id); }}
                   >
                     <div className="w-9 h-9 rounded-full bg-tavern-input border border-tavern-border flex items-center justify-center text-tavern-dim flex-shrink-0">
@@ -279,35 +313,39 @@ export default function ChatView() {
                         </svg>
                       </button>
                       {menuChatId === chat.id && (
-                        <div className="absolute right-0 top-full mt-1 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl z-50 py-1 min-w-[150px]">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuChatId(null);
-                              const newName = prompt('Rename chat:', chat.name);
-                              if (newName && newName.trim()) renameChat(chat.id, newName.trim());
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors text-tavern-text flex items-center gap-2"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Rename
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuChatId(null);
-                              autoNameChat(chat.id);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors text-tavern-text flex items-center gap-2"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Auto Name
-                          </button>
-                        </div>
+                        <>
+                          {/* لایه نامرئی برای بستن منو با کلیک بیرون */}
+                          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setMenuChatId(null); }} />
+                          <div className="absolute right-0 top-full mt-1 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 z-50 py-1 min-w-[150px] animate-pop-in origin-top-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuChatId(null);
+                                const newName = prompt('Rename chat:', chat.name);
+                                if (newName && newName.trim()) renameChat(chat.id, newName.trim());
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors text-tavern-text flex items-center gap-2"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Rename
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuChatId(null);
+                                autoNameChat(chat.id);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-hover transition-colors text-tavern-text flex items-center gap-2"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Auto Name
+                            </button>
+                          </div>
+                        </>
                       )}
                       <button
                         onClick={async (e) => {

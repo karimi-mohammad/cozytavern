@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/state';
 import { PromptInspection, PromptPart } from '../types';
 
@@ -31,6 +31,9 @@ export default function PromptInspectorModal() {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editedMessages, setEditedMessages] = useState<PromptPart[]>([]);
+  // ref برای دسترسی به viewingId داخل listener بدون stale closure
+  const viewingIdRef = useRef<string | null>(null);
+  useEffect(() => { viewingIdRef.current = viewingId; }, [viewingId]);
 
   // ورود بازرسی جدید → برگشت خودکار به نمای زنده + ریست state
   useEffect(() => {
@@ -40,6 +43,27 @@ export default function PromptInspectorModal() {
     setEditing(false);
     setEditedMessages([]);
   }, [promptInspection?.id]);
+
+  // بستن با Escape در سطح پنجره: اگر روی تاریخچه‌ای هستیم اول برگرده به نمای زنده
+  const inspectionId = promptInspection?.id;
+  useEffect(() => {
+    if (!inspectionId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewingIdRef.current !== null) {
+          setViewingId(null);
+        } else {
+          useStore.getState().resolveInspection(false);
+        }
+      }
+      // Ctrl/Cmd+Enter: تایید و ارسال (فقط در نمای زنده)
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && viewingIdRef.current === null) {
+        useStore.getState().resolveInspection(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inspectionId]);
 
   // وقتی editing فعال می‌شود، پیام‌های فعلی رو کپی کن
   useEffect(() => {
@@ -91,15 +115,11 @@ export default function PromptInspectorModal() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-3 md:p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[90] flex items-center justify-center p-3 md:p-4 modal-enter-overlay"
       onMouseDown={(e) => { if (e.target === e.currentTarget) decide(false); }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') decide(false);
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && isLive) decide(true);
-      }}
       tabIndex={-1}
     >
-      <div className="bg-tavern-card rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="bg-tavern-card border border-tavern-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl shadow-black/40 modal-enter-card">
         {/* Header */}
         <div className="p-4 border-b border-tavern-border flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">

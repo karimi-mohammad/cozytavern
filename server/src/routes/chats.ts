@@ -45,7 +45,7 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  const character = db.prepare('SELECT name FROM characters WHERE id = ?').get(character_id) as any;
+  const character = db.prepare('SELECT name, first_mes, alternate_greetings FROM characters WHERE id = ?').get(character_id) as any;
   const chatName = name || (character ? `Chat with ${character.name}` : 'New Chat');
 
   db.prepare(`
@@ -78,6 +78,29 @@ router.post('/', (req: Request, res: Response) => {
         uuidv4(), id, msg.role, msg.content,
         msg.swipes, msg.swipe_id, msg.is_edited, msg.is_system, msg.send_date
       );
+    }
+  } else if (character) {
+    // درج greeting (first_mes یا یکی از alternate_greetings) به عنوان پیام اول assistant
+    const greetings: string[] = [];
+    if (character.first_mes) greetings.push(character.first_mes);
+    try {
+      const altGreetings = JSON.parse(character.alternate_greetings || '[]');
+      if (Array.isArray(altGreetings)) {
+        altGreetings.forEach((g: string) => { if (g) greetings.push(g); });
+      }
+    } catch {}
+
+    if (greetings.length > 0) {
+      const rawGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+      // جایگزینی ماکروها {{char}} و {{user}}
+      const greetingContent = rawGreeting
+        .replace(/\{\{char\}\}/g, character.name || 'Character')
+        .replace(/\{\{user\}\}/g, req.body.user_name || 'User');
+      const greetingMsgId = uuidv4();
+      db.prepare(`
+        INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date)
+        VALUES (?, ?, 'assistant', ?, '[]', 0, 0, 1, ?)
+      `).run(greetingMsgId, id, greetingContent, now);
     }
   }
 
@@ -186,20 +209,162 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Export/Import چت ───
+
+// خروجی چت به JSON — پیام‌ها با index ارجاع می‌شوند تا قابل حمل باشد
+router.get('/:id/export', (req: Request, res: Response) => {
+  const db = getDb();
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
+  if (!chat) {
+    res.status(404).json({ error: 'Chat not found' });
+    return;
+  }
+
+  const messages = db.prepare(
+    'SELECT role, content, swipes, swipe_id, is_edited, is_system, send_date FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
+  ).all(req.params.id) as any[];
+
+  // نگاشت message id → index برای فصل‌ها
+  const idToIndex = new Map<string, number>();
+  const msgIds = db.prepare('SELECT id FROM messages WHERE chat_id = ? ORDER BY rowid ASC').all(req.params.id) as any[];
+  msgIds.forEach((m: any, i: number) => idToIndex.set(m.id, i));
+
+  const chapters = db.prepare(
+    'SELECT start_message_id, end_message_id, title, summary FROM chapters WHERE chat_id = ? ORDER BY created_at ASC'
+  ).all(req.params.id) as any[];
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="chat-${encodeURIComponent(chat.name || req.params.id)}.json"`);
+  res.json({
+    format: 'cozytavern-chat',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    chat: {
+      name: chat.name,
+      folder: chat.folder || '',
+      authors_note: chat.authors_note || '',
+      authors_note_depth: chat.authors_note_depth ?? 4,
+      authors_note_position: chat.authors_note_position || 'in_chat',
+      created_at: chat.created_at,
+    },
+    messages: messages.map((m) => ({
+      ...m,
+      swipes: JSON.parse(m.swipes || '[]'),
+    })),
+    chapters: chapters
+      .map((c) => ({
+        start_index: idToIndex.get(c.start_message_id),
+        end_index: idToIndex.get(c.end_message_id),
+        title: c.title,
+        summary: c.summary,
+      }))
+      .filter((c) => c.start_index !== undefined && c.end_index !== undefined),
+  });
+});
+
+// ورودی چت — بدنه: { character_id, data } که data خروجی export است
+router.post('/import', (req: Request, res: Response) => {
+  const db = getDb();
+  const { character_id, data } = req.body ?? {};
+
+  if (!character_id) {
+    res.status(400).json({ error: 'character_id is required' });
+    return;
+  }
+  if (!data || data.format !== 'cozytavern-chat' || !Array.isArray(data.messages)) {
+    res.status(400).json({ error: 'Invalid chat export file' });
+    return;
+  }
+  const character = db.prepare('SELECT name FROM characters WHERE id = ?').get(character_id) as any;
+  if (!character) {
+    res.status(400).json({ error: 'Character not found' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const chatId = uuidv4();
+  const srcChat = data.chat || {};
+
+  db.prepare(`
+    INSERT INTO chats (id, character_id, name, branch_from, lorebook_id, folder, authors_note, authors_note_depth, authors_note_position, created_at, updated_at)
+    VALUES (?, ?, ?, NULL, '', ?, ?, ?, ?, ?, ?)
+  `).run(
+    chatId, character_id,
+    String(srcChat.name || 'Imported Chat'),
+    String(srcChat.folder || ''),
+    String(srcChat.authors_note || ''),
+    typeof srcChat.authors_note_depth === 'number' ? srcChat.authors_note_depth : 4,
+    srcChat.authors_note_position === 'after_char' ? 'after_char' : 'in_chat',
+    now, now,
+  );
+
+  const insertMsg = db.prepare(`
+    INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // نگاشت index → id جدید برای بازسازی فصل‌ها
+  const indexToId = new Map<number, string>();
+  let count = 0;
+  for (const m of data.messages) {
+    if (!m || typeof m.content !== 'string') continue;
+    const role = ['user', 'assistant', 'system'].includes(m.role) ? m.role : 'user';
+    const msgId = uuidv4();
+    insertMsg.run(
+      msgId, chatId, role, m.content,
+      JSON.stringify(Array.isArray(m.swipes) ? m.swipes : []),
+      typeof m.swipe_id === 'number' ? m.swipe_id : 0,
+      m.is_edited ? 1 : 0,
+      m.is_system ? 1 : 0,
+      String(m.send_date || now),
+    );
+    indexToId.set(count, msgId);
+    count++;
+  }
+
+  // بازسازی فصل‌ها با نگاشت اندیس‌ها (اگر معتبر باشند)
+  if (Array.isArray(data.chapters)) {
+    const insertChapter = db.prepare(`
+      INSERT INTO chapters (id, chat_id, start_message_id, end_message_id, title, summary, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const c of data.chapters) {
+      const startId = indexToId.get(c.start_index);
+      const endId = indexToId.get(c.end_index);
+      if (startId && endId && c.start_index <= c.end_index) {
+        insertChapter.run(uuidv4(), chatId, startId, endId, String(c.title || ''), String(c.summary || ''), now, now);
+      }
+    }
+  }
+
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId) as any;
+  res.status(201).json({ ...chat, imported_messages: count });
+});
+
 // بروزرسانی چت
 router.put('/:id', (req: Request, res: Response) => {
   const db = getDb();
-  const { name, lorebook_id, folder } = req.body;
+  const { name, lorebook_id, folder, authors_note, authors_note_depth, authors_note_position } = req.body;
   const now = new Date().toISOString();
   const existing = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
   if (!existing) {
     res.status(404).json({ error: 'Chat not found' });
     return;
   }
-  db.prepare('UPDATE chats SET name=?, lorebook_id=?, folder=?, updated_at=? WHERE id=?').run(
+  db.prepare(`
+    UPDATE chats SET name=?, lorebook_id=?, folder=?, authors_note=?, authors_note_depth=?, authors_note_position=?, updated_at=?
+    WHERE id=?
+  `).run(
     name ?? existing.name ?? 'Chat',
     lorebook_id ?? existing.lorebook_id ?? '',
     folder ?? existing.folder ?? '',
+    typeof authors_note === 'string' ? authors_note : (existing.authors_note ?? ''),
+    typeof authors_note_depth === 'number'
+      ? Math.min(100, Math.max(0, Math.trunc(authors_note_depth)))
+      : (existing.authors_note_depth ?? 4),
+    authors_note_position === 'after_char' || authors_note_position === 'in_chat'
+      ? authors_note_position
+      : (existing.authors_note_position || 'in_chat'),
     now, req.params.id
   );
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id);

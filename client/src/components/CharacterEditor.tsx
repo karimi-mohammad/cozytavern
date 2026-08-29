@@ -6,36 +6,63 @@ export default function CharacterEditor() {
   const { characterEditorOpen, editingCharacter, setCharacterEditorOpen, createCharacter, updateCharacter, lorebooks, loadLorebooks, addToast } = useStore();
 
   const [form, setForm] = useState({
-    name: '', description: '', personality: '', scenario: '',
-    first_mes: '', mes_example: '', creator_notes: '', tags: [] as string[],
+    name: '', nickname: '', description: '', personality: '', scenario: '',
+    first_mes: '', mes_example: '', creator_notes: '',
+    system_prompt: '', post_history_instructions: '',
+    alternate_greetings: [] as string[],
+    group_only_greetings: [] as string[],
+    creator: '', character_version: '',
+    tags: [] as string[],
     lorebook_id: '', avatar: '',
   });
   const [tagInput, setTagInput] = useState('');
+  const [altGreetingInput, setAltGreetingInput] = useState('');
+  const [groupOnlyInput, setGroupOnlyInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (characterEditorOpen) loadLorebooks();
   }, [characterEditorOpen]);
 
+  // بستن مودال با کلید Escape
+  useEffect(() => {
+    if (!characterEditorOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCharacterEditorOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [characterEditorOpen]);
+
   useEffect(() => {
     if (editingCharacter) {
       setForm({
         name: editingCharacter.name || '',
+        nickname: editingCharacter.nickname || '',
         description: editingCharacter.description || '',
         personality: editingCharacter.personality || '',
         scenario: editingCharacter.scenario || '',
         first_mes: editingCharacter.first_mes || '',
         mes_example: editingCharacter.mes_example || '',
         creator_notes: editingCharacter.creator_notes || '',
+        system_prompt: editingCharacter.system_prompt || '',
+        post_history_instructions: editingCharacter.post_history_instructions || '',
+        alternate_greetings: editingCharacter.alternate_greetings || [],
+        group_only_greetings: editingCharacter.group_only_greetings || [],
+        creator: editingCharacter.creator || '',
+        character_version: editingCharacter.character_version || '',
         tags: editingCharacter.tags || [],
         lorebook_id: editingCharacter.lorebook_id || '',
         avatar: editingCharacter.avatar || '',
       });
     } else {
       setForm({
-        name: '', description: '', personality: '', scenario: '',
-        first_mes: '', mes_example: '', creator_notes: '', tags: [],
-        lorebook_id: '', avatar: '',
+        name: '', nickname: '', description: '', personality: '', scenario: '',
+        first_mes: '', mes_example: '', creator_notes: '',
+        system_prompt: '', post_history_instructions: '',
+        alternate_greetings: [], group_only_greetings: [],
+        creator: '', character_version: '',
+        tags: [], lorebook_id: '', avatar: '',
       });
     }
   }, [editingCharacter, characterEditorOpen]);
@@ -59,6 +86,20 @@ export default function CharacterEditor() {
     }
   };
 
+  const addAltGreeting = () => {
+    if (altGreetingInput.trim()) {
+      setForm(f => ({ ...f, alternate_greetings: [...f.alternate_greetings, altGreetingInput.trim()] }));
+      setAltGreetingInput('');
+    }
+  };
+
+  const addGroupOnlyGreeting = () => {
+    if (groupOnlyInput.trim()) {
+      setForm(f => ({ ...f, group_only_greetings: [...f.group_only_greetings, groupOnlyInput.trim()] }));
+      setGroupOnlyInput('');
+    }
+  };
+
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,15 +115,15 @@ export default function CharacterEditor() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 md:p-4">
-      <div className="bg-tavern-card rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-4 border-b border-tavern-border flex items-center justify-between sticky top-0 bg-tavern-card z-10">
-          <h2 className="text-lg font-bold">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-50 flex items-center justify-center p-3 md:p-4 modal-enter-overlay">
+      <div className="bg-tavern-card border border-tavern-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/40 modal-enter-card">
+        <div className="p-4 border-b border-tavern-border flex items-center justify-between sticky top-0 bg-tavern-card z-10 rounded-t-xl">
+          <h2 className="text-lg font-bold text-tavern-text-bright">
             {editingCharacter ? 'Edit Character' : 'New Character'}
           </h2>
           <button
             onClick={() => setCharacterEditorOpen(false)}
-            className="text-tavern-muted hover:text-tavern-text"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors active:scale-90"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -129,6 +170,17 @@ export default function CharacterEditor() {
             />
           </div>
 
+          {/* Nickname */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Nickname</label>
+            <input
+              value={form.nickname}
+              onChange={(e) => setForm(f => ({ ...f, nickname: e.target.value }))}
+              className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
+              placeholder="Short name or alias"
+            />
+          </div>
+
           {/* Description */}
           <div>
             <label className="block text-sm font-medium mb-1">Description</label>
@@ -162,6 +214,104 @@ export default function CharacterEditor() {
               rows={2}
               placeholder="The opening situation of the conversation"
             />
+          </div>
+
+          {/* Character System Prompt */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Character System Prompt</label>
+            <textarea
+              value={form.system_prompt}
+              onChange={(e) => setForm(f => ({ ...f, system_prompt: e.target.value }))}
+              className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none font-mono text-xs"
+              rows={3}
+              placeholder="Special instructions for this character (prepended to system prompt)"
+            />
+            <p className="text-xs text-tavern-muted mt-1">Injected before the character block in the prompt</p>
+          </div>
+
+          {/* Post-History Instructions */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Post-History Instructions</label>
+            <textarea
+              value={form.post_history_instructions}
+              onChange={(e) => setForm(f => ({ ...f, post_history_instructions: e.target.value }))}
+              className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none font-mono text-xs"
+              rows={3}
+              placeholder="Instructions injected after the chat history"
+            />
+            <p className="text-xs text-tavern-muted mt-1">Appended after all messages in the prompt</p>
+          </div>
+
+          {/* Alternate Greetings */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Alternate Greetings</label>
+            <div className="space-y-2">
+              {form.alternate_greetings.map((g, idx) => (
+                <div key={idx} className="flex gap-2">
+                  <textarea
+                    value={g}
+                    readOnly
+                    className="flex-1 bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-xs focus:outline-none resize-none"
+                    rows={2}
+                  />
+                  <button
+                    onClick={() => setForm(f => ({ ...f, alternate_greetings: f.alternate_greetings.filter((_, i) => i !== idx) }))}
+                    className="text-tavern-muted hover:text-red-400 text-xs px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <textarea
+                  value={altGreetingInput}
+                  onChange={(e) => setAltGreetingInput(e.target.value)}
+                  className="flex-1 bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
+                  rows={2}
+                  placeholder="Add an alternate opening message..."
+                />
+                <button onClick={addAltGreeting} className="bg-tavern-accent text-white px-3 py-2 rounded-lg text-sm self-end">
+                  +
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-tavern-muted mt-1">Optional alternative first messages</p>
+          </div>
+
+          {/* Group-Only Greetings */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Group-Only Greetings</label>
+            <div className="space-y-2">
+              {form.group_only_greetings.map((g, idx) => (
+                <div key={idx} className="flex gap-2">
+                  <textarea
+                    value={g}
+                    readOnly
+                    className="flex-1 bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-xs focus:outline-none resize-none"
+                    rows={2}
+                  />
+                  <button
+                    onClick={() => setForm(f => ({ ...f, group_only_greetings: f.group_only_greetings.filter((_, i) => i !== idx) }))}
+                    className="text-tavern-muted hover:text-red-400 text-xs px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <textarea
+                  value={groupOnlyInput}
+                  onChange={(e) => setGroupOnlyInput(e.target.value)}
+                  className="flex-1 bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent resize-none"
+                  rows={2}
+                  placeholder="Add a greeting for group chats only..."
+                />
+                <button onClick={addGroupOnlyGreeting} className="bg-tavern-accent text-white px-3 py-2 rounded-lg text-sm self-end">
+                  +
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-tavern-muted mt-1">Greetings used only in group chats</p>
           </div>
 
           {/* First message */}
@@ -248,19 +398,41 @@ export default function CharacterEditor() {
               placeholder="Notes (not sent to the AI)"
             />
           </div>
+
+          {/* Creator & Version */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Creator</label>
+              <input
+                value={form.creator}
+                onChange={(e) => setForm(f => ({ ...f, creator: e.target.value }))}
+                className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
+                placeholder="Creator name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Character Version</label>
+              <input
+                value={form.character_version}
+                onChange={(e) => setForm(f => ({ ...f, character_version: e.target.value }))}
+                className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
+                placeholder="e.g. 1.0"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="p-4 border-t border-tavern-border flex justify-end gap-2 sticky bottom-0 bg-tavern-card">
+        <div className="p-4 border-t border-tavern-border flex justify-end gap-2 sticky bottom-0 bg-tavern-card rounded-b-xl">
           <button
             onClick={() => setCharacterEditorOpen(false)}
-            className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm"
+            className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm rounded-lg hover:bg-tavern-hover transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!form.name.trim()}
-            className="px-6 py-2 bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded-lg text-sm font-medium"
+            className="px-6 py-2 bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded-lg text-sm font-medium transition-all active:scale-[0.97] shadow-md shadow-tavern-accent/20"
           >
             {editingCharacter ? 'Save' : 'Create'}
           </button>

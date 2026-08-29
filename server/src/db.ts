@@ -134,6 +134,23 @@ export function initDb(): void {
       plugin_id TEXT PRIMARY KEY,
       settings_json TEXT NOT NULL DEFAULT '{}'
     );
+
+    CREATE TABLE IF NOT EXISTS chat_story_state (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL UNIQUE,
+      state_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_state_snapshots (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
   `);
 
   // Migration: انتقال chapter_settings قدیمی به plugin_settings ('chapters')
@@ -155,6 +172,11 @@ export function initDb(): void {
     database.exec("ALTER TABLE api_settings ADD COLUMN system_prompt TEXT DEFAULT ''");
   }
 
+  // Migration: max_context (configurable context window size)
+  if (!apiCols.some(c => c.name === 'max_context')) {
+    database.exec("ALTER TABLE api_settings ADD COLUMN max_context INTEGER DEFAULT 0");
+  }
+
   const chatFolderCols = database.prepare("PRAGMA table_info(chats)").all() as any[];
   if (!chatFolderCols.some(c => c.name === 'folder')) {
     database.exec("ALTER TABLE chats ADD COLUMN folder TEXT DEFAULT ''");
@@ -170,5 +192,89 @@ export function initDb(): void {
   }
   if (!chapterCols.some(c => c.name === 'generated_at')) {
     database.exec("ALTER TABLE chapters ADD COLUMN generated_at TEXT DEFAULT ''");
+  }
+
+  // Migration: فیلدهای اضافی Character Card V3 (سازگار با SillyTavern)
+  const charColsV3 = database.prepare("PRAGMA table_info(characters)").all() as any[];
+  if (!charColsV3.some(c => c.name === 'system_prompt')) {
+    database.exec("ALTER TABLE characters ADD COLUMN system_prompt TEXT DEFAULT ''");
+  }
+  if (!charColsV3.some(c => c.name === 'post_history_instructions')) {
+    database.exec("ALTER TABLE characters ADD COLUMN post_history_instructions TEXT DEFAULT ''");
+  }
+  if (!charColsV3.some(c => c.name === 'alternate_greetings')) {
+    database.exec("ALTER TABLE characters ADD COLUMN alternate_greetings TEXT DEFAULT '[]'");
+  }
+  if (!charColsV3.some(c => c.name === 'group_only_greetings')) {
+    database.exec("ALTER TABLE characters ADD COLUMN group_only_greetings TEXT DEFAULT '[]'");
+  }
+  if (!charColsV3.some(c => c.name === 'nickname')) {
+    database.exec("ALTER TABLE characters ADD COLUMN nickname TEXT DEFAULT ''");
+  }
+  if (!charColsV3.some(c => c.name === 'creator')) {
+    database.exec("ALTER TABLE characters ADD COLUMN creator TEXT DEFAULT ''");
+  }
+  if (!charColsV3.some(c => c.name === 'character_version')) {
+    database.exec("ALTER TABLE characters ADD COLUMN character_version TEXT DEFAULT ''");
+  }
+
+  // Migration: Author's Note برای هر چت (تزریق پرامپت در عمق قابل تنظیم)
+  const chatColsAll = database.prepare("PRAGMA table_info(chats)").all() as any[];
+  if (!chatColsAll.some(c => c.name === 'authors_note')) {
+    database.exec("ALTER TABLE chats ADD COLUMN authors_note TEXT DEFAULT ''");
+  }
+  if (!chatColsAll.some(c => c.name === 'authors_note_depth')) {
+    database.exec("ALTER TABLE chats ADD COLUMN authors_note_depth INTEGER DEFAULT 4");
+  }
+  if (!chatColsAll.some(c => c.name === 'authors_note_position')) {
+    database.exec("ALTER TABLE chats ADD COLUMN authors_note_position TEXT DEFAULT 'in_chat'");
+  }
+
+  // Migration: موتور پیشرفته لوربوک (regex / case-sensitivity / probability)
+  const entryCols = database.prepare("PRAGMA table_info(lorebook_entries)").all() as any[];
+  if (!entryCols.some(c => c.name === 'case_sensitive')) {
+    database.exec("ALTER TABLE lorebook_entries ADD COLUMN case_sensitive INTEGER DEFAULT 0");
+  }
+  if (!entryCols.some(c => c.name === 'use_regex')) {
+    database.exec("ALTER TABLE lorebook_entries ADD COLUMN use_regex INTEGER DEFAULT 0");
+  }
+  if (!entryCols.some(c => c.name === 'probability')) {
+    database.exec("ALTER TABLE lorebook_entries ADD COLUMN probability INTEGER DEFAULT 100");
+  }
+
+  // ─── Group Chat tables ───
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_participants (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      character_id TEXT NOT NULL,
+      display_name TEXT DEFAULT '',
+      display_avatar TEXT DEFAULT '',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+      FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Migration: group chat fields for chats
+  const chatColsGc = database.prepare("PRAGMA table_info(chats)").all() as any[];
+  if (!chatColsGc.some(c => c.name === 'is_group_chat')) {
+    database.exec("ALTER TABLE chats ADD COLUMN is_group_chat INTEGER DEFAULT 0");
+  }
+  if (!chatColsGc.some(c => c.name === 'group_chat_name')) {
+    database.exec("ALTER TABLE chats ADD COLUMN group_chat_name TEXT DEFAULT ''");
+  }
+
+  // Migration: sender info for messages
+  const msgCols = database.prepare("PRAGMA table_info(messages)").all() as any[];
+  if (!msgCols.some(c => c.name === 'sender_name')) {
+    database.exec("ALTER TABLE messages ADD COLUMN sender_name TEXT DEFAULT ''");
+  }
+  if (!msgCols.some(c => c.name === 'sender_avatar')) {
+    database.exec("ALTER TABLE messages ADD COLUMN sender_avatar TEXT DEFAULT ''");
+  }
+  if (!msgCols.some(c => c.name === 'sender_character_id')) {
+    database.exec("ALTER TABLE messages ADD COLUMN sender_character_id TEXT DEFAULT ''");
   }
 }

@@ -1,7 +1,7 @@
 import { useStore } from '../store/state';
 
 export default function IconBar() {
-  const { activePanel, setActivePanel, panelOpen } = useStore();
+  const { activePanel, setActivePanel, panelOpen, searchOpen, setSearchOpen } = useStore();
 
   const icons = [
     {
@@ -72,20 +72,54 @@ export default function IconBar() {
 
   return (
     <div className="w-12 bg-tavern-surface border-r border-tavern-border flex flex-col items-center py-2 gap-1 flex-shrink-0">
-      {icons.map((icon) => (
-        <button
-          key={icon.id}
-          onClick={() => setActivePanel(icon.id)}
-          className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all ${
-            activePanel === icon.id && panelOpen
-              ? 'bg-tavern-accent/20 text-tavern-accent'
-              : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
-          }`}
-          title={icon.label}
-        >
-          {icon.icon}
-        </button>
-      ))}
+      {icons.map((icon) => {
+        const isActive = activePanel === icon.id && panelOpen;
+        return (
+          <button
+            key={icon.id}
+            onClick={() => setActivePanel(icon.id)}
+            className={`relative w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 group ${
+              isActive
+                ? 'bg-tavern-accent/20 text-tavern-accent'
+                : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
+            } active:scale-90`}
+            aria-label={icon.label}
+          >
+            {/* Active indicator pill */}
+            <span
+              className={`absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full bg-tavern-accent transition-all duration-300 ${
+                isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-y-0'
+              }`}
+            />
+            {icon.icon}
+            {/* Custom tooltip */}
+            <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-tavern-surface2 border border-tavern-border text-[11px] font-medium text-tavern-text whitespace-nowrap shadow-lg shadow-black/30 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 delay-300 z-50">
+              {icon.label}
+            </span>
+          </button>
+        );
+      })}
+
+      {/* Separator */}
+      <div className="w-6 h-px bg-tavern-border/50 my-1" />
+
+      {/* Search button */}
+      <button
+        onClick={() => setSearchOpen(!searchOpen)}
+        className={`relative w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 group ${
+          searchOpen
+            ? 'bg-tavern-accent/20 text-tavern-accent'
+            : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
+        } active:scale-90`}
+        aria-label="Search"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-tavern-surface2 border border-tavern-border text-[11px] font-medium text-tavern-text whitespace-nowrap shadow-lg shadow-black/30 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 delay-300 z-50">
+          Search
+        </span>
+      </button>
     </div>
   );
 }

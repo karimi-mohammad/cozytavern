@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart } from '../types';
+import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState } from '../types';
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
@@ -33,8 +33,50 @@ interface AppState {
   chapterStartId: string | null;
   chapterEndId: string | null;
 
+  // Chapter Creation Flow (preview → summarize → review → save)
+  chapterFlowEndId: string | null;
+  chapterFlowStartId: string | null;
+  chapterFlowPreviewOpen: boolean;
+  chapterFlowPreviewData: ChapterPreviewData | null;
+  chapterFlowIsGenerating: boolean;
+  chapterFlowReviewOpen: boolean;
+  chapterFlowSummary: string;
+  chapterFlowSummaryMetadata: { model: string; time: number; tokens: number } | null;
+  chapterFlowCreatedChapterId: string | null;
+  // Actions
+  startChapterCreation: (endMessageId: string) => Promise<void>;
+  cancelChapterCreation: () => void;
+  sendChapterForSummary: () => Promise<void>;
+  updateChapterFlowSummary: (summary: string) => void;
+  regenerateChapterFlowSummary: () => Promise<void>;
+  saveChapterFromFlow: () => Promise<void>;
+
   // Plugins (تنظیمات پلاگین لوربوک)
   lorebookPluginSettings: LorebookPluginSettings | null;
+
+  // Quick Replies
+  quickReplySettings: QuickReplySettings | null;
+
+  // Story State (حافظه وضعیت داستان)
+  storyState: StoryState | null;
+  loadingStoryState: boolean;
+  storyStateOpen: boolean;
+  loadStoryState: (chatId: string) => Promise<void>;
+  updateStoryState: (chatId: string, delta: Partial<StoryState>) => Promise<void>;
+  setStoryStateOpen: (open: boolean) => void;
+  _initStoryStateListener: () => void;
+
+  // Group Chat
+  groupChatParticipants: ChatParticipant[];
+  groupChatGenerating: boolean;
+  selectedCharacterForResponse: string | null;
+  setSelectedCharacterForResponse: (charId: string | null) => void;
+  addParticipant: (chatId: string, characterId: string) => Promise<void>;
+  removeParticipant: (chatId: string, participantId: string) => Promise<void>;
+  toggleParticipant: (chatId: string, participantId: string, isActive: boolean) => Promise<void>;
+  generateGroupResponse: (chatId: string, characterId: string) => Promise<void>;
+  createGroupChat: (data: { name?: string; character_ids: string[]; lorebook_id?: string }) => Promise<Chat>;
+  addCharacterToChat: (chatId: string, characterId: string) => Promise<void>;
 
   // Loading States
   loadingCharacters: boolean;
@@ -42,6 +84,18 @@ interface AppState {
   loadingMessages: boolean;
   loadingPersonas: boolean;
   loadingLorebooks: boolean;
+
+  // Search
+  searchQuery: string;
+  searchResults: SearchResult[];
+  searchTotal: number;
+  searchLoading: boolean;
+  searchOpen: boolean;
+  setSearchQuery: (query: string) => void;
+  setSearchOpen: (open: boolean) => void;
+  searchMessages: (query: string, opts?: { chat_id?: string; role?: string }) => Promise<void>;
+  loadMoreSearchResults: () => Promise<void>;
+  scrollToMessage: (messageId: string) => void;
 
   // UI State
   theme: 'dark' | 'darker' | 'light';
@@ -137,6 +191,16 @@ interface AppState {
   updateChapterSettings: (data: Partial<ChapterSettings>) => Promise<void>;
   loadLorebookPluginSettings: () => Promise<void>;
   updateLorebookPluginSettings: (data: Partial<LorebookPluginSettings>) => Promise<void>;
+  // Quick Replies
+  loadQuickReplies: () => Promise<void>;
+  updateQuickReplies: (data: Partial<QuickReplySettings>) => Promise<void>;
+  // Import/Export
+  importCharacterFromFile: (file: File) => Promise<void>;
+  importChatFile: (characterId: string, file: File) => Promise<void>;
+  exportCharacter: (id: string, format: 'json' | 'png') => Promise<void>;
+  exportChatAction: (chatId: string, chatName: string) => Promise<void>;
+  exportBackup: () => Promise<void>;
+  restoreBackupFile: (file: File) => Promise<void>;
   checkChapterTrigger: (chatId: string) => Promise<void>;
   dismissChapterSuggestion: () => void;
   markChapterBoundary: (kind: 'start' | 'end', messageId: string) => void;
@@ -198,8 +262,222 @@ export const useStore = create<AppState>((set, get) => ({
   chapterStartId: null,
   chapterEndId: null,
 
+  // Chapter Creation Flow
+  chapterFlowEndId: null,
+  chapterFlowStartId: null,
+  chapterFlowPreviewOpen: false,
+  chapterFlowPreviewData: null,
+  chapterFlowIsGenerating: false,
+  chapterFlowReviewOpen: false,
+  chapterFlowSummary: '',
+  chapterFlowSummaryMetadata: null,
+  chapterFlowCreatedChapterId: null,
+
   // Plugins
   lorebookPluginSettings: null,
+  quickReplySettings: null,
+
+  // Story State (حافظه وضعیت داستان)
+  storyState: null,
+  loadingStoryState: false,
+  storyStateOpen: false,
+  loadStoryState: async (chatId) => {
+    set({ loadingStoryState: true });
+    try {
+      const state = await api.getStoryState(chatId);
+      set({ storyState: state });
+    } finally {
+      set({ loadingStoryState: false });
+    }
+  },
+  updateStoryState: async (chatId, delta) => {
+    try {
+      const updated = await api.updateStoryState(chatId, delta);
+      set({ storyState: updated });
+    } catch (error: any) {
+      get().addToast(`Failed to update state: ${error.message}`, 'error');
+    }
+  },
+  setStoryStateOpen: (open) => set({ storyStateOpen: open }),
+  // Listen for story state updates from SSE
+  _initStoryStateListener: () => {
+    window.addEventListener('story-state-updated', ((e: CustomEvent) => {
+      const { currentChat } = get();
+      if (currentChat) {
+        // Reload state from server
+        get().loadStoryState(currentChat.id);
+      }
+    }) as EventListener);
+  },
+
+  // Group Chat state
+  groupChatParticipants: [],
+  groupChatGenerating: false,
+  selectedCharacterForResponse: null,
+  setSelectedCharacterForResponse: (charId) => set({ selectedCharacterForResponse: charId }),
+  addParticipant: async (chatId, characterId) => {
+    try {
+      const participant = await api.addParticipant(chatId, characterId);
+      set(s => ({ groupChatParticipants: [...s.groupChatParticipants, participant] }));
+      get().addToast('Character added to group', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+  removeParticipant: async (chatId, participantId) => {
+    try {
+      await api.removeParticipant(chatId, participantId);
+      set(s => ({ groupChatParticipants: s.groupChatParticipants.filter(p => p.id !== participantId) }));
+      get().addToast('Character removed from group', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+  toggleParticipant: async (chatId, participantId, isActive) => {
+    try {
+      const updated = await api.toggleParticipant(chatId, participantId, isActive);
+      set(s => ({
+        groupChatParticipants: s.groupChatParticipants.map(p =>
+          p.id === participantId ? { ...p, is_active: isActive } : p
+        ),
+      }));
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+  addCharacterToChat: async (chatId, characterId) => {
+    try {
+      const result = await api.addCharacterToChat(chatId, characterId, true);
+
+      // Update current chat if it's the same one
+      const { currentChat } = get();
+      if (currentChat && currentChat.id === chatId) {
+        // Update chat to group chat
+        set({
+          currentChat: {
+            ...currentChat,
+            is_group_chat: 1,
+            group_chat_name: currentChat.name,
+          },
+          groupChatParticipants: result.participants || [],
+        });
+
+        // Add system message to messages
+        if (result.participants) {
+          const newChar = result.participants.find((p: any) => p.character_id === characterId);
+          if (newChar) {
+            const systemMsg = {
+              id: crypto.randomUUID(),
+              chat_id: chatId,
+              role: 'system' as const,
+              content: `*${newChar.display_name} has entered the chat.*`,
+              swipes: [],
+              swipe_id: 0,
+              is_edited: false,
+              is_system: true,
+              send_date: new Date().toISOString(),
+              sender_name: '',
+              sender_avatar: '',
+              sender_character_id: '',
+            };
+            set(s => ({
+              currentChat: {
+                ...s.currentChat!,
+                messages: [...s.currentChat!.messages, systemMsg],
+              },
+            }));
+          }
+        }
+      }
+
+      get().addToast('Character added to chat', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+  generateGroupResponse: async (chatId, characterId) => {
+    const { activePersona, activeLorebook, isGenerating } = get();
+    if (isGenerating) return;
+
+    set({ isGenerating: true, groupChatGenerating: true });
+
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    try {
+      let fullContent = '';
+      await api.generateGroupChatResponseStream(
+        chatId,
+        {
+          character_id: characterId,
+          persona_id: activePersona?.id,
+          lorebook_id: activeLorebook?.id,
+        },
+        (messageId) => {
+          // Get the character info for the sender
+          const participant = get().groupChatParticipants.find(p => p.character_id === characterId);
+          const char = get().characters.find(c => c.id === characterId);
+          const assistantMsg = {
+            id: messageId,
+            chat_id: chatId,
+            role: 'assistant' as const,
+            content: '',
+            swipes: [],
+            swipe_id: 0,
+            is_edited: false,
+            is_system: false,
+            send_date: new Date().toISOString(),
+            sender_name: char?.name || participant?.display_name || '',
+            sender_avatar: char?.avatar || participant?.display_avatar || '',
+            sender_character_id: characterId,
+          };
+          set(s => ({
+            currentChat: s.currentChat ? {
+              ...s.currentChat,
+              messages: [...s.currentChat.messages, assistantMsg],
+            } : null,
+          }));
+        },
+        (token) => {
+          fullContent += token;
+          set(s => {
+            if (!s.currentChat) return s;
+            const msgs = [...s.currentChat.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.sender_character_id === characterId) {
+              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+            }
+            return { currentChat: { ...s.currentChat, messages: msgs } };
+          });
+        },
+        () => {
+          set({ isGenerating: false, groupChatGenerating: false });
+          get().updateContextUsage();
+        },
+        controller.signal
+      );
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        set({ isGenerating: false, groupChatGenerating: false });
+        return;
+      }
+      get().addToast(`Error: ${error.message}`, 'error');
+      set({ isGenerating: false, groupChatGenerating: false });
+    } finally {
+      if (currentAbortController === controller) currentAbortController = null;
+    }
+  },
+  createGroupChat: async (data) => {
+    const result = await api.createGroupChat(data);
+    const chat = { ...result, messages: [] } as Chat & { messages: Message[] };
+    set(s => ({
+      chats: [chat, ...s.chats],
+      currentChat: chat,
+      groupChatParticipants: result.participants || [],
+    }));
+    get().addToast('Group chat created', 'success');
+    return chat;
+  },
 
   // Loading states (از true شروع می‌شه چون لود اولیه دیتا در mount انجام می‌شه)
   loadingCharacters: true,
@@ -207,6 +485,50 @@ export const useStore = create<AppState>((set, get) => ({
   loadingMessages: false,
   loadingPersonas: true,
   loadingLorebooks: true,
+
+  // Search state
+  searchQuery: '',
+  searchResults: [],
+  searchTotal: 0,
+  searchLoading: false,
+  searchOpen: false,
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchOpen: (open) => set({ searchOpen: open }),
+  searchMessages: async (query, opts) => {
+    if (!query.trim()) {
+      set({ searchResults: [], searchTotal: 0 });
+      return;
+    }
+    set({ searchLoading: true });
+    try {
+      const result = await api.searchMessages({ q: query, ...opts });
+      set({ searchResults: result.results, searchTotal: result.total, searchQuery: query, searchOpen: true });
+    } catch (error: any) {
+      useStore.getState().addToast(`Search error: ${error.message}`, 'error');
+      set({ searchResults: [], searchTotal: 0 });
+    } finally {
+      set({ searchLoading: false });
+    }
+  },
+  loadMoreSearchResults: async () => {
+    const { searchQuery, searchResults, searchTotal } = useStore.getState();
+    if (searchResults.length >= searchTotal || !searchQuery.trim()) return;
+    set({ searchLoading: true });
+    try {
+      const result = await api.searchMessages({ q: searchQuery, offset: searchResults.length });
+      set({ searchResults: [...searchResults, ...result.results] });
+    } catch {} finally {
+      set({ searchLoading: false });
+    }
+  },
+  scrollToMessage: (messageId) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-flash');
+      setTimeout(() => el.classList.remove('highlight-flash'), 2000);
+    }
+  },
 
   theme: (localStorage.getItem('cozytavern.theme') as 'dark' | 'darker' | 'light') || 'dark',
   setTheme: (theme) => {
@@ -384,6 +706,19 @@ export const useStore = create<AppState>((set, get) => ({
       // لود فصل‌ها و تنظیمات
       get().loadChapters(chatId);
       get().loadChapterSettings();
+      // لود وضعیت داستان
+      get().loadStoryState(chatId);
+      // لود participant های گروه چت
+      if (chat.is_group_chat) {
+        try {
+          const groupChat = await api.getGroupChat(chatId);
+          set({ groupChatParticipants: groupChat.participants || [] });
+        } catch {
+          set({ groupChatParticipants: [] });
+        }
+      } else {
+        set({ groupChatParticipants: [] });
+      }
       // محاسبه context usage بعد از لود چت
       setTimeout(() => get().updateContextUsage(), 0);
     } finally {
@@ -452,7 +787,7 @@ export const useStore = create<AppState>((set, get) => ({
     const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
-    const isFirstMessage = currentChat.messages.length === 0;
+    const isFirstMessage = !currentChat.messages.some(m => m.role === 'user');
 
     const userMsg = await api.sendMessage({
       chat_id: currentChat.id,
@@ -701,7 +1036,19 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     try {
-      await api.regenerateMessage(currentChat.id);
+      // سرور محتوای فعلی رو به swipes اضافه می‌کنه و پیام آپدیت شده رو برمی‌گردونه
+      const regenerated = await api.regenerateMessage(currentChat.id);
+
+      // بلافاصله swipes و swipe_id رو در store آپدیت کن
+      if (regenerated) {
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = s.currentChat.messages.map(m =>
+            m.id === lastAssistantMsg.id ? { ...m, swipes: regenerated.swipes, swipe_id: regenerated.swipe_id } : m
+          );
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      }
 
       let fullContent = '';
       await api.chatWithAI(
@@ -1048,7 +1395,13 @@ export const useStore = create<AppState>((set, get) => ({
       activePersona,
       lorebookEntries,
       chapters,
-      chapterSettings?.raw_window
+      chapterSettings ? {
+        raw_mode: chapterSettings.raw_mode || 'count',
+        raw_window: chapterSettings.raw_window || 10,
+        raw_token_budget: chapterSettings.raw_token_budget || 3000,
+        raw_min_messages: chapterSettings.raw_min_messages || 3,
+        raw_max_messages: chapterSettings.raw_max_messages || 20,
+      } : undefined,
     );
     set({ contextUsage: usage });
   },
@@ -1152,6 +1505,118 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ─── Quick Replies ───
+
+  loadQuickReplies: async () => {
+    try {
+      const settings = await api.getQuickReplies();
+      set({ quickReplySettings: settings });
+    } catch {
+      set({ quickReplySettings: null });
+    }
+  },
+
+  updateQuickReplies: async (data) => {
+    try {
+      const updated = await api.updateQuickReplies(data);
+      set({ quickReplySettings: updated });
+      get().addToast('Quick replies saved', 'success');
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  // ─── Import/Export ───
+
+  importCharacterFromFile: async (file) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(',')[1];
+        if (!base64) throw new Error('Could not read file');
+        const result = await api.importCharacterFromBase64(base64);
+        await get().loadCharacters();
+        get().addToast(`Imported "${result.name}"`, 'success');
+      } catch (error: any) {
+        get().addToast(`Import error: ${error.message}`, 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  },
+
+  importChatFile: async (characterId, file) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        if (data.format !== 'cozytavern-chat') throw new Error('Not a CozyTavern chat file');
+        const result = await api.importChat(characterId, data);
+        get().addToast(`Imported "${result.name}" (${result.imported_messages} messages)`, 'success');
+        if (get().currentCharacter?.id === characterId) {
+          await get().loadChats(characterId);
+        }
+      } catch (error: any) {
+        get().addToast(`Import error: ${error.message}`, 'error');
+      }
+    };
+    reader.readAsText(file);
+  },
+
+  exportCharacter: async (id, format) => {
+    try {
+      if (format === 'png') {
+        await api.exportCharacterPng(id);
+      } else {
+        await api.exportCharacterJson(id);
+      }
+      get().addToast(`Character exported as ${format.toUpperCase()}`, 'success');
+    } catch (error: any) {
+      get().addToast(`Export error: ${error.message}`, 'error');
+    }
+  },
+
+  exportChatAction: async (chatId, chatName) => {
+    try {
+      await api.exportChat(chatId, chatName);
+      get().addToast('Chat exported', 'success');
+    } catch (error: any) {
+      get().addToast(`Export error: ${error.message}`, 'error');
+    }
+  },
+
+  exportBackup: async () => {
+    try {
+      await api.exportBackup();
+      get().addToast('Backup downloaded', 'success');
+    } catch (error: any) {
+      get().addToast(`Backup error: ${error.message}`, 'error');
+    }
+  },
+
+  restoreBackupFile: async (file) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        if (data.format !== 'cozytavern-backup') throw new Error('Not a CozyTavern backup file');
+        const ok = await get().showConfirm('This will REPLACE ALL data (characters, chats, settings). Continue?');
+        if (!ok) return;
+        await api.restoreBackup(data);
+        // Reload everything
+        await Promise.all([
+          get().loadCharacters(),
+          get().loadPersonas(),
+          get().loadLorebooks(),
+          get().loadApiSettings(),
+        ]);
+        get().addToast('Backup restored successfully', 'success');
+      } catch (error: any) {
+        get().addToast(`Restore error: ${error.message}`, 'error');
+      }
+    };
+    reader.readAsText(file);
+  },
+
   checkChapterTrigger: async (chatId) => {
     const { chapterSettings } = get();
     if (!chapterSettings?.auto_detect_enabled) return;
@@ -1221,6 +1686,177 @@ export const useStore = create<AppState>((set, get) => ({
       });
       set({ chapterStartId: null, chapterEndId: null });
     } catch {}
+  },
+
+  // ─── Chapter Creation Flow ───
+
+  startChapterCreation: async (endMessageId) => {
+    const { currentChat, chapters } = get();
+    if (!currentChat) return;
+
+    const messages = currentChat.messages;
+    const endIdx = messages.findIndex(m => m.id === endMessageId);
+    if (endIdx === -1) return;
+
+    // Calculate start message: first message or after last chapter
+    let startMessageId: string;
+    if (chapters.length === 0) {
+      startMessageId = messages[0].id;
+    } else {
+      // Find the last chapter that ends before this message
+      let lastChapterEndIdx = -1;
+      for (const chapter of chapters) {
+        const chapterEndIdx = messages.findIndex(m => m.id === chapter.end_message_id);
+        if (chapterEndIdx !== -1 && chapterEndIdx < endIdx) {
+          lastChapterEndIdx = Math.max(lastChapterEndIdx, chapterEndIdx);
+        }
+      }
+      if (lastChapterEndIdx === -1) {
+        startMessageId = messages[0].id;
+      } else {
+        startMessageId = messages[lastChapterEndIdx + 1].id;
+      }
+    }
+
+    // Validate raw window
+    const { chapterSettings } = get();
+    const rawWindow = chapterSettings?.raw_window || 10;
+    if (messages.length - endIdx - 1 < rawWindow) {
+      get().addToast(`Chapter must end at least ${rawWindow} messages before the last message`, 'error');
+      return;
+    }
+
+    // Set flow state and open preview
+    set({
+      chapterFlowStartId: startMessageId,
+      chapterFlowEndId: endMessageId,
+      chapterFlowPreviewOpen: true,
+      chapterFlowPreviewData: null,
+    });
+
+    // Fetch preview data
+    try {
+      const previewData = await api.previewChapter({
+        chat_id: currentChat.id,
+        start_message_id: startMessageId,
+        end_message_id: endMessageId,
+      });
+      set({ chapterFlowPreviewData: previewData });
+    } catch (error: any) {
+      get().addToast(`Error loading preview: ${error.message}`, 'error');
+      set({ chapterFlowPreviewOpen: false, chapterFlowStartId: null, chapterFlowEndId: null });
+    }
+  },
+
+  cancelChapterCreation: () => {
+    set({
+      chapterFlowEndId: null,
+      chapterFlowStartId: null,
+      chapterFlowPreviewOpen: false,
+      chapterFlowPreviewData: null,
+      chapterFlowIsGenerating: false,
+      chapterFlowReviewOpen: false,
+      chapterFlowSummary: '',
+      chapterFlowSummaryMetadata: null,
+      chapterFlowCreatedChapterId: null,
+    });
+  },
+
+  sendChapterForSummary: async () => {
+    const { currentChat, chapterFlowStartId, chapterFlowEndId } = get();
+    if (!currentChat || !chapterFlowStartId || !chapterFlowEndId) return;
+
+    // Create chapter without summary first
+    set({ chapterFlowIsGenerating: true, chapterFlowPreviewOpen: false });
+
+    try {
+      const chapter = await api.createChapter({
+        chat_id: currentChat.id,
+        start_message_id: chapterFlowStartId,
+        end_message_id: chapterFlowEndId,
+        auto_summarize: false,
+      });
+
+      // Generate summary
+      const result = await api.summarizeChapter(chapter.id);
+
+      // Show review modal
+      set({
+        chapterFlowCreatedChapterId: chapter.id,
+        chapterFlowIsGenerating: false,
+        chapterFlowReviewOpen: true,
+        chapterFlowSummary: result.summary,
+        chapterFlowSummaryMetadata: {
+          model: result.model,
+          time: result.generation_time,
+          tokens: result.generation_tokens,
+        },
+      });
+
+      // Reload chapters
+      get().loadChapters(currentChat.id);
+    } catch (error: any) {
+      get().addToast(`Error generating summary: ${error.message}`, 'error');
+      set({
+        chapterFlowIsGenerating: false,
+        chapterFlowReviewOpen: false,
+        chapterFlowEndId: null,
+        chapterFlowStartId: null,
+      });
+    }
+  },
+
+  updateChapterFlowSummary: (summary) => {
+    set({ chapterFlowSummary: summary });
+  },
+
+  regenerateChapterFlowSummary: async () => {
+    const { chapterFlowCreatedChapterId } = get();
+    if (!chapterFlowCreatedChapterId) return;
+
+    set({ chapterFlowIsGenerating: true });
+
+    try {
+      const result = await api.summarizeChapter(chapterFlowCreatedChapterId);
+      set({
+        chapterFlowIsGenerating: false,
+        chapterFlowSummary: result.summary,
+        chapterFlowSummaryMetadata: {
+          model: result.model,
+          time: result.generation_time,
+          tokens: result.generation_tokens,
+        },
+      });
+    } catch (error: any) {
+      get().addToast(`Error regenerating summary: ${error.message}`, 'error');
+      set({ chapterFlowIsGenerating: false });
+    }
+  },
+
+  saveChapterFromFlow: async () => {
+    const { currentChat, chapterFlowCreatedChapterId, chapterFlowSummary } = get();
+    if (!currentChat || !chapterFlowCreatedChapterId) return;
+
+    try {
+      await api.updateChapter(chapterFlowCreatedChapterId, { summary: chapterFlowSummary });
+      get().addToast('Chapter saved', 'success');
+      get().loadChapters(currentChat.id);
+    } catch (error: any) {
+      get().addToast(`Error saving chapter: ${error.message}`, 'error');
+    }
+
+    // Reset flow state
+    set({
+      chapterFlowEndId: null,
+      chapterFlowStartId: null,
+      chapterFlowPreviewOpen: false,
+      chapterFlowPreviewData: null,
+      chapterFlowIsGenerating: false,
+      chapterFlowReviewOpen: false,
+      chapterFlowSummary: '',
+      chapterFlowSummaryMetadata: null,
+      chapterFlowCreatedChapterId: null,
+    });
   },
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

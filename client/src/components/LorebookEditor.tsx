@@ -15,6 +15,7 @@ export default function LorebookEditor() {
     constant: false, selective: false,
     insertion_order: 100, position: 'before_main' as 'before_main' | 'after_main',
     disable: false, comment: '',
+    case_sensitive: false, use_regex: false, probability: 100,
   });
 
   useEffect(() => {
@@ -27,6 +28,19 @@ export default function LorebookEditor() {
       setMobileTab('detail');
     }
   }, [selectedId]);
+
+  // بستن مودال با کلید Escape
+  useEffect(() => {
+    if (!lorebookEditorOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLorebookEditorOpen(false);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lorebookEditorOpen]);
 
   if (!lorebookEditorOpen) return null;
 
@@ -52,6 +66,7 @@ export default function LorebookEditor() {
       constant: false, selective: false,
       insertion_order: 100, position: 'before_main',
       disable: false, comment: '',
+      case_sensitive: false, use_regex: false, probability: 100,
     });
   };
 
@@ -70,11 +85,11 @@ export default function LorebookEditor() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 md:p-4">
-      <div className="bg-tavern-card rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-50 flex items-center justify-center p-3 md:p-4 modal-enter-overlay">
+      <div className="bg-tavern-card border border-tavern-border rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl shadow-black/40 modal-enter-card">
         <div className="p-4 border-b border-tavern-border flex items-center justify-between flex-shrink-0">
-          <h2 className="text-lg font-bold">Lorebooks (World Info)</h2>
-          <button onClick={() => { setLorebookEditorOpen(false); setSelectedId(null); }} className="text-tavern-muted hover:text-tavern-text">
+          <h2 className="text-lg font-bold text-tavern-text-bright">Lorebooks (World Info)</h2>
+          <button onClick={() => { setLorebookEditorOpen(false); setSelectedId(null); }} className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors active:scale-90">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -118,13 +133,13 @@ export default function LorebookEditor() {
             {lorebooks.map(lb => (
               <div
                 key={lb.id}
-                className={`p-2 rounded cursor-pointer text-sm flex items-center justify-between ${
+                className={`p-2 rounded cursor-pointer text-sm flex items-center justify-between transition-colors group ${
                   selectedId === lb.id ? 'bg-tavern-accent/20 text-tavern-accent' : 'hover:bg-tavern-hover'
                 }`}
                 onClick={() => { setSelectedId(lb.id); setMobileTab('detail'); }}
               >
                 <span className="truncate">{lb.name}</span>
-                <button onClick={(e) => { e.stopPropagation(); handleDeleteLorebook(lb.id); }} className="text-tavern-muted hover:text-red-400 text-xs">×</button>
+                <button onClick={(e) => { e.stopPropagation(); handleDeleteLorebook(lb.id); }} className="text-tavern-muted hover:text-red-400 text-xs px-1 rounded hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100">×</button>
               </div>
             ))}
           </div>
@@ -151,10 +166,15 @@ export default function LorebookEditor() {
                     {lorebookData.entries?.map((entry: LorebookEntry & { key: string[]; keysecondary: string[] }) => (
                       <div key={entry.id} className="bg-tavern-bg rounded p-2 text-xs">
                         <div className="flex items-center justify-between">
-                          <div className="flex gap-1 flex-wrap">
-                            {entry.key.map((k, i) => (
-                              <span key={i} className="bg-tavern-accent/20 text-tavern-accent px-1.5 py-0.5 rounded">{k}</span>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            {entry.key.map((k: string, i: number) => (
+                              <span key={i} className={`${(entry as any).use_regex ? 'bg-amber-500/20 text-amber-400' : 'bg-tavern-accent/20 text-tavern-accent'} px-1.5 py-0.5 rounded`}>
+                                {k}
+                              </span>
                             ))}
+                            {(entry as any).use_regex && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1 py-0.5 rounded">regex</span>}
+                            {(entry as any).case_sensitive && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1 py-0.5 rounded">Aa</span>}
+                            {(entry as any).probability < 100 && <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1 py-0.5 rounded">{(entry as any).probability}%</span>}
                           </div>
                           <button onClick={() => handleDeleteEntry(entry.id)} className="text-red-400 hover:text-red-300">Delete</button>
                         </div>
@@ -196,6 +216,24 @@ export default function LorebookEditor() {
                         <input type="checkbox" checked={entryForm.selective} onChange={(e) => setEntryForm(f => ({ ...f, selective: e.target.checked }))} className="accent-tavern-accent" />
                         Selective
                       </label>
+                      <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={entryForm.use_regex} onChange={(e) => setEntryForm(f => ({ ...f, use_regex: e.target.checked }))} className="accent-tavern-accent" />
+                        Regex
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={entryForm.case_sensitive} onChange={(e) => setEntryForm(f => ({ ...f, case_sensitive: e.target.checked }))} className="accent-tavern-accent" />
+                        Case sensitive
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-tavern-dim">Prob:</label>
+                        <input
+                          type="number" min={0} max={100}
+                          value={entryForm.probability}
+                          onChange={(e) => setEntryForm(f => ({ ...f, probability: parseInt(e.target.value) || 100 }))}
+                          className="w-14 bg-tavern-card border border-tavern-border rounded px-1 py-0.5 text-xs"
+                        />
+                        <span className="text-xs text-tavern-dim">%</span>
+                      </div>
                       <select
                         value={entryForm.position}
                         onChange={(e) => setEntryForm(f => ({ ...f, position: e.target.value as any }))}

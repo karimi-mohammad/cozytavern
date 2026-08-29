@@ -19,6 +19,10 @@ const asInt = (v: any): number | null => {
 
 interface ChaptersSettings {
   raw_window: number;
+  raw_mode: 'count' | 'tokens';
+  raw_token_budget: number;
+  raw_min_messages: number;
+  raw_max_messages: number;
   auto_detect_enabled: boolean;
   trigger_phrases: string[];
   summarizer_model: string;
@@ -37,6 +41,34 @@ function sanitizeChapters(partial: Partial<ChaptersSettings>, current: ChaptersS
       throw new PluginSettingsError('raw_window must be a number between 1 and 100');
     }
     next.raw_window = n;
+  }
+  if (partial.raw_mode !== undefined) {
+    const mode = String(partial.raw_mode);
+    if (mode !== 'count' && mode !== 'tokens') {
+      throw new PluginSettingsError('raw_mode must be "count" or "tokens"');
+    }
+    next.raw_mode = mode;
+  }
+  if (partial.raw_token_budget !== undefined) {
+    const n = asInt(partial.raw_token_budget);
+    if (n === null || n < 500 || n > 50000) {
+      throw new PluginSettingsError('raw_token_budget must be a number between 500 and 50000');
+    }
+    next.raw_token_budget = n;
+  }
+  if (partial.raw_min_messages !== undefined) {
+    const n = asInt(partial.raw_min_messages);
+    if (n === null || n < 1 || n > 50) {
+      throw new PluginSettingsError('raw_min_messages must be a number between 1 and 50');
+    }
+    next.raw_min_messages = n;
+  }
+  if (partial.raw_max_messages !== undefined) {
+    const n = asInt(partial.raw_max_messages);
+    if (n === null || n < 1 || n > 100) {
+      throw new PluginSettingsError('raw_max_messages must be a number between 1 and 100');
+    }
+    next.raw_max_messages = n;
   }
   if (partial.auto_detect_enabled !== undefined) {
     next.auto_detect_enabled = !!partial.auto_detect_enabled;
@@ -94,12 +126,55 @@ function sanitizeLorebookScanner(
   return next;
 }
 
+// ─── Quick Replies plugin ───
+
+export interface QuickReply {
+  label: string;
+  message: string;
+}
+
+export interface QuickRepliesSettings {
+  enabled: boolean;
+  replies: QuickReply[];
+}
+
+function sanitizeQuickReplies(
+  partial: Partial<QuickRepliesSettings>,
+  current: QuickRepliesSettings,
+): QuickRepliesSettings {
+  const next = { ...current };
+
+  if (partial.enabled !== undefined) {
+    next.enabled = !!partial.enabled;
+  }
+
+  if (partial.replies !== undefined) {
+    if (!Array.isArray(partial.replies)) {
+      throw new PluginSettingsError('replies must be an array of {label, message}');
+    }
+    const replies: QuickReply[] = [];
+    for (const r of partial.replies.slice(0, 30)) {
+      const label = String(r?.label ?? '').trim();
+      const message = String(r?.message ?? '');
+      if (!label || !message.trim()) continue;
+      replies.push({ label: label.slice(0, 100), message: message.slice(0, 4000) });
+    }
+    next.replies = replies;
+  }
+
+  return next;
+}
+
 // ─── Registry ───
 
 export const PLUGIN_REGISTRY: Record<string, PluginDefinition<any>> = {
   chapters: {
     defaults: {
       raw_window: 10,
+      raw_mode: 'count',
+      raw_token_budget: 3000,
+      raw_min_messages: 3,
+      raw_max_messages: 20,
       auto_detect_enabled: true,
       trigger_phrases: [...CHAPTERS_DEFAULT_TRIGGER_PHRASES],
       summarizer_model: '',
@@ -114,6 +189,13 @@ export const PLUGIN_REGISTRY: Record<string, PluginDefinition<any>> = {
       default_token_budget: 500,
     },
     sanitize: sanitizeLorebookScanner,
+  },
+  quick_replies: {
+    defaults: {
+      enabled: true,
+      replies: [],
+    },
+    sanitize: sanitizeQuickReplies,
   },
 };
 

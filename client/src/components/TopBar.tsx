@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/state';
 import { formatTokenCount } from '../utils/tokenEstimate';
 
@@ -14,6 +14,26 @@ export default function TopBar() {
   } = useStore();
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // بستن dropdown با کلیک بیرون یا Escape
+  useEffect(() => {
+    if (!showChatDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowChatDropdown(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowChatDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [showChatDropdown]);
 
   const settings = apiSettings['openai'];
   const endpoint = settings?.base_url || 'api.openai.com';
@@ -35,25 +55,27 @@ export default function TopBar() {
   return (
     <div className="h-[40px] bg-tavern-surface border-b border-tavern-border flex items-center px-3 gap-2 flex-shrink-0 z-40">
       {/* Left: Chat Name / Selector */}
-      <div className="relative flex-shrink-0">
+      <div className="relative flex-shrink-0" ref={dropdownRef}>
         <button
           onClick={() => setShowChatDropdown(!showChatDropdown)}
-          className="flex items-center gap-1.5 hover:bg-tavern-hover px-2 py-1 rounded-md transition-colors max-w-[320px]"
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors max-w-[320px] ${
+            showChatDropdown ? 'bg-tavern-hover text-tavern-text-bright' : 'hover:bg-tavern-hover'
+          }`}
         >
           <span className="text-xs text-tavern-text truncate font-medium">
             {currentChat ? `${currentCharacter?.name || ''} - ${currentChat.name}` : 'No chat selected'}
           </span>
-          <svg className={`w-3 h-3 text-tavern-dim transition-transform flex-shrink-0 ${showChatDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-3 h-3 text-tavern-dim transition-transform duration-200 flex-shrink-0 ${showChatDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
 
         {showChatDropdown && (
-          <div className="absolute top-full left-0 mt-1 w-72 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl z-50 py-1 max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full left-0 mt-1 w-72 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 z-50 py-1 max-h-[300px] overflow-y-auto animate-pop-in origin-top-left">
             {currentCharacter && (
               <button
                 onClick={handleNewChat}
-                className="w-full px-3 py-2 text-left text-xs text-tavern-accent hover:bg-tavern-hover flex items-center gap-2"
+                className="w-full px-3 py-2 text-left text-xs text-tavern-accent hover:bg-tavern-hover flex items-center gap-2 transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -65,7 +87,7 @@ export default function TopBar() {
               <button
                 key={chat.id}
                 onClick={() => handleChatSelect(chat.id)}
-                className={`w-full px-3 py-2 text-left text-xs hover:bg-tavern-hover flex items-center gap-2 ${
+                className={`w-full px-3 py-2 text-left text-xs hover:bg-tavern-hover flex items-center gap-2 transition-colors ${
                   currentChat?.id === chat.id ? 'text-tavern-accent bg-tavern-accent/10' : 'text-tavern-text'
                 }`}
               >
@@ -108,9 +130,14 @@ export default function TopBar() {
               <span className="text-[10px] text-tavern-dim font-mono whitespace-nowrap">
                 {formatTokenCount(contextUsage.used)}/{formatTokenCount(contextUsage.max)}
               </span>
+              {settings?.max_tokens ? (
+                <span className="text-[10px] text-tavern-faint font-mono" title="Max output tokens">
+                  ↳{formatTokenCount(settings.max_tokens)}
+                </span>
+              ) : null}
             </div>
             {/* Tooltip with breakdown */}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl p-3 text-[10px] space-y-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[180px]">
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 p-3 text-[10px] space-y-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-150 delay-100 z-50 min-w-[180px]">
               <div className="font-medium text-tavern-text mb-1.5">Context Breakdown</div>
               {[
                 { label: 'System', value: contextUsage.breakdown.system },
@@ -121,11 +148,23 @@ export default function TopBar() {
                 { label: 'History', value: contextUsage.breakdown.history },
                 { label: 'Overhead', value: contextUsage.breakdown.overhead },
               ].filter(item => item.value > 0).map(item => (
-                <div key={item.label} className="flex justify-between text-tavern-textDim">
+                <div key={item.label} className="flex justify-between text-tavern-muted">
                   <span>{item.label}</span>
                   <span className="font-mono">{formatTokenCount(item.value)}</span>
                 </div>
               ))}
+              <div className="border-t border-tavern-border pt-1 mt-1 space-y-0.5">
+                <div className="flex justify-between text-tavern-dim">
+                  <span>Context Window</span>
+                  <span className="font-mono">{formatTokenCount(contextUsage.max)}</span>
+                </div>
+                {settings?.max_tokens ? (
+                  <div className="flex justify-between text-tavern-dim">
+                    <span>Max Output</span>
+                    <span className="font-mono">{formatTokenCount(settings.max_tokens)}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         )}
@@ -135,18 +174,18 @@ export default function TopBar() {
       <div className="flex items-center gap-1">
         {/* Generating indicator */}
         {isGenerating && (
-          <div className="flex items-center gap-1 text-tavern-accent text-xs px-2">
+          <div className="flex items-center gap-1 text-tavern-accent text-xs px-2 animate-fade-in" title="Generating...">
             <div className="flex gap-0.5">
-              <span className="w-1 h-1 bg-tavern-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 bg-tavern-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-1 bg-tavern-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-1 h-1 bg-tavern-accent rounded-full dot-wave" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 bg-tavern-accent rounded-full dot-wave" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 bg-tavern-accent rounded-full dot-wave" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         )}
 
         <button
           onClick={() => currentCharacter && setCharacterEditorOpen(true, currentCharacter)}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-md active:scale-90 text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors"
           title="Edit Character"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -157,7 +196,7 @@ export default function TopBar() {
         <button
           onClick={() => regenerateMessage()}
           disabled={isGenerating || !currentChat}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
+          className="w-7 h-7 flex items-center justify-center rounded-md active:scale-90 text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
           title="Regenerate"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -167,7 +206,7 @@ export default function TopBar() {
 
         <button
           onClick={togglePromptInspect}
-          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+          className={`w-7 h-7 flex items-center justify-center rounded-md active:scale-90 transition-colors ${
             promptInspectEnabled
               ? 'bg-tavern-accent/20 text-tavern-accent'
               : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'
@@ -181,7 +220,7 @@ export default function TopBar() {
 
         <button
           onClick={toggleRightPanel}
-          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${rightPanelOpen ? 'bg-tavern-accent/20 text-tavern-accent' : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'}`}
+          className={`w-7 h-7 flex items-center justify-center rounded-md active:scale-90 transition-colors ${rightPanelOpen ? 'bg-tavern-accent/20 text-tavern-accent' : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'}`}
           title="Toggle Info Panel"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">

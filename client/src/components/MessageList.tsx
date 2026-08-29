@@ -102,7 +102,7 @@ export default function MessageList({
               const isMarkedEnd = chapterEndId === msg.id;
 
               elements.push(
-                <div key={msg.id} data-message-id={msg.id} className="relative">
+                <div key={msg.id} data-message-id={msg.id} className="relative animate-fade-in-up">
                   {isMarkedStart && (
                     <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-emerald-400/70" />
                   )}
@@ -146,20 +146,20 @@ function ChapterCreateBar() {
   if (!chapterStartId || !chapterEndId) return null;
 
   return (
-    <div className="sticky bottom-4 mx-auto w-fit bg-tavern-surface border border-tavern-accent/30 rounded-lg shadow-xl px-4 py-2.5 flex items-center gap-3 z-20">
+    <div className="sticky bottom-4 mx-auto w-fit bg-tavern-surface border border-tavern-accent/30 rounded-lg shadow-xl shadow-black/30 px-4 py-2.5 flex items-center gap-3 z-20 animate-slide-up">
       <svg className="w-4 h-4 text-tavern-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
       </svg>
       <span className="text-xs text-tavern-text">Chapter boundaries selected</span>
       <button
         onClick={clearChapterSelection}
-        className="px-3 py-1 rounded bg-tavern-input text-tavern-textDim hover:text-tavern-text text-xs transition-colors"
+        className="px-3 py-1 rounded bg-tavern-input border border-tavern-border text-tavern-dim hover:text-tavern-text hover:bg-tavern-hover text-xs transition-colors active:scale-[0.97]"
       >
         Clear
       </button>
       <button
         onClick={() => createChapterFromSelection()}
-        className="px-3 py-1 rounded bg-tavern-accent text-white hover:bg-tavern-accent-hover text-xs font-medium transition-colors"
+        className="px-3 py-1 rounded bg-tavern-accent text-white hover:bg-tavern-accent-hover text-xs font-medium transition-all active:scale-[0.97] shadow-md shadow-tavern-accent/20"
       >
         Create Chapter
       </button>

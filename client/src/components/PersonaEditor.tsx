@@ -21,6 +21,16 @@ export default function PersonaEditor() {
     }
   }, [editingPersona, personaEditorOpen]);
 
+  // بستن مودال با کلید Escape
+  useEffect(() => {
+    if (!personaEditorOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPersonaEditorOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [personaEditorOpen]);
+
   if (!personaEditorOpen) return null;
 
   const handleSave = async () => {
@@ -43,11 +53,11 @@ export default function PersonaEditor() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 md:p-4">
-      <div className="bg-tavern-card rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-4 border-b border-tavern-border flex items-center justify-between">
-          <h2 className="text-lg font-bold">{editingPersona ? 'Edit Persona' : 'New Persona'}</h2>
-          <button onClick={() => setPersonaEditorOpen(false)} className="text-tavern-muted hover:text-tavern-text">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-50 flex items-center justify-center p-3 md:p-4 modal-enter-overlay">
+      <div className="bg-tavern-card border border-tavern-border rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/40 modal-enter-card">
+        <div className="p-4 border-b border-tavern-border flex items-center justify-between sticky top-0 bg-tavern-card z-10 rounded-t-xl">
+          <h2 className="text-lg font-bold text-tavern-text-bright">{editingPersona ? 'Edit Persona' : 'New Persona'}</h2>
+          <button onClick={() => setPersonaEditorOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-muted hover:text-tavern-text hover:bg-tavern-hover transition-colors active:scale-90">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -87,23 +97,23 @@ export default function PersonaEditor() {
           </div>
         </div>
 
-        <div className="p-4 border-t border-tavern-border flex justify-between">
+        <div className="p-4 border-t border-tavern-border flex justify-between sticky bottom-0 bg-tavern-card rounded-b-xl">
           {editingPersona && (
             <button
               onClick={handleDelete}
-              className="px-4 py-2 text-red-400 hover:text-red-300 text-sm"
+              className="px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg text-sm transition-colors"
             >
               Delete
             </button>
           )}
           <div className="flex gap-2 mr-auto">
-            <button onClick={() => setPersonaEditorOpen(false)} className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm">
+            <button onClick={() => setPersonaEditorOpen(false)} className="px-4 py-2 text-tavern-muted hover:text-tavern-text text-sm rounded-lg hover:bg-tavern-hover transition-colors">
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={!form.name.trim()}
-              className="px-6 py-2 bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded-lg text-sm font-medium"
+              className="px-6 py-2 bg-tavern-accent hover:bg-tavern-accent-hover disabled:opacity-30 text-white rounded-lg text-sm font-medium transition-all active:scale-[0.97] shadow-md shadow-tavern-accent/20"
             >
               {editingPersona ? 'Save' : 'Create'}
             </button>

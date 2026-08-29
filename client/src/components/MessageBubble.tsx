@@ -3,7 +3,12 @@ import { useStore } from '../store/state';
 import { Message, Character, Chat, Persona } from '../types';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import type { Components } from 'react-markdown';
 import CharacterAvatar from './CharacterAvatar';
+import CodeBlock from './CodeBlock';
+import StateChangeIndicator from './StateChangeIndicator';
+import { DialogueParagraph, renderHighlightedText } from '../utils/remarkDialogue';
 
 function formatMessageTime(isoDate: string): string {
   const date = new Date(isoDate);
@@ -34,9 +39,10 @@ export default function MessageBubble({
   onEditMessage, onDeleteMessage, onBranch,
   currentCharacter, currentChat, activePersona, isGenerating,
 }: Props) {
-  const { swipeMessage, regenerateMessage, markChapterBoundary, chapterStartId, chapterEndId } = useStore();
+  const { swipeMessage, regenerateMessage, markChapterBoundary, chapterStartId, chapterEndId, startChapterCreation, chapterFlowEndId } = useStore();
   const isMarkedStart = chapterStartId === message.id;
   const isMarkedEnd = chapterEndId === message.id;
+  const isFlowEnd = chapterFlowEndId === message.id;
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [showControls, setShowControls] = useState(false);
@@ -44,7 +50,19 @@ export default function MessageBubble({
 
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
+  const isSystem = message.is_system || message.role === 'system';
   const hasSwipes = message.swipes && message.swipes.length > 0;
+
+  // System messages render differently
+  if (isSystem) {
+    return (
+      <div className="flex justify-center py-2 my-1">
+        <div className="text-xs text-tavern-dim italic px-4 py-1.5 bg-tavern-surface/50 rounded-full border border-tavern-border/30">
+          {message.content}
+        </div>
+      </div>
+    );
+  }
 
   const handleSaveEdit = () => {
     onEditMessage(message.id, editContent);
@@ -53,6 +71,54 @@ export default function MessageBubble({
 
   const handleBranch = () => {
     onBranch(message.id, message.send_date);
+  };
+
+  // Custom Markdown components for enhanced rendering
+  const markdownComponents: Components = {
+    code: ({ className, children, ...props }) => {
+      const isInline = !className && typeof children === 'string' && !children.includes('\n');
+      return <CodeBlock className={className} inline={isInline}>{children}</CodeBlock>;
+    },
+    em: ({ children, ...props }) => (
+      <em {...props} className="msg-narration">{children}</em>
+    ),
+    strong: ({ children, ...props }) => (
+      <strong {...props} className="msg-emphasis">{children}</strong>
+    ),
+    u: ({ children, ...props }) => (
+      <u {...props} className="msg-underlined">{children}</u>
+    ),
+    a: ({ children, ...props }) => (
+      <a {...props} target="_blank" rel="noopener noreferrer" className="text-tavern-accent hover:text-tavern-accent-hover underline underline-offset-2 transition-colors">
+        {children}
+      </a>
+    ),
+    table: ({ children, ...props }) => (
+      <div className="overflow-x-auto my-2 rounded-lg border border-tavern-border/50">
+        <table {...props} className="w-full text-sm">{children}</table>
+      </div>
+    ),
+    thead: ({ children, ...props }) => (
+      <thead {...props} className="bg-tavern-surface2/80 border-b border-tavern-border/50">{children}</thead>
+    ),
+    th: ({ children, ...props }) => (
+      <th {...props} className="px-3 py-2 text-left text-xs font-medium text-tavern-dim">{children}</th>
+    ),
+    td: ({ children, ...props }) => (
+      <td {...props} className="px-3 py-2 border-t border-tavern-border/30 text-tavern-text">{children}</td>
+    ),
+    blockquote: ({ children, ...props }) => (
+      <blockquote {...props} className="border-l-4 border-tavern-accent/40 pl-4 my-2 text-tavern-dim italic">
+        {children}
+      </blockquote>
+    ),
+    p: DialogueParagraph,
+    dialogueText: ({ children, ...props }) => (
+      <span {...props} className="msg-dialogue">{children}</span>
+    ),
+    hr: (props) => (
+      <hr {...props} className="my-4 border-tavern-border/50" />
+    ),
   };
 
   // Extract thinking content — supports multiple formats
@@ -73,16 +139,28 @@ export default function MessageBubble({
     ? Math.max(1, Math.ceil(thinkingContent.length / 200))
     : 0;
 
+  // Group chat sender info
+  const senderName = (message as any).sender_name || '';
+  const senderAvatar = (message as any).sender_avatar || '';
+  const senderCharId = (message as any).sender_character_id || '';
+  const isGroupChatMessage = !!(senderCharId || senderName);
+
+  // Determine avatar and name to display
+  const displayName = isGroupChatMessage
+    ? senderName || (isUser ? (activePersona?.name || 'You') : (currentCharacter?.name || 'Assistant'))
+    : (isUser ? (activePersona?.name || 'You') : (currentCharacter?.name || 'Assistant'));
+  const displayAvatar = isGroupChatMessage && senderAvatar ? senderAvatar : (isUser ? undefined : currentCharacter?.avatar);
+
   return (
     <div
       className={`flex gap-3 py-3 group hover:bg-tavern-hover/20 transition-colors border-b border-tavern-border/30 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => setShowControls(false)}
     >
-      {/* Avatar - only for AI */}
+      {/* Avatar - for AI messages (including group chat) */}
       {isAssistant && (
         <div className="flex-shrink-0 pt-0.5">
-          <CharacterAvatar name={currentCharacter?.name || '?'} avatar={currentCharacter?.avatar} size="lg" />
+          <CharacterAvatar name={displayName} avatar={displayAvatar} size="lg" />
         </div>
       )}
       {isUser && <div className="w-10 flex-shrink-0" />}
@@ -92,7 +170,7 @@ export default function MessageBubble({
         {/* Name + Timestamp row */}
         <div className={`flex items-center gap-2 mb-1 ${isUser ? 'flex-row-reverse' : ''}`}>
           <span className="text-sm font-semibold text-tavern-text-bright">
-            {isUser ? (activePersona?.name || 'You') : (currentCharacter?.name || 'Assistant')}
+            {displayName}
           </span>
           <span className="text-[11px] text-tavern-dim">{formatMessageTime(message.send_date)}</span>
           {message.is_edited && <span className="text-[10px] text-tavern-faint italic">(edited)</span>}
@@ -160,12 +238,18 @@ export default function MessageBubble({
 
             {/* Main content */}
             {isAssistant ? (
-              <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed">
-                <Markdown remarkPlugins={[remarkGfm]}>{mainContent}</Markdown>
+              <div className={`prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed ${isLast && isGenerating ? 'is-streaming' : ''}`}>
+                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>{mainContent}</Markdown>
               </div>
             ) : (
-              <p className="text-[15px] whitespace-pre-wrap leading-7 text-tavern-text">{mainContent}</p>
+              <div className={`text-[15px] text-tavern-text leading-7 whitespace-pre-wrap ${isLast && isGenerating ? 'is-streaming' : ''}`}>
+                {renderHighlightedText(mainContent)}
+                {isLast && isGenerating && <span className="streaming-caret" />}
+              </div>
             )}
+
+            {/* State Change Indicator */}
+            <StateChangeIndicator messageId={message.id} isUser={isUser} />
           </>
         )}
 
@@ -175,7 +259,7 @@ export default function MessageBubble({
             {/* Edit */}
             <button
               onClick={() => { setEditContent(message.content); setIsEditing(true); }}
-              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               title="Edit"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,7 +269,7 @@ export default function MessageBubble({
             {/* Delete */}
             <button
               onClick={() => onDeleteMessage(message.id)}
-              className={`text-tavern-dim hover:text-tavern-danger p-1 rounded-md hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              className={`text-tavern-dim hover:text-tavern-danger p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               title="Delete"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,41 +279,28 @@ export default function MessageBubble({
             {/* Branch */}
             <button
               onClick={handleBranch}
-              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
+              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               title="Branch"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
               </svg>
             </button>
-            {/* Chapter start / end markers */}
-            {currentChat && (
+            {/* Chapter creation button */}
+            {currentChat && !isLast && (
               <>
                 <div className="w-px h-3.5 bg-tavern-border/50 mx-0.5" />
                 <button
-                  onClick={() => markChapterBoundary('start', message.id)}
-                  className={`p-1 rounded-md transition-colors ${
-                    isMarkedStart
-                      ? 'bg-emerald-500/20 text-emerald-400 opacity-100'
-                      : `text-tavern-dim hover:text-emerald-400 hover:bg-tavern-hover ${showControls ? 'opacity-100' : 'opacity-0'}`
+                  onClick={() => startChapterCreation(message.id)}
+                  className={`p-1 rounded-md transition-all duration-150 ${
+                    isFlowEnd
+                      ? 'bg-tavern-accent/20 text-tavern-accent opacity-100'
+                      : `text-tavern-dim hover:text-tavern-accent hover:bg-tavern-hover ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
                   }`}
-                  title={isMarkedStart ? 'Remove chapter start marker' : 'Start chapter here'}
+                  title="Create chapter ending here"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => markChapterBoundary('end', message.id)}
-                  className={`p-1 rounded-md transition-colors ${
-                    isMarkedEnd
-                      ? 'bg-red-500/20 text-red-400 opacity-100'
-                      : `text-tavern-dim hover:text-red-400 hover:bg-tavern-hover ${showControls ? 'opacity-100' : 'opacity-0'}`
-                  }`}
-                  title={isMarkedEnd ? 'Remove chapter end marker' : 'End chapter here'}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                 </button>
               </>
@@ -238,7 +309,7 @@ export default function MessageBubble({
             {isAssistant && isLast && !isGenerating && (
               <button
                 onClick={() => regenerateMessage()}
-                className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-opacity ${showControls ? 'opacity-100' : 'opacity-0'}`}
+                className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 title="Regenerate"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,19 +324,19 @@ export default function MessageBubble({
                 <button
                   onClick={() => swipeMessage(message.id, 'prev')}
                   disabled={message.swipe_id <= 0}
-                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-0.5"
+                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-0.5 rounded transition-all hover:bg-tavern-hover active:scale-90"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <span className="text-[11px] text-tavern-dim min-w-[24px] text-center font-mono">
+                <span className="text-[11px] text-tavern-dim min-w-[24px] text-center font-mono bg-tavern-input/70 border border-tavern-border/50 rounded px-1 py-px">
                   {message.swipe_id + 1}/{message.swipes.length + 1}
                 </span>
                 <button
                   onClick={() => swipeMessage(message.id, 'next')}
                   disabled={message.swipe_id >= message.swipes.length}
-                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-0.5"
+                  className="text-tavern-dim hover:text-tavern-text disabled:opacity-30 p-0.5 rounded transition-all hover:bg-tavern-hover active:scale-90"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

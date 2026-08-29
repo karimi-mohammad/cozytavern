@@ -126,17 +126,29 @@ API key و تنظیمات در SQLite ذخیره می‌شن (نه در env vars
 
 Endpoint سفارشی: اگر خالی باشه از `api.openai.com` استفاده می‌شه. اگر فقط host وارد بشه، مسیر `/v1/chat/completions` خودکار اضافه می‌شه.
 
-## فرمت کاراکتر
+## فرمت کاراکتر (Character Card V3)
 
 ```json
 {
-  "name": "نام",
-  "description": "توضیحات",
-  "personality": "صفات",
-  "scenario": "سناریو",
-  "first_mes": "اولین پیام",
-  "mes_example": "مثال‌های دیالوگ",
-  "tags": ["برچسب‌ها"]
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "نام",
+    "nickname": "نام مستعار",
+    "description": "توضیحات",
+    "personality": "صفات",
+    "scenario": "سناریو",
+    "first_mes": "اولین پیام",
+    "mes_example": "مثال‌های دیالوگ",
+    "alternate_greetings": ["پیام جایگزین"],
+    "group_only_greetings": ["پیام گروهی"],
+    "system_prompt": "پرامپت سیستم کاراکتر",
+    "post_history_instructions": "دستورات بعد از تاریخچه",
+    "creator_notes": "یادداشت سازنده",
+    "tags": ["برچسب‌ها"],
+    "creator": "نام سازنده",
+    "character_version": "1.0"
+  }
 }
 ```
 

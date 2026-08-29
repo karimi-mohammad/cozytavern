@@ -1,55 +1,263 @@
 import { buildEndpoint, buildHeaders, buildRequestBody } from './providers';
 import { getChapterSettingsCompat } from './plugin-store';
 
-// ─── Summarization Prompt ───
+// ─── Summarization Prompt (Improved) ───
 
-const SUMMARIZER_SYSTEM_PROMPT = `You are a roleplay summarizer. Summarize the following conversation in a structured way.
+const SUMMARIZER_SYSTEM_PROMPT = `You are a Roleplay Conversation Summarizer.
 
-Rules:
-- Only write information that exists in the conversation. Do not invent new details.
-- Keep the details that are important for continuing the roleplay.
-- Use the language of the conversation itself.
-- The summary must be rich enough for the model to continue the roleplay naturally.
+Your job is to compress long roleplay conversations into a concise, story-like summary that preserves everything important for continuing the roleplay naturally.
 
-Write the output exactly with this structure:
+## Main Goal
 
-# Chapter Title
+Transform the provided roleplay conversation into a coherent narrative summary, written like a short story or chapter recap.
 
-## Summary
-Concise description of events
+Do NOT simply list events or write bullet points.
 
-## Key Events
-- ...
+The summary must allow another AI to understand what happened and continue the roleplay without needing the original conversation.
 
-## Character Progression
-- ...
+## What to Preserve
 
-## Important Details
-- ...
+Always preserve important:
 
-## Unanswered Questions
-- ...
+* Plot events and major developments
+* Character identities, personalities, relationships, and roles
+* Important dialogue and things characters explicitly said
+* Decisions and actions that affect future events
+* Emotional changes and character motivations
+* Conflicts, arguments, promises, secrets, threats, and agreements
+* Important locations and changes of location
+* Important objects, items, abilities, injuries, or resources
+* Romantic or interpersonal developments
+* Information discovered by the characters
+* Unresolved situations and ongoing conflicts
+* Important consequences of previous actions
+* Events that are likely to matter later in the story
 
-## End-of-Chapter State
-- ...`;
+## What to Remove
+
+Do not waste space on:
+
+* Repetitive dialogue
+* Trivial small talk
+* Repeated descriptions
+* Unimportant actions
+* Filler interactions
+* Information that has no relevance to the story
+* Duplicate events
+
+However, do not remove something merely because it seems minor if it could affect future roleplay.
+
+## Narrative Style
+
+Write the summary as a continuous narrative.
+
+Use past tense.
+
+Write it as if you are summarizing a chapter of an ongoing novel.
+
+Keep the chronology clear.
+
+Mention important dialogue indirectly when possible, but preserve exact wording when a specific statement, promise, threat, confession, revelation, or phrase is important.
+
+Focus on cause and effect:
+what happened → why it happened → how the characters reacted → what changed afterward.
+
+Preserve the characters' emotional states and relationship dynamics.
+
+Do not invent events, thoughts, dialogue, motivations, or information that were not present in the conversation.
+
+## Roleplay Continuity
+
+The summary must prioritize information necessary for continuing the story.
+
+Pay special attention to:
+
+* Current character relationships
+* Current location
+* Current situation
+* Recent events
+* Character goals
+* Unresolved conflicts
+* Secrets
+* Promises
+* Important consequences
+* What each character currently knows or does not know
+
+Do not reveal information to a character if that information was only known by another character.
+
+Maintain the distinction between what is objectively established in the story and what characters merely believe or suspect.
+
+## Important Rule
+
+Do not summarize the conversation as an AI analyzing a conversation.
+
+The output should feel like a natural story recap.
+
+Bad:
+"Character A became angry after Character B said X. They then argued."
+
+Better:
+"After B revealed the truth, A's expression hardened. The revelation quickly turned their conversation into an argument, with A accusing B of hiding the truth from her. Although neither backed down, the confrontation ended when..."
+
+## Output
+
+Return ONLY the story summary.
+
+Do not include:
+
+* "Summary:"
+* "Here is the summary:"
+* Analysis
+* Bullet points
+* Character lists
+* Commentary about what you chose to omit
+* Suggestions for continuing the roleplay
+
+The result should be concise but sufficiently detailed to preserve continuity.
+
+If the conversation contains little meaningful information, produce a very short summary rather than inventing details.
+
+If the conversation is extremely long, prioritize information based on its importance to future story continuity rather than trying to preserve every event.`;
+
+const SUMMARIZER_WITH_CONTEXT_PROMPT = `You are a Roleplay Conversation Summarizer.
+
+Your job is to compress roleplay conversations into concise, story-like summaries that preserve everything important for continuing the roleplay naturally.
+
+You will receive a PREVIOUS story summary and a NEW conversation segment. Your task is to summarize ONLY the new events.
+
+## Main Goal
+
+Transform the new conversation segment into a coherent narrative summary that continues from where the previous summary left off.
+
+Do NOT simply list events or write bullet points.
+
+Do NOT repeat information from the previous summary.
+
+## Critical Rules
+
+1. Do NOT repeat any information already covered in the previous summary
+2. Only include NEW events, NEW dialogue, NEW developments
+3. The summary should flow naturally from the previous context
+4. Focus on: what changed, what's new, what decisions were made, what tensions arose
+
+## What to Preserve (from the NEW segment only)
+
+* Plot events and major developments
+* Character identities, personalities, relationships, and roles
+* Important dialogue and things characters explicitly said
+* Decisions and actions that affect future events
+* Emotional changes and character motivations
+* Conflicts, arguments, promises, secrets, threats, and agreements
+* Important locations and changes of location
+* Important objects, items, abilities, injuries, or resources
+* Romantic or interpersonal developments
+* Information discovered by the characters
+* Unresolved situations and ongoing conflicts
+* Important consequences of previous actions
+
+## What to Remove
+
+Do not waste space on:
+
+* Repetitive dialogue
+* Trivial small talk
+* Repeated descriptions
+* Unimportant actions
+* Filler interactions
+* Information already covered in the previous summary
+* Duplicate events
+
+## Narrative Style
+
+Write the summary as a continuous narrative.
+
+Use past tense.
+
+Write it as if you are summarizing the next chapter of an ongoing novel.
+
+Keep the chronology clear.
+
+Mention important dialogue indirectly when possible, but preserve exact wording when a specific statement, promise, threat, confession, revelation, or phrase is important.
+
+Focus on cause and effect:
+what happened → why it happened → how the characters reacted → what changed afterward.
+
+Preserve the characters' emotional states and relationship dynamics.
+
+Do not invent events, thoughts, dialogue, motivations, or information that were not present in the conversation.
+
+## Roleplay Continuity
+
+The summary must prioritize information necessary for continuing the story.
+
+Pay special attention to:
+
+* Current character relationships
+* Current location
+* Current situation
+* Recent events
+* Character goals
+* Unresolved conflicts
+* Secrets
+* Promises
+* Important consequences
+* What each character currently knows or does not know
+
+Do not reveal information to a character if that information was only known by another character.
+
+Maintain the distinction between what is objectively established in the story and what characters merely believe or suspect.
+
+## Important Rule
+
+Do not summarize the conversation as an AI analyzing a conversation.
+
+The output should feel like a natural story recap.
+
+Bad:
+"Character A became angry after Character B said X. They then argued."
+
+Better:
+"After B revealed the truth, A's expression hardened. The revelation quickly turned their conversation into an argument, with A accusing B of hiding the truth from her. Although neither backed down, the confrontation ended when..."
+
+## Output
+
+Return ONLY the new story summary.
+
+Do not include:
+
+* "Summary:"
+* "Here is the summary:"
+* Analysis
+* Bullet points
+* Character lists
+* Commentary about what you chose to omit
+* Suggestions for continuing the roleplay
+* Any reference to "previous summary" or "new segment"
+
+The result should be concise but sufficiently detailed to preserve continuity.
+
+If the new conversation contains little meaningful information, produce a very short summary rather than inventing details.`;
 
 // ─── Build Chapter Summary Request ───
 
-// ساخت درخواست خلاصه‌سازی به صورت جدا — تا حالت بازرسی (inspect) هم بدون فراخوانی LLM بتواند payload را بسازد
 export interface ChapterSummaryRequestInfo {
   endpoint: string;
   model: string;
   baseUrl: string;
   apiKey: string;
-  requestBody: string; // خروجی buildRequestBody
+  requestBody: string;
 }
 
+/**
+ * Build a chapter summary request.
+ * @param previousSummaries - Array of previous chapter summaries (for accumulating context)
+ */
 export function buildChapterSummaryRequest(
   messages: any[],
   character: any,
   db: any,
+  previousSummaries?: string[],
 ): ChapterSummaryRequestInfo {
-  // Get API settings (prefer summarizer-specific settings if configured)
   const chapterSettings = getChapterSettingsCompat(db) as any;
   const mainSettings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;
 
@@ -73,7 +281,7 @@ export function buildChapterSummaryRequest(
 
   // Build conversation for summarizer
   const charInfo = character
-    ? `Character name: ${character.name}\nDescription: ${character.description || ''}\nPersonality: ${character.personality || ''}`
+    ? `Character: ${character.name}\nDescription: ${character.description || ''}\nPersonality: ${character.personality || ''}`
     : '';
 
   const conversationText = messages
@@ -83,12 +291,40 @@ export function buildChapterSummaryRequest(
     })
     .join('\n\n');
 
-  const userMessage = `${charInfo ? charInfo + '\n\n' : ''}Conversation to summarize:\n\n${conversationText}`;
+  // Build user message with optional previous context
+  let userMessage = '';
+  const hasPrevious = previousSummaries && previousSummaries.length > 0;
+
+  if (hasPrevious) {
+    const contextBlock = previousSummaries!
+      .map((s, i) => `Previous summary ${i + 1}:\n${s}`)
+      .join('\n\n');
+    userMessage = `${charInfo ? charInfo + '\n\n' : ''}${contextBlock}\n\n---\n\n[TASK: Summarize the following roleplay conversation based on your system instructions.]
+
+<conversation_to_summarize>
+\`\`\`text
+${conversationText}
+\`\`\`
+</conversation_to_summarize>
+
+Remember: Do NOT continue the story. Output ONLY the narrative summary.`;
+  } else {
+    userMessage = `${charInfo ? charInfo + '\n\n' : ''}[TASK: Summarize the following roleplay conversation based on your system instructions.]
+
+<conversation_to_summarize>
+\`\`\`text
+${conversationText}
+\`\`\`
+</conversation_to_summarize>
+
+Remember: Do NOT continue the story. Output ONLY the narrative summary.`;
+  }
 
   // Build request
   const endpoint = buildEndpoint(baseUrl);
+  const systemPrompt = hasPrevious ? SUMMARIZER_WITH_CONTEXT_PROMPT : SUMMARIZER_SYSTEM_PROMPT;
   const promptParts = [
-    { role: 'system' as const, content: SUMMARIZER_SYSTEM_PROMPT },
+    { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: userMessage },
   ];
   const requestBody = buildRequestBody(promptParts, {
@@ -116,14 +352,15 @@ export async function generateChapterSummary(
   _persona: any,
   db: any,
   editedMessages?: { role: string; content: string }[],
+  previousSummaries?: string[],
 ): Promise<ChapterSummaryResult> {
-  const info = buildChapterSummaryRequest(messages, character, db);
+  const info = buildChapterSummaryRequest(messages, character, db, previousSummaries);
   // اگر کاربر پیام‌ها را ویرایش کرده باشد، از آن‌ها به جای prompt ساخته‌شده استفاده می‌شود
   const requestBody = (editedMessages && Array.isArray(editedMessages) && editedMessages.length > 0)
     ? buildRequestBody(editedMessages.map(m => ({ role: m.role as any, content: m.content })), {
         model: info.model,
         temperature: 0.3,
-        max_tokens: 1000,
+        max_tokens: 2048,
         stream: false,
       })
     : info.requestBody;
@@ -179,21 +416,30 @@ export function detectChapterTrigger(
     return { suggested: false };
   }
 
-  // Check distance from last chapter
+  // Find the start point for scanning (after last chapter's end message)
+  // +2 to skip past the end_message_id AND the trigger that created this chapter
+  let scanStart = 0;
   const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
   if (lastChapter) {
     const lastChapterEndIndex = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
     if (lastChapterEndIndex !== -1) {
-      const distanceFromEnd = messages.length - 1 - lastChapterEndIndex;
-      if (distanceFromEnd < rawWindow) {
-        return { suggested: false };
-      }
+      // Start scanning from AFTER the last chapter's end message + trigger
+      // The chapter ends at trigger-1, so we need to skip trigger+1 to avoid re-detecting
+      scanStart = lastChapterEndIndex + 2;
     }
   }
 
-  // Scan messages outside the raw window for triggers
-  const scanEnd = messages.length - rawWindow;
-  const scanMessages = messages.slice(0, scanEnd);
+  // Only scan messages after the last chapter
+  const messagesAfterLastChapter = messages.slice(scanStart);
+
+  // Not enough messages after last chapter
+  if (messagesAfterLastChapter.length < rawWindow) {
+    return { suggested: false };
+  }
+
+  // Scan messages outside the raw window for triggers (raw window is the most recent messages that won't be summarized)
+  const scanEnd = messagesAfterLastChapter.length - rawWindow;
+  const scanMessages = messagesAfterLastChapter.slice(0, scanEnd);
 
   for (const trigger of triggerPhrases) {
     const triggerLower = trigger.toLowerCase();

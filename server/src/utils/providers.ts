@@ -44,6 +44,8 @@ export function buildRequestBody(
     presence_penalty?: number;
     stream?: boolean;
     stop?: string[];
+    tools?: any[];
+    tool_choice?: string | { type: string; function: { name: string } };
   }
 ): string {
   const body: any = {
@@ -55,9 +57,11 @@ export function buildRequestBody(
   };
 
   if (settings.top_p !== undefined && settings.top_p < 1) body.top_p = settings.top_p;
-  if (settings.frequency_penalty) body.frequency_penalty = settings.frequency_penalty;
-  if (settings.presence_penalty) body.presence_penalty = settings.presence_penalty;
+  if (settings.frequency_penalty !== undefined) body.frequency_penalty = settings.frequency_penalty;
+  if (settings.presence_penalty !== undefined) body.presence_penalty = settings.presence_penalty;
   if (settings.stop && settings.stop.length > 0) body.stop = settings.stop;
+  if (settings.tools && settings.tools.length > 0) body.tools = settings.tools;
+  if (settings.tool_choice) body.tool_choice = settings.tool_choice;
 
   return JSON.stringify(body);
 }
@@ -80,22 +84,33 @@ export function createLineBuffer() {
 }
 
 export function parseStreamChunk(data: string): string | null {
+  const result = parseStreamChunkFull(data);
+  return result ? result.token : null;
+}
+
+export interface ParsedStreamChunk {
+  token: string;
+  isReasoning: boolean;
+}
+
+export function parseStreamChunkFull(data: string): ParsedStreamChunk | null {
   try {
     const parsed = JSON.parse(data);
-    // OpenAI-compatible streaming
-    if (parsed.choices?.[0]?.delta?.content) {
-      return parsed.choices[0].delta.content;
+    const delta = parsed.choices?.[0]?.delta;
+    // OpenAI-compatible streaming: content tokens
+    if (delta?.content) {
+      return { token: delta.content, isReasoning: false };
     }
     // DeepSeek/mimo style: reasoning tokens in stream
-    if (parsed.choices?.[0]?.delta?.reasoning_content) {
-      return parsed.choices[0].delta.reasoning_content;
+    if (delta?.reasoning_content) {
+      return { token: delta.reasoning_content, isReasoning: true };
     }
-    if (parsed.choices?.[0]?.delta?.reasoning) {
-      return parsed.choices[0].delta.reasoning;
+    if (delta?.reasoning) {
+      return { token: delta.reasoning, isReasoning: true };
     }
     //有些 API ها direct content برمیگردونن
     if (parsed.choices?.[0]?.text) {
-      return parsed.choices[0].text;
+      return { token: parsed.choices[0].text, isReasoning: false };
     }
     return null;
   } catch {

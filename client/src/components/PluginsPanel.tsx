@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/state';
-import type { ChapterSettings, LorebookPluginSettings } from '../types';
+import type { ChapterSettings, LorebookPluginSettings, QuickReplySettings } from '../types';
 
 // ─── کارت آکاردئونی عمومی پلاگین ───
 // تنظیمات هر پلاگین زیر کارت خودش باز می‌شود و draft/ذخیره مستقل دارد
@@ -21,7 +21,7 @@ function PluginCard({ icon, name, subtitle, disabled, expanded, onToggle, childr
       <button
         onClick={onToggle}
         disabled={disabled}
-        className="w-full p-3 flex items-center justify-between text-right hover:bg-tavern-hover transition-colors disabled:cursor-not-allowed"
+        className="w-full p-3 flex items-center justify-between text-right hover:bg-tavern-hover transition-colors disabled:cursor-not-allowed active:scale-[0.99]"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-tavern-accent flex-shrink-0">{icon}</span>
@@ -40,7 +40,7 @@ function PluginCard({ icon, name, subtitle, disabled, expanded, onToggle, childr
         )}
       </button>
       {expanded && children && (
-        <div className="border-t border-tavern-border p-3">{children}</div>
+        <div className="border-t border-tavern-border p-3 animate-fade-in">{children}</div>
       )}
     </div>
   );
@@ -55,6 +55,10 @@ function ChaptersSettingsForm() {
 
   const [form, setForm] = useState<ChapterSettings>({
     raw_window: 10,
+    raw_mode: 'count',
+    raw_token_budget: 3000,
+    raw_min_messages: 3,
+    raw_max_messages: 20,
     auto_detect_enabled: true,
     trigger_phrases: [],
     summarizer_model: '',
@@ -74,19 +78,89 @@ function ChaptersSettingsForm() {
 
   return (
     <div className="space-y-3">
-      {/* Raw Window */}
+      {/* Raw Window Mode */}
       <div>
-        <label className="block text-sm font-medium mb-1">
-          Recent raw messages: {form.raw_window}
-        </label>
-        <input
-          type="range" min="5" max="50" step="1"
-          value={form.raw_window}
-          onChange={(e) => setForm(f => ({ ...f, raw_window: parseInt(e.target.value) }))}
-          className="w-full accent-tavern-accent"
-        />
-        <p className="text-xs text-tavern-muted mt-0.5">Number of messages sent as raw context</p>
+        <label className="block text-sm font-medium mb-1">Raw Window Mode</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setForm(f => ({ ...f, raw_mode: 'count' }))}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              form.raw_mode === 'count'
+                ? 'bg-tavern-accent text-white'
+                : 'bg-tavern-bg border border-tavern-border text-tavern-dim hover:text-tavern-text'
+            }`}
+          >
+            By Count
+          </button>
+          <button
+            onClick={() => setForm(f => ({ ...f, raw_mode: 'tokens' }))}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              form.raw_mode === 'tokens'
+                ? 'bg-tavern-accent text-white'
+                : 'bg-tavern-bg border border-tavern-border text-tavern-dim hover:text-tavern-text'
+            }`}
+          >
+            By Tokens
+          </button>
+        </div>
       </div>
+
+      {/* Count Mode Settings */}
+      {form.raw_mode === 'count' && (
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Recent raw messages: {form.raw_window}
+          </label>
+          <input
+            type="range" min="5" max="50" step="1"
+            value={form.raw_window}
+            onChange={(e) => setForm(f => ({ ...f, raw_window: parseInt(e.target.value) }))}
+            className="w-full accent-tavern-accent"
+          />
+          <p className="text-xs text-tavern-muted mt-0.5">Number of messages sent as raw context</p>
+        </div>
+      )}
+
+      {/* Token Mode Settings */}
+      {form.raw_mode === 'tokens' && (
+        <>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Token budget: {form.raw_token_budget.toLocaleString()}
+            </label>
+            <input
+              type="range" min="500" max="20000" step="500"
+              value={form.raw_token_budget}
+              onChange={(e) => setForm(f => ({ ...f, raw_token_budget: parseInt(e.target.value) }))}
+              className="w-full accent-tavern-accent"
+            />
+            <p className="text-xs text-tavern-muted mt-0.5">Max tokens for raw messages</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium mb-1">Min messages</label>
+              <input
+                type="number" min={1} max={50}
+                value={form.raw_min_messages}
+                onChange={(e) => setForm(f => ({ ...f, raw_min_messages: parseInt(e.target.value) || 3 }))}
+                className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-tavern-accent"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Max messages</label>
+              <input
+                type="number" min={1} max={100}
+                value={form.raw_max_messages}
+                onChange={(e) => setForm(f => ({ ...f, raw_max_messages: parseInt(e.target.value) || 20 }))}
+                className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-tavern-accent"
+                dir="ltr"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-tavern-muted">Token mode: messages are added from newest until budget is reached</p>
+        </>
+      )}
 
       {/* Auto Detect */}
       <div className="flex items-center gap-2">
@@ -241,6 +315,110 @@ function LorebookScannerForm() {
   );
 }
 
+// ─── فرم تنظیمات پاسخ سریع ───
+
+function QuickRepliesForm() {
+  const quickReplySettings = useStore(s => s.quickReplySettings);
+  const loadQuickReplies = useStore(s => s.loadQuickReplies);
+  const updateQuickReplies = useStore(s => s.updateQuickReplies);
+
+  const [form, setForm] = useState<QuickReplySettings>({
+    enabled: true,
+    replies: [],
+  });
+  const [newLabel, setNewLabel] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+
+  useEffect(() => {
+    if (quickReplySettings) setForm(quickReplySettings);
+  }, [quickReplySettings]);
+
+  useEffect(() => {
+    loadQuickReplies();
+  }, [loadQuickReplies]);
+
+  const addReply = () => {
+    if (!newLabel.trim() || !newMessage.trim()) return;
+    setForm(f => ({
+      ...f,
+      replies: [...f.replies, { label: newLabel.trim(), message: newMessage.trim() }],
+    }));
+    setNewLabel('');
+    setNewMessage('');
+  };
+
+  const removeReply = (idx: number) => {
+    setForm(f => ({
+      ...f,
+      replies: f.replies.filter((_, i) => i !== idx),
+    }));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={form.enabled}
+          onChange={(e) => setForm(f => ({ ...f, enabled: e.target.checked }))}
+          className="accent-tavern-accent"
+          id="plugin-quick-replies-toggle"
+        />
+        <label htmlFor="plugin-quick-replies-toggle" className="text-sm font-medium">Enabled</label>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1">Quick Replies ({form.replies.length})</label>
+        <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto">
+          {form.replies.map((r, i) => (
+            <div key={`${r.label}-${i}`} className="flex items-center gap-2 bg-tavern-bg rounded px-2 py-1 text-xs">
+              <span className="font-medium text-tavern-accent min-w-[60px] truncate">{r.label}</span>
+              <span className="text-tavern-dim flex-1 truncate">{r.message}</span>
+              <button
+                onClick={() => removeReply(i)}
+                className="text-red-400 hover:text-red-300 px-1"
+              >×</button>
+            </div>
+          ))}
+          {form.replies.length === 0 && (
+            <p className="text-xs text-tavern-muted">No quick replies yet</p>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            className="w-24 bg-tavern-bg border border-tavern-border rounded px-2 py-1 text-xs focus:outline-none focus:border-tavern-accent"
+            placeholder="Label"
+          />
+          <input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addReply()}
+            className="flex-1 bg-tavern-bg border border-tavern-border rounded px-2 py-1 text-xs focus:outline-none focus:border-tavern-accent"
+            placeholder="Message to send..."
+          />
+          <button
+            onClick={addReply}
+            disabled={!newLabel.trim() || !newMessage.trim()}
+            className="px-2 py-1 bg-tavern-accent/20 text-tavern-accent rounded text-xs hover:bg-tavern-accent/30 disabled:opacity-30"
+          >+</button>
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-1">
+        <button
+          onClick={() => updateQuickReplies(form)}
+          className="px-4 py-1.5 bg-tavern-accent hover:bg-tavern-accent-hover text-white rounded-lg text-sm font-medium"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── پنل اصلی پلاگین‌ها ───
 
 const CHAPTER_ICON = (
@@ -258,6 +436,12 @@ const LOREBOOK_ICON = (
 const VOICE_ICON = (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+  </svg>
+);
+
+const QUICK_REPLIES_ICON = (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
   </svg>
 );
 
@@ -290,6 +474,16 @@ export default function PluginsPanel() {
           onToggle={() => toggle('lorebook_scanner')}
         >
           <LorebookScannerForm />
+        </PluginCard>
+
+        <PluginCard
+          icon={QUICK_REPLIES_ICON}
+          name="Quick Replies"
+          subtitle="Pre-defined message buttons for quick access"
+          expanded={expandedId === 'quick_replies'}
+          onToggle={() => toggle('quick_replies')}
+        >
+          <QuickRepliesForm />
         </PluginCard>
 
         <PluginCard

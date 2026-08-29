@@ -108,6 +108,61 @@ describe('Plugins Settings API', () => {
       .expect(400);
   });
 
+  describe('quick_replies plugin', () => {
+    it('باید پیش‌فرض‌ها (فعال، بدون دکمه) را برگرداند', async () => {
+      const res = await request(app)
+        .get('/api/plugins/quick_replies/settings')
+        .expect(200);
+      expect(res.body.enabled).toBe(true);
+      expect(res.body.replies).toEqual([]);
+    });
+
+    it('باید replies معتبر را ذخیره کند', async () => {
+      const res = await request(app)
+        .put('/api/plugins/quick_replies/settings')
+        .send({
+          enabled: true,
+          replies: [
+            { label: 'ادامه بده', message: 'داستان را ادامه بده' },
+            { label: 'خلاصه کن', message: 'تا اینجا رو خلاصه کن' },
+          ],
+        })
+        .expect(200);
+
+      expect(res.body.replies).toHaveLength(2);
+      expect(res.body.replies[0].label).toBe('ادامه بده');
+
+      // persist
+      const again = await request(app)
+        .get('/api/plugins/quick_replies/settings')
+        .expect(200);
+      expect(again.body.replies).toHaveLength(2);
+    });
+
+    it('ردیف‌های بدون label یا message خالی باید حذف بشوند', async () => {
+      const res = await request(app)
+        .put('/api/plugins/quick_replies/settings')
+        .send({
+          replies: [
+            { label: 'خوب', message: 'محتوا' },
+            { label: '', message: 'بی‌برچسب' },
+            { label: 'بی‌متن', message: '   ' },
+          ],
+        })
+        .expect(200);
+      expect(res.body.replies).toHaveLength(1);
+      expect(res.body.replies[0].label).toBe('خوب');
+    });
+
+    it('replies غیر آرایه باید 400 بدهد', async () => {
+      const res = await request(app)
+        .put('/api/plugins/quick_replies/settings')
+        .send({ replies: 'not-an-array' })
+        .expect(400);
+      expect(res.body.error).toContain('replies');
+    });
+  });
+
   describe('migration از chapter_settings قدیمی', () => {
     const runMigration = () => {
       // ردیف legacy در جدول قدیمی

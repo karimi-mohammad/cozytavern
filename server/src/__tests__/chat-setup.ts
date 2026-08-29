@@ -22,8 +22,10 @@ testDb.pragma('foreign_keys = ON');
 
 testDb.exec(`
   CREATE TABLE IF NOT EXISTS characters (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', personality TEXT DEFAULT '',
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, nickname TEXT DEFAULT '', description TEXT DEFAULT '', personality TEXT DEFAULT '',
     scenario TEXT DEFAULT '', first_mes TEXT DEFAULT '', mes_example TEXT DEFAULT '', creator_notes TEXT DEFAULT '',
+    system_prompt TEXT DEFAULT '', post_history_instructions TEXT DEFAULT '', alternate_greetings TEXT DEFAULT '[]',
+    group_only_greetings TEXT DEFAULT '[]', creator TEXT DEFAULT '', character_version TEXT DEFAULT '',
     tags TEXT DEFAULT '[]', avatar TEXT DEFAULT '', lorebook_id TEXT DEFAULT '',
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   );
@@ -33,7 +35,9 @@ testDb.exec(`
   );
   CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY, character_id TEXT NOT NULL, name TEXT NOT NULL, branch_from TEXT,
-    lorebook_id TEXT DEFAULT '', folder TEXT DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    lorebook_id TEXT DEFAULT '', folder TEXT DEFAULT '',
+    authors_note TEXT DEFAULT '', authors_note_depth INTEGER DEFAULT 4, authors_note_position TEXT DEFAULT 'in_chat',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
   );
   CREATE TABLE IF NOT EXISTS messages (
@@ -50,7 +54,8 @@ testDb.exec(`
     id TEXT PRIMARY KEY, lorebook_id TEXT NOT NULL, keys TEXT DEFAULT '[]', keys_secondary TEXT DEFAULT '[]',
     content TEXT DEFAULT '', constant INTEGER DEFAULT 0, selective INTEGER DEFAULT 0,
     insertion_order INTEGER DEFAULT 100, position TEXT DEFAULT 'before_main', disable INTEGER DEFAULT 0,
-    comment TEXT DEFAULT '', FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
+    comment TEXT DEFAULT '', case_sensitive INTEGER DEFAULT 0, use_regex INTEGER DEFAULT 0, probability INTEGER DEFAULT 100,
+    FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
   );
   CREATE TABLE IF NOT EXISTS api_settings (
     id TEXT PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'openai', api_key TEXT DEFAULT '', model TEXT DEFAULT '',
