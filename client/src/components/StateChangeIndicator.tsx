@@ -24,10 +24,16 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
   const { storyState, currentChat } = useStore();
 
   useEffect(() => {
-    if (isOpen && !snapshot && currentChat) {
+    if (currentChat && !snapshot) {
       loadSnapshot();
     }
-  }, [isOpen, messageId, currentChat]);
+  }, [messageId, currentChat]);
+
+  useEffect(() => {
+    if (snapshot && storyState) {
+      calculateDiff(snapshot);
+    }
+  }, [storyState, snapshot]);
 
   const loadSnapshot = async () => {
     if (!currentChat) return;
