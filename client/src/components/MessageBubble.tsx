@@ -120,9 +120,6 @@ function MessageBubbleInner({
       </blockquote>
     ),
     p: DialogueParagraph,
-    dialogueText: ({ children, ...props }) => (
-      <span {...props} className="msg-dialogue">{children}</span>
-    ),
     hr: (props) => (
       <hr {...props} className="my-4 border-tavern-border/50" />
     ),

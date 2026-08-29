@@ -1,21 +1,6 @@
 import { Message, Character, Persona, ApiSettings, Chapter } from '../types';
 
-// tiktoken for accurate token counting (cl100k_base encoding used by GPT-4/3.5)
-let _encoding: any = null;
-
-async function getEncoding() {
-  if (_encoding) return _encoding;
-  try {
-    const { encoding_for_model } = await import('tiktoken');
-    // cl100k_base is used by gpt-4, gpt-3.5-turbo, gpt-4o
-    _encoding = encoding_for_model('gpt-4');
-    return _encoding;
-  } catch {
-    return null;
-  }
-}
-
-// Fallback: heuristic estimation when tiktoken fails
+// Heuristic token estimation (cl100k_base-like)
 function heuristicTokens(text: string): number {
   if (!text) return 0;
   const asciiChars = (text.match(/[\x00-\x7F]/g) || []).length;
@@ -25,25 +10,14 @@ function heuristicTokens(text: string): number {
 
 /**
  * Estimate token count for text.
- * Uses tiktoken (cl100k_base) when available, falls back to heuristic.
+ * Uses heuristic estimation (~4 chars per token for ASCII, ~2 for non-ASCII).
  */
 export async function estimateTokensAsync(text: string): Promise<number> {
-  if (!text) return 0;
-  const enc = await getEncoding();
-  if (enc) {
-    try {
-      const tokens = enc.encode(text).length;
-      return tokens;
-    } catch {
-      return heuristicTokens(text);
-    }
-  }
   return heuristicTokens(text);
 }
 
 /**
- * Sync version - uses heuristic only.
- * Use estimateTokensAsync for better accuracy.
+ * Sync version - uses heuristic estimation.
  */
 export function estimateTokens(text: string): number {
   return heuristicTokens(text);

@@ -186,6 +186,18 @@ app.use('/api/plugins', pluginsRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/story-state', storyStateRouter);
 
+// Serve static files in production (client build)
+const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  // SPA fallback - serve index.html for non-API routes
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+  });
+}
+
 // Chat API endpoint (ارسال پیام به AI با streaming)
 app.post('/api/chat', async (req, res) => {
   const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate, edited_messages } = req.body;

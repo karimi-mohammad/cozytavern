@@ -189,7 +189,7 @@ interface AppState {
 
   // Chapter Memory
   loadChapters: (chatId: string) => Promise<void>;
-  createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; title?: string }) => Promise<Chapter>;
+  createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; trigger_message_id?: string; title?: string }) => Promise<Chapter>;
   updateChapter: (id: string, data: { title?: string; summary?: string }) => Promise<void>;
   deleteChapter: (id: string) => Promise<void>;
   regenerateChapter: (id: string) => Promise<void>;
@@ -367,7 +367,7 @@ export const useStore = create<AppState>((set, get) => ({
         set({
           currentChat: {
             ...currentChat,
-            is_group_chat: 1,
+            is_group_chat: true,
             group_chat_name: currentChat.name,
           },
           groupChatParticipants: result.participants || [],
