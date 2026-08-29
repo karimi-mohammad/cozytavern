@@ -270,13 +270,28 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     `${p.char_name}: ${p.char_desc || ''} ${p.char_personality || ''}`
   ).join('\n');
 
-  // Get lorebook entries
-  const effectiveLorebookId = lorebook_id || chat?.lorebook_id;
+  // Get lorebook entries (پشتیبانی از چند لور بوک)
+  const lorebookIdsToLoad: string[] = [];
+  if (lorebook_id) {
+    lorebookIdsToLoad.push(lorebook_id);
+  } else {
+    const chatLorebooks = db.prepare(
+      'SELECT cl.lorebook_id, cl.is_active FROM chat_lorebooks cl WHERE cl.chat_id = ? ORDER BY cl.insertion_order ASC'
+    ).all(req.params.id) as any[];
+    for (const cl of chatLorebooks) {
+      if (cl.is_active) lorebookIdsToLoad.push(cl.lorebook_id);
+    }
+    if (lorebookIdsToLoad.length === 0 && chat?.lorebook_id) {
+      lorebookIdsToLoad.push(chat.lorebook_id);
+    }
+  }
+
   let lorebookEntries: any[] = [];
-  if (effectiveLorebookId) {
-    const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(effectiveLorebookId) as any;
+  const { activateWorldInfo } = await import('../utils/prompt-builder.js');
+  for (const lbId of lorebookIdsToLoad) {
+    const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(lbId) as any;
     if (lorebook) {
-      const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ?').all(effectiveLorebookId).map((e: any) => ({
+      const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ?').all(lbId).map((e: any) => ({
         ...e,
         key: JSON.parse(e.keys || '[]'),
         keysecondary: JSON.parse(e.keys_secondary || '[]'),
@@ -284,11 +299,16 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
         selective: !!e.selective,
         disable: !!e.disable,
       }));
-      // Import activateWorldInfo dynamically
-      const { activateWorldInfo } = await import('../utils/prompt-builder.js');
-      lorebookEntries = activateWorldInfo(messages, { ...lorebook, entries });
+      lorebookEntries.push(...activateWorldInfo(messages, { ...lorebook, entries }));
     }
   }
+  // حذف duplicate entries
+  const seenIds = new Set<string>();
+  lorebookEntries = lorebookEntries.filter((e: any) => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    return true;
+  });
 
   // Get API settings
   const settings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;

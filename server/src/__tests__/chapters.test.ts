@@ -92,8 +92,8 @@ describe('Prompt Builder — Chapter Support', () => {
       rawWindow: 3,
     });
 
-    const summary1 = result.find(p => p.content.includes('فصل ۱'));
-    const summary2 = result.find(p => p.content.includes('فصل ۲'));
+    const summary1 = result.find(p => p.content.includes('خلاصه ۱'));
+    const summary2 = result.find(p => p.content.includes('خلاصه ۲'));
     expect(summary1).toBeDefined();
     expect(summary2).toBeDefined();
   });
@@ -132,7 +132,7 @@ describe('Chapter Trigger Detection', () => {
     expect(result.suggested).toBe(false);
   });
 
-  it('trigger در raw window — نادیده گرفته بشه', () => {
+  it('trigger در raw window — باز هم شناسایی بشه (محدودیت raw_window موقع ساخت فصل اعمال می‌شه)', () => {
     const messages = Array.from({ length: 15 }, (_, i) => ({
       id: `m${i + 1}`,
       role: i % 2 === 0 ? 'user' : 'assistant',
@@ -141,7 +141,8 @@ describe('Chapter Trigger Detection', () => {
     }));
 
     const result = detectChapterTrigger(messages, [], defaultSettings.raw_window, defaultSettings.trigger_phrases);
-    expect(result.suggested).toBe(false);
+    expect(result.suggested).toBe(true);
+    expect(result.trigger_message_id).toBe('m15');
   });
 
   it('فاصله کافی از آخرین فصل نباشه — suggested=false', () => {
@@ -156,6 +157,35 @@ describe('Chapter Trigger Detection', () => {
 
     const result = detectChapterTrigger(messages, chapters, defaultSettings.raw_window, defaultSettings.trigger_phrases);
     expect(result.suggested).toBe(false);
+  });
+
+  it('بعد از ساخت فصل با trigger_message_id — trigger دوباره شناسایی نشه', () => {
+    const messages = Array.from({ length: 15 }, (_, i) => ({
+      id: `m${i + 1}`,
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: i === 8 ? 'صبح روز بعد' : `پیام ${i + 1}`,
+    }));
+
+    // فصل با trigger_message_id ذخیره شده — باید از m10 به بعد اسکن کنه
+    const chapters = [{ id: 'ch1', end_message_id: 'm9', trigger_message_id: 'm9' }];
+
+    const result = detectChapterTrigger(messages, chapters, defaultSettings.raw_window, defaultSettings.trigger_phrases);
+    expect(result.suggested).toBe(false);
+  });
+
+  it('تریگر جدید بعد از فصل قبلی — suggested=true', () => {
+    const messages = Array.from({ length: 20 }, (_, i) => ({
+      id: `m${i + 1}`,
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: i === 15 ? 'روز بعد' : `پیام ${i + 1}`,
+    }));
+
+    // فصل قبلی تا m9 با trigger در m9 — تریگر جدید در m16
+    const chapters = [{ id: 'ch1', end_message_id: 'm9', trigger_message_id: 'm9' }];
+
+    const result = detectChapterTrigger(messages, chapters, defaultSettings.raw_window, defaultSettings.trigger_phrases);
+    expect(result.suggested).toBe(true);
+    expect(result.trigger_message_id).toBe('m16');
   });
 
   it('پیام کمتر از raw_window — suggested=false', () => {

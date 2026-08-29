@@ -1,9 +1,0 @@
-
- RUN  v4.1.10 I:/computer/My projs/web/CozyTavern/server
-
-
- Test Files  11 passed (11)
-      Tests  123 passed (123)
-   Start at  14:47:23
-   Duration  9.63s (transform 325ms, setup 0ms, import 4.37s, tests 2.54s, environment 2ms)
-

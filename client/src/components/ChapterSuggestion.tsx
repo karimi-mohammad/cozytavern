@@ -42,6 +42,7 @@ export default function ChapterSuggestion() {
         chat_id: currentChat.id,
         start_message_id: messages[startIndex].id,
         end_message_id: messages[endIndex].id,
+        trigger_message_id: chapterSuggestion.trigger_message_id,
         title: '',
       });
     } catch {}

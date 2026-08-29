@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { migrateLegacyChapterSettings } from './utils/plugin-store';
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'cozytavern.db');
@@ -94,6 +95,7 @@ export function initDb(): void {
       chat_id TEXT NOT NULL,
       start_message_id TEXT NOT NULL,
       end_message_id TEXT NOT NULL,
+      trigger_message_id TEXT DEFAULT '',
       title TEXT DEFAULT '',
       summary TEXT DEFAULT '',
       generation_model TEXT DEFAULT '',
@@ -151,6 +153,17 @@ export function initDb(): void {
       created_at TEXT NOT NULL,
       FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS chat_lorebooks (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      lorebook_id TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      insertion_order INTEGER DEFAULT 100,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+      FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
+    );
   `);
 
   // Migration: انتقال chapter_settings قدیمی به plugin_settings ('chapters')
@@ -192,6 +205,9 @@ export function initDb(): void {
   }
   if (!chapterCols.some(c => c.name === 'generated_at')) {
     database.exec("ALTER TABLE chapters ADD COLUMN generated_at TEXT DEFAULT ''");
+  }
+  if (!chapterCols.some(c => c.name === 'trigger_message_id')) {
+    database.exec("ALTER TABLE chapters ADD COLUMN trigger_message_id TEXT DEFAULT ''");
   }
 
   // Migration: فیلدهای اضافی Character Card V3 (سازگار با SillyTavern)
@@ -256,6 +272,36 @@ export function initDb(): void {
       FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
     );
   `);
+
+  // ─── Performance indexes ───
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_chats_character_id ON chats(character_id);
+    CREATE INDEX IF NOT EXISTS idx_lorebook_entries_lorebook_id ON lorebook_entries(lorebook_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_lorebooks_chat_id ON chat_lorebooks(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_chapters_chat_id ON chapters(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_participants_chat_id ON chat_participants(chat_id);
+  `);
+
+  // Migration: انتقال lorebook_id از chats به chat_lorebooks (پشتیبانی از چند لور بوک)
+  const chatLorebookRows = database.prepare("SELECT id, lorebook_id FROM chats WHERE lorebook_id != '' AND lorebook_id IS NOT NULL").all() as any[];
+  const existingChatLorebooks = database.prepare("SELECT chat_id FROM chat_lorebooks").all() as any[];
+  const existingChatLorebookSet = new Set(existingChatLorebooks.map((r: any) => r.chat_id));
+
+  if (chatLorebookRows.length > 0) {
+    const insertCL = database.prepare(`
+      INSERT OR IGNORE INTO chat_lorebooks (id, chat_id, lorebook_id, is_active, insertion_order, created_at)
+      VALUES (?, ?, ?, 1, 100, ?)
+    `);
+    const now = new Date().toISOString();
+    for (const row of chatLorebookRows) {
+      // Only insert if not already migrated for this chat
+      if (!existingChatLorebookSet.has(row.chat_id)) {
+        const uuid = uuidv4();
+        insertCL.run(uuid, row.chat_id, row.lorebook_id, now);
+      }
+    }
+  }
 
   // Migration: group chat fields for chats
   const chatColsGc = database.prepare("PRAGMA table_info(chats)").all() as any[];

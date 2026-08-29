@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState } from '../types';
+import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState, ChatLorebook } from '../types';
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
@@ -23,6 +23,8 @@ interface AppState {
   activePersona: Persona | null;
   lorebooks: Lorebook[];
   activeLorebook: Lorebook | null;
+  chatLorebooks: ChatLorebook[];
+  loadingChatLorebooks: boolean;
   apiSettings: Record<string, ApiSettings>;
 
   // Chapter Memory
@@ -176,6 +178,10 @@ interface AppState {
 
   loadLorebooks: () => Promise<void>;
   setActiveLorebook: (lorebook: Lorebook | null) => void;
+  loadChatLorebooks: (chatId: string) => Promise<void>;
+  addChatLorebook: (chatId: string, lorebookId: string) => Promise<void>;
+  updateChatLorebook: (chatId: string, id: string, data: { is_active?: boolean; insertion_order?: number }) => Promise<void>;
+  removeChatLorebook: (chatId: string, id: string) => Promise<void>;
 
   loadApiSettings: () => Promise<void>;
   saveApiSettings: (data: any) => Promise<void>;
@@ -218,6 +224,9 @@ interface AppState {
 let confirmResolver: ((result: boolean) => void) | null = null;
 let currentAbortController: AbortController | null = null;
 
+// ─── Context usage debounce (300ms) ───
+let _contextUsageTimer: ReturnType<typeof setTimeout> | null = null;
+
 // ─── Prompt Inspector gate ───
 // resolver بازرسی فعلی + صف FIFO برای بازرسی‌های همزمان (مثلاً عنوان بعد از پایان چت)
 let inspectionResolver: ((send: boolean, editedMessages?: PromptInspection['messages']) => void) | null = null;
@@ -253,6 +262,8 @@ export const useStore = create<AppState>((set, get) => ({
   activePersona: null,
   lorebooks: [],
   activeLorebook: null,
+  chatLorebooks: [],
+  loadingChatLorebooks: false,
   apiSettings: {},
 
   // Chapter Memory
@@ -396,7 +407,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   generateGroupResponse: async (chatId, characterId) => {
-    const { activePersona, activeLorebook, isGenerating } = get();
+    const { activePersona, isGenerating } = get();
     if (isGenerating) return;
 
     set({ isGenerating: true, groupChatGenerating: true });
@@ -411,7 +422,7 @@ export const useStore = create<AppState>((set, get) => ({
         {
           character_id: characterId,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
         },
         (messageId) => {
           // Get the character info for the sender
@@ -708,6 +719,8 @@ export const useStore = create<AppState>((set, get) => ({
       get().loadChapterSettings();
       // لود وضعیت داستان
       get().loadStoryState(chatId);
+      // لود لوربوک‌های چت
+      get().loadChatLorebooks(chatId);
       // لود participant های گروه چت
       if (chat.is_group_chat) {
         try {
@@ -784,7 +797,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
     }
-    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    const { currentChat, currentCharacter, activePersona, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
     const isFirstMessage = !currentChat.messages.some(m => m.role === 'user');
@@ -817,7 +830,6 @@ export const useStore = create<AppState>((set, get) => ({
             chat_id: currentChat.id,
             character_id: currentCharacter.id,
             persona_id: activePersona?.id,
-            lorebook_id: activeLorebook?.id,
           });
           approved = await get().requestInspection(inspectionEntryFromPayload(payload));
         } catch (e: any) {
@@ -836,7 +848,6 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
           ...(editedMessages && { edited_messages: editedMessages }),
         },
         (messageId) => {
@@ -934,6 +945,7 @@ export const useStore = create<AppState>((set, get) => ({
     const original = currentChat.messages[index];
     const optimistic: Message = { ...original, content, is_edited: true };
 
+    // آپدیت اپتیمیستی: فقط همون پیام تغییر می‌کنه
     set(s => {
       if (!s.currentChat) return s;
       const msgs = [...s.currentChat.messages];
@@ -946,6 +958,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       const updated = await request;
+      // فقط همون پیام رو با نسخه سرور آپدیت کن
       set(s => {
         if (!s.currentChat) return s;
         const msgs = s.currentChat.messages.map(m => m.id === messageId ? updated : m);
@@ -973,6 +986,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (index === -1) return;
     const removed = currentChat.messages[index];
 
+    // حذف اپتیمیستی: فقط همون پیام
     set(s => {
       if (!s.currentChat) return s;
       return {
@@ -986,13 +1000,11 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       await api.deleteMessage(messageId);
     } catch (error: any) {
+      // rollback: پیام حذف‌شده رو برگردون
       set(s => {
         if (!s.currentChat) return s;
         const msgs = [...s.currentChat.messages];
-        const idx = msgs.findIndex(m => m.id === messageId);
-        if (idx === -1) {
-          msgs.splice(Math.min(index, msgs.length), 0, removed);
-        }
+        msgs.splice(Math.min(index, msgs.length), 0, removed);
         return { currentChat: { ...s.currentChat, messages: msgs } };
       });
       get().addToast(`Error: ${error.message}`, 'error');
@@ -1004,7 +1016,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
     }
-    const { currentChat, currentCharacter, activePersona, activeLorebook } = get();
+    const { currentChat, currentCharacter, activePersona } = get();
     if (!currentChat || !currentCharacter) return;
 
     const lastAssistantMsg = [...currentChat.messages].reverse().find(m => m.role === 'assistant');
@@ -1021,7 +1033,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
           update_message_id: lastAssistantMsg.id,
         });
         approved = await get().requestInspection(inspectionEntryFromPayload(payload));
@@ -1037,17 +1049,18 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       // سرور محتوای فعلی رو به swipes اضافه می‌کنه و پیام آپدیت شده رو برمی‌گردونه
-      const regenerated = await api.regenerateMessage(currentChat.id);
+      await api.regenerateMessage(currentChat.id);
 
-      // بلافاصله swipes و swipe_id رو در store آپدیت کن
-      if (regenerated) {
-        set(s => {
-          if (!s.currentChat) return s;
-          const msgs = s.currentChat.messages.map(m =>
-            m.id === lastAssistantMsg.id ? { ...m, swipes: regenerated.swipes, swipe_id: regenerated.swipe_id } : m
-          );
-          return { currentChat: { ...s.currentChat, messages: msgs } };
-        });
+      // چت رو از سرور reload کن تا state کلاینت با سرور sync بشه
+      // (ممکنه پیام‌ها توسط ادیت قبلی حذف شده باشن یا تغییر کرده باشن)
+      const refreshedChat = await api.getChat(currentChat.id);
+      set({ currentChat: refreshedChat });
+
+      // پیدا کردن آخرین پیام assistant از state آپدیت‌شده
+      const freshLastAssistant = [...refreshedChat.messages].reverse().find(m => m.role === 'assistant');
+      if (!freshLastAssistant) {
+        set({ isGenerating: false });
+        return;
       }
 
       let fullContent = '';
@@ -1056,8 +1069,8 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
-          update_message_id: lastAssistantMsg.id,
+
+          update_message_id: freshLastAssistant.id,
           ...(editedMessages2 && { edited_messages: editedMessages2 }),
         },
         () => {},
@@ -1066,7 +1079,7 @@ export const useStore = create<AppState>((set, get) => ({
           set(s => {
             if (!s.currentChat) return s;
             const msgs = s.currentChat.messages.map(m =>
-              m.id === lastAssistantMsg.id ? { ...m, content: fullContent } : m
+              m.id === freshLastAssistant.id ? { ...m, content: fullContent } : m
             );
             return { currentChat: { ...s.currentChat, messages: msgs } };
           });
@@ -1086,7 +1099,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
     }
-    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    const { currentChat, currentCharacter, activePersona, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
     // پیام آخر assistant پیدا کن
@@ -1104,7 +1117,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
           continue_mode: true,
         });
         approved = await get().requestInspection(inspectionEntryFromPayload(payload));
@@ -1128,7 +1141,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
           continue_mode: true,
           ...(editedMessages3 && { edited_messages: editedMessages3 }),
         },
@@ -1186,7 +1199,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
     }
-    const { currentChat, currentCharacter, activePersona, activeLorebook, isGenerating } = get();
+    const { currentChat, currentCharacter, activePersona, isGenerating } = get();
     if (!currentChat || !currentCharacter || isGenerating) return;
 
     set({ isGenerating: true });
@@ -1200,7 +1213,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
           impersonate: true,
         });
         approved = await get().requestInspection(inspectionEntryFromPayload(payload));
@@ -1225,7 +1238,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          lorebook_id: activeLorebook?.id,
+
           impersonate: true,
           ...(editedMessages4 && { edited_messages: editedMessages4 }),
         },
@@ -1351,6 +1364,59 @@ export const useStore = create<AppState>((set, get) => ({
     try { localStorage.setItem('cozytavern.activeLorebookId', lorebook?.id || ''); } catch {}
   },
 
+  loadChatLorebooks: async (chatId) => {
+    set({ loadingChatLorebooks: true });
+    try {
+      const chatLorebooks = await api.getChatLorebooks(chatId);
+      set({ chatLorebooks });
+    } catch {
+      set({ chatLorebooks: [] });
+    } finally {
+      set({ loadingChatLorebooks: false });
+    }
+  },
+
+  addChatLorebook: async (chatId, lorebookId) => {
+    try {
+      const newCL = await api.addChatLorebook(chatId, { lorebook_id: lorebookId });
+      set(s => ({ chatLorebooks: [...s.chatLorebooks, newCL] }));
+      get().addToast('Lorebook added to chat', 'success');
+      get().updateContextUsage();
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  updateChatLorebook: async (chatId, id, data) => {
+    try {
+      const updated = await api.updateChatLorebook(chatId, id, data);
+      set(s => ({
+        chatLorebooks: s.chatLorebooks.map(cl => cl.id === id ? updated : cl),
+      }));
+      get().updateContextUsage();
+    } catch (error: any) {
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
+  removeChatLorebook: async (chatId, id) => {
+    const removed = get().chatLorebooks.find(cl => cl.id === id);
+    set(s => ({
+      chatLorebooks: s.chatLorebooks.filter(cl => cl.id !== id),
+    }));
+    try {
+      await api.removeChatLorebook(chatId, id);
+      get().addToast('Lorebook removed from chat', 'success');
+      get().updateContextUsage();
+    } catch (error: any) {
+      // rollback
+      if (removed) {
+        set(s => ({ chatLorebooks: [...s.chatLorebooks, removed] }));
+      }
+      get().addToast(`Error: ${error.message}`, 'error');
+    }
+  },
+
   loadApiSettings: async () => {
     const settings = await api.getApiSettings();
     set({ apiSettings: { openai: settings } });
@@ -1380,30 +1446,46 @@ export const useStore = create<AppState>((set, get) => ({
     } catch {}
   },
 
+  // Debounced: compute immediately, but throttle repeated calls to 300ms
   updateContextUsage: () => {
-    const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook, chapters, chapterSettings } = get();
-    if (!currentChat) {
-      set({ contextUsage: null });
-      return;
-    }
-    const settings = apiSettings['openai'];
-    const lorebookEntries = activeLorebook?.entries || [];
-    const usage = estimateContextUsage(
-      currentChat.messages,
-      settings,
-      currentCharacter,
-      activePersona,
-      lorebookEntries,
-      chapters,
-      chapterSettings ? {
-        raw_mode: chapterSettings.raw_mode || 'count',
-        raw_window: chapterSettings.raw_window || 10,
-        raw_token_budget: chapterSettings.raw_token_budget || 3000,
-        raw_min_messages: chapterSettings.raw_min_messages || 3,
-        raw_max_messages: chapterSettings.raw_max_messages || 20,
-      } : undefined,
-    );
-    set({ contextUsage: usage });
+    if (_contextUsageTimer) clearTimeout(_contextUsageTimer);
+    _contextUsageTimer = setTimeout(() => {
+      _contextUsageTimer = null;
+      const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook, chatLorebooks, chapters, chapterSettings } = get();
+      if (!currentChat) {
+        set({ contextUsage: null });
+        return;
+      }
+      const settings = apiSettings['openai'];
+
+      // استفاده از entries فعال chat lorebooks (تقریبی) یا activeLorebook
+      let lorebookEntries: { content: string }[] = [];
+      if (chatLorebooks.length > 0) {
+        const totalActive = chatLorebooks
+          .filter((cl: any) => cl.is_active)
+          .reduce((sum: number, cl: any) => sum + (cl.active_entries || 0), 0);
+        lorebookEntries = Array.from({ length: totalActive }, () => ({ content: 'token' }));
+      } else if (activeLorebook) {
+        lorebookEntries = activeLorebook.entries || [];
+      }
+
+      const usage = estimateContextUsage(
+        currentChat.messages,
+        settings,
+        currentCharacter,
+        activePersona,
+        lorebookEntries,
+        chapters,
+        chapterSettings ? {
+          raw_mode: chapterSettings.raw_mode || 'count',
+          raw_window: chapterSettings.raw_window || 10,
+          raw_token_budget: chapterSettings.raw_token_budget || 3000,
+          raw_min_messages: chapterSettings.raw_min_messages || 3,
+          raw_max_messages: chapterSettings.raw_max_messages || 20,
+        } : undefined,
+      );
+      set({ contextUsage: usage });
+    }, 300);
   },
 
   // ─── Chapter Memory Actions ───

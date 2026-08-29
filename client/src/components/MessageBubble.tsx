@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useStore } from '../store/state';
 import { Message, Character, Chat, Persona } from '../types';
 import Markdown from 'react-markdown';
@@ -34,12 +34,19 @@ interface Props {
   isGenerating: boolean;
 }
 
-export default function MessageBubble({
+function MessageBubbleInner({
   message, isLast,
   onEditMessage, onDeleteMessage, onBranch,
   currentCharacter, currentChat, activePersona, isGenerating,
 }: Props) {
-  const { swipeMessage, regenerateMessage, markChapterBoundary, chapterStartId, chapterEndId, startChapterCreation, chapterFlowEndId } = useStore();
+  // Use individual selectors to avoid re-rendering on every store change (e.g. streaming tokens)
+  const swipeMessage = useStore(s => s.swipeMessage);
+  const regenerateMessage = useStore(s => s.regenerateMessage);
+  const markChapterBoundary = useStore(s => s.markChapterBoundary);
+  const startChapterCreation = useStore(s => s.startChapterCreation);
+  const chapterStartId = useStore(s => s.chapterStartId);
+  const chapterEndId = useStore(s => s.chapterEndId);
+  const chapterFlowEndId = useStore(s => s.chapterFlowEndId);
   const isMarkedStart = chapterStartId === message.id;
   const isMarkedEnd = chapterEndId === message.id;
   const isFlowEnd = chapterFlowEndId === message.id;
@@ -350,3 +357,12 @@ export default function MessageBubble({
     </div>
   );
 }
+
+// React.memo: only re-render when the message content/identity or streaming state changes.
+// Non-last messages have stable message references (store spreads array but only mutates last element),
+// so they skip re-rendering during streaming. This cuts ~200 × 100 = 20,000 renders/sec to ~100.
+export default memo(MessageBubbleInner, (prev, next) => {
+  return prev.message === next.message
+    && prev.isLast === next.isLast
+    && prev.isGenerating === next.isGenerating;
+});

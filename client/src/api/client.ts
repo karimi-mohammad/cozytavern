@@ -85,6 +85,25 @@ export const api = {
   updateLorebookEntry: (entryId: string, data: any) => request(`/lorebooks/entries/${entryId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLorebookEntry: (entryId: string) => request(`/lorebooks/entries/${entryId}`, { method: 'DELETE' }),
 
+  // Chat Lorebooks (چند لور بوک به ازای هر چت)
+  getChatLorebooks: (chatId: string) => request(`/chats/${chatId}/lorebooks`),
+  addChatLorebook: (chatId: string, data: { lorebook_id: string; insertion_order?: number }) =>
+    request(`/chats/${chatId}/lorebooks`, { method: 'POST', body: JSON.stringify(data) }),
+  updateChatLorebook: (chatId: string, id: string, data: { is_active?: boolean; insertion_order?: number }) =>
+    request(`/chats/${chatId}/lorebooks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  removeChatLorebook: (chatId: string, id: string) =>
+    request(`/chats/${chatId}/lorebooks/${id}`, { method: 'DELETE' }),
+
+  // AI Lorebook Generator (۳ حالت)
+  suggestLorebookTopics: (data: { chat_id: string; character_id: string; lorebook_id?: string }) =>
+    request('/lorebooks/suggest-topics', { method: 'POST', body: JSON.stringify(data) }),
+  generateFromTopics: (data: { chat_id: string; character_id: string; topics: any[]; custom_prompt?: string }) =>
+    request('/lorebooks/generate-from-topics', { method: 'POST', body: JSON.stringify(data) }),
+  generateSingleTopic: (data: { chat_id: string; character_id: string; topic: string; keywords?: string[]; custom_prompt?: string }) =>
+    request('/lorebooks/generate-single', { method: 'POST', body: JSON.stringify(data) }),
+  applyGeneratedEntries: (lorebookId: string, entries: any[]) =>
+    request(`/lorebooks/${lorebookId}/apply-generated`, { method: 'POST', body: JSON.stringify({ entries }) }),
+
   // Plugins (تنظیمات پلاگین‌ها)
   getPluginSettings: (pluginId: string) => request(`/plugins/${pluginId}/settings`),
   updatePluginSettings: (pluginId: string, data: any) =>
@@ -107,7 +126,7 @@ export const api = {
 
   // Chapters
   getChapters: (chatId: string) => request(`/chapters/chat/${chatId}`),
-  createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; title?: string; auto_summarize?: boolean; edited_messages?: { role: string; content: string }[] }) =>
+  createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; trigger_message_id?: string; title?: string; auto_summarize?: boolean; edited_messages?: { role: string; content: string }[] }) =>
     request('/chapters', { method: 'POST', body: JSON.stringify(data) }),
   updateChapter: (id: string, data: { title?: string; summary?: string }) =>
     request(`/chapters/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

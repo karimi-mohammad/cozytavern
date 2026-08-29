@@ -209,6 +209,134 @@ router.post('/:id/auto-name', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Chat Lorebooks (چند لور بوک به ازای هر چت) ───
+
+// لیست لور بوک‌های یک چت
+router.get('/:chatId/lorebooks', (req: Request, res: Response) => {
+  const db = getDb();
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.chatId) as any;
+  if (!chat) {
+    res.status(404).json({ error: 'Chat not found' });
+    return;
+  }
+
+  const lorebooks = db.prepare(`
+    SELECT cl.*, l.name as lorebook_name, l.scan_depth, l.token_budget,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id AND disable = 0) as active_entries,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id) as total_entries
+    FROM chat_lorebooks cl
+    JOIN lorebooks l ON cl.lorebook_id = l.id
+    WHERE cl.chat_id = ?
+    ORDER BY cl.insertion_order ASC
+  `).all(req.params.chatId).map((cl: any) => ({
+    ...cl,
+    is_active: !!cl.is_active,
+  }));
+
+  res.json(lorebooks);
+});
+
+// اضافه کردن لور بوک به چت
+router.post('/:chatId/lorebooks', (req: Request, res: Response) => {
+  const db = getDb();
+  const { lorebook_id, insertion_order } = req.body;
+
+  if (!lorebook_id) {
+    res.status(400).json({ error: 'lorebook_id is required' });
+    return;
+  }
+
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.chatId) as any;
+  if (!chat) {
+    res.status(404).json({ error: 'Chat not found' });
+    return;
+  }
+
+  const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(lorebook_id) as any;
+  if (!lorebook) {
+    res.status(404).json({ error: 'Lorebook not found' });
+    return;
+  }
+
+  // بررسی تکراری نبودن
+  const existing = db.prepare('SELECT * FROM chat_lorebooks WHERE chat_id = ? AND lorebook_id = ?')
+    .get(req.params.chatId, lorebook_id) as any;
+  if (existing) {
+    res.status(400).json({ error: 'Lorebook already assigned to this chat' });
+    return;
+  }
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  // محاسبه insertion_order بعدی
+  const maxOrder = db.prepare('SELECT MAX(insertion_order) as max_order FROM chat_lorebooks WHERE chat_id = ?')
+    .get(req.params.chatId) as any;
+  const order = typeof insertion_order === 'number' ? insertion_order : ((maxOrder?.max_order || 0) + 100);
+
+  db.prepare(`
+    INSERT INTO chat_lorebooks (id, chat_id, lorebook_id, is_active, insertion_order, created_at)
+    VALUES (?, ?, ?, 1, ?, ?)
+  `).run(id, req.params.chatId, lorebook_id, order, now);
+
+  const result = db.prepare(`
+    SELECT cl.*, l.name as lorebook_name, l.scan_depth, l.token_budget,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id AND disable = 0) as active_entries,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id) as total_entries
+    FROM chat_lorebooks cl
+    JOIN lorebooks l ON cl.lorebook_id = l.id
+    WHERE cl.id = ?
+  `).get(id) as any;
+
+  res.status(201).json({ ...result, is_active: !!result.is_active });
+});
+
+// تغییر وضعیت لور بوک در چت (فعال/غیرفعال)
+router.put('/:chatId/lorebooks/:id', (req: Request, res: Response) => {
+  const db = getDb();
+  const { is_active, insertion_order } = req.body;
+
+  const existing = db.prepare('SELECT * FROM chat_lorebooks WHERE id = ? AND chat_id = ?')
+    .get(req.params.id, req.params.chatId) as any;
+  if (!existing) {
+    res.status(404).json({ error: 'Chat lorebook not found' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE chat_lorebooks SET is_active = ?, insertion_order = ?, created_at = created_at
+    WHERE id = ?
+  `).run(
+    typeof is_active === 'boolean' ? (is_active ? 1 : 0) : existing.is_active,
+    typeof insertion_order === 'number' ? insertion_order : existing.insertion_order,
+    req.params.id,
+  );
+
+  const result = db.prepare(`
+    SELECT cl.*, l.name as lorebook_name, l.scan_depth, l.token_budget,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id AND disable = 0) as active_entries,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id) as total_entries
+    FROM chat_lorebooks cl
+    JOIN lorebooks l ON cl.lorebook_id = l.id
+    WHERE cl.id = ?
+  `).get(req.params.id) as any;
+
+  res.json({ ...result, is_active: !!result.is_active });
+});
+
+// حذف لور بوک از چت
+router.delete('/:chatId/lorebooks/:id', (req: Request, res: Response) => {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM chat_lorebooks WHERE id = ? AND chat_id = ?')
+    .run(req.params.id, req.params.chatId);
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'Chat lorebook not found' });
+    return;
+  }
+  res.json({ success: true });
+});
+
 // ─── Export/Import چت ───
 
 // خروجی چت به JSON — پیام‌ها با index ارجاع می‌شوند تا قابل حمل باشد

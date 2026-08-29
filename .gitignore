@@ -5,6 +5,7 @@ node_modules/
 # Build output
 dist/
 build/
+*.tsbuildinfo
 
 # Database files
 server/data/*.db
@@ -36,6 +37,12 @@ Desktop.ini
 # Logs
 *.log
 npm-debug.log*
+vitest-out.txt
+
+# Test/temp files
+test-*.mjs
+github_search.png
+github_search_results.yml
 
 # Lock files (keep package-lock)
 yarn.lock

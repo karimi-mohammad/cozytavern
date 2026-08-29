@@ -1,17 +1,98 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
-import { api } from '../api/client';
+import LorebookPanel from './LorebookPanel';
+
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 420;
+const DEFAULT_WIDTH = 288; // w-72 = 288px
+
+function getStoredWidth(): number {
+  try {
+    const stored = localStorage.getItem('cozytavern.rightPanelWidth');
+    if (stored) {
+      const w = parseInt(stored);
+      if (w >= MIN_WIDTH && w <= MAX_WIDTH) return w;
+    }
+  } catch {}
+  return DEFAULT_WIDTH;
+}
 
 export default function RightPanel() {
   const {
-    rightPanelOpen, currentCharacter, currentChat, lorebooks,
-    setLorebookEditorOpen, setCharacterEditorOpen,
+    rightPanelOpen, currentCharacter, currentChat,
+    setCharacterEditorOpen,
   } = useStore();
+
+  const [panelWidth, setPanelWidth] = useState(getStoredWidth);
+  const [isResizing, setIsResizing] = useState(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    startX.current = e.clientX;
+    startWidth.current = panelWidth;
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = startX.current - e.clientX; // منفی چون پنل سمت راسته
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      // ذخیره عرض
+      try {
+        localStorage.setItem('cozytavern.rightPanelWidth', String(panelWidth));
+      } catch {}
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, panelWidth]);
+
+  // ذخیره عند تغییر
+  useEffect(() => {
+    try {
+      localStorage.setItem('cozytavern.rightPanelWidth', String(panelWidth));
+    } catch {}
+  }, [panelWidth]);
 
   if (!rightPanelOpen) return null;
 
   return (
-    <div className="absolute right-0 top-0 bottom-0 w-72 bg-tavern-surface border-l border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in-left shadow-xl overflow-hidden">
+    <div
+      className="absolute right-0 top-0 bottom-0 bg-tavern-surface border-l border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in-left shadow-xl overflow-y-auto overflow-x-hidden"
+      style={{ width: panelWidth }}
+    >
+      {/* Resize Handle */}
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-tavern-accent/50 transition-colors z-50 ${
+          isResizing ? 'bg-tavern-accent/70' : ''
+        }`}
+        onMouseDown={handleMouseDown}
+      >
+        {/* Visual indicator */}
+        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r transition-opacity ${
+          isResizing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        } bg-tavern-accent`} />
+      </div>
+
       {currentCharacter ? (
         <>
           {/* Character Info Header */}
@@ -43,35 +124,12 @@ export default function RightPanel() {
             </div>
           )}
 
-          {/* Lorebook Selector */}
-          <div className="p-4 border-b border-tavern-border">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-medium text-tavern-dim">Lorebook</h4>
-              <button
-                onClick={() => setLorebookEditorOpen(true)}
-                className="text-tavern-accent hover:text-tavern-accent-hover text-xs font-medium"
-              >
-                Manage
-              </button>
+          {/* Lorebook Panel (چند لور بوک به ازای هر چت) */}
+          {currentChat && (
+            <div className="border-b border-tavern-border">
+              <LorebookPanel />
             </div>
-            <select
-              value={currentChat?.lorebook_id || ''}
-              onChange={(e) => {
-                if (currentChat) {
-                  api.updateChat(currentChat.id, { lorebook_id: e.target.value });
-                  useStore.setState(s => ({
-                    currentChat: s.currentChat ? { ...s.currentChat, lorebook_id: e.target.value } : null,
-                  }));
-                }
-              }}
-              className="w-full bg-tavern-input border border-tavern-border rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-tavern-accent text-tavern-text"
-            >
-              <option value="">None</option>
-              {lorebooks.map(lb => (
-                <option key={lb.id} value={lb.id}>{lb.name}</option>
-              ))}
-            </select>
-          </div>
+          )}
 
           {/* Scenario */}
           {currentCharacter.scenario && (

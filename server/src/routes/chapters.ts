@@ -189,7 +189,7 @@ router.put('/settings', (req: Request, res: Response) => {
 
 router.post('/', async (req: Request, res: Response) => {
   const db = getDb();
-  const { chat_id, start_message_id, end_message_id, title, auto_summarize } = req.body;
+  const { chat_id, start_message_id, end_message_id, trigger_message_id, title, auto_summarize } = req.body;
 
   if (!chat_id || !start_message_id || !end_message_id) {
     res.status(400).json({ error: 'chat_id, start_message_id and end_message_id are required' });
@@ -221,9 +221,9 @@ router.post('/', async (req: Request, res: Response) => {
   const now = new Date().toISOString();
 
   db.prepare(`
-    INSERT INTO chapters (id, chat_id, start_message_id, end_message_id, title, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, chat_id, start_message_id, end_message_id, title || '', now, now);
+    INSERT INTO chapters (id, chat_id, start_message_id, end_message_id, trigger_message_id, title, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, chat_id, start_message_id, end_message_id, trigger_message_id || '', title || '', now, now);
 
   // اگر auto_summarize false باشه، فقط فصل رو بساز و خلاصه نساز
   if (auto_summarize === false) {
@@ -241,9 +241,10 @@ router.post('/', async (req: Request, res: Response) => {
     const loaded = loadTranscript(db, chat_id, start_message_id, end_message_id);
     if (loaded) {
       // Collect previous chapter summaries for accumulating context
+      // Only include chapters created BEFORE this one to avoid self-referencing
       const existingChapters = db.prepare(
-        "SELECT summary FROM chapters WHERE chat_id = ? AND summary != '' ORDER BY created_at ASC"
-      ).all(chat_id) as any[];
+        "SELECT summary FROM chapters WHERE chat_id = ? AND created_at < ? AND summary != '' ORDER BY created_at ASC"
+      ).all(chat_id, now) as any[];
       const previousSummaries = existingChapters.map((c: any) => c.summary).filter(Boolean);
 
       const result = await generateChapterSummary(

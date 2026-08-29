@@ -114,7 +114,7 @@ router.post('/', (req: Request, res: Response) => {
   });
 });
 
-// ادیت کردن پیام
+// ادیت کردن پیام — فقط همون پیام تغییر می‌کنه، بقیه پیام‌ها دست‌نخورده باقی می‌مونن
 router.put('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
@@ -132,11 +132,6 @@ router.put('/:id', (req: Request, res: Response) => {
     swipes = [...swipes, message.content];
   }
 
-  // حذف پیام‌های بعدی (چون context تغییر کرده)
-  db.prepare(
-    'DELETE FROM messages WHERE chat_id = ? AND send_date > ?'
-  ).run(message.chat_id, message.send_date);
-
   db.prepare(`
     UPDATE messages SET content=?, swipes=?, is_edited=1, send_date=? WHERE id=?
   `).run(content, JSON.stringify(swipes), now, req.params.id);
@@ -150,7 +145,7 @@ router.put('/:id', (req: Request, res: Response) => {
   });
 });
 
-// حذف پیام - پیام‌های بعدی هم حذف می‌شوند (چون context تغییر کرده)
+// حذف پیام — فقط همون پیام حذف می‌شه، بقیه پیام‌ها دست‌نخورده باقی می‌مونن
 router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
@@ -159,9 +154,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  db.prepare(
-    'DELETE FROM messages WHERE chat_id = ? AND send_date >= ?'
-  ).run(message.chat_id, message.send_date);
+  db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
 
   res.json({ success: true });
 });

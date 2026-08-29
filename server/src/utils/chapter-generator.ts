@@ -416,16 +416,26 @@ export function detectChapterTrigger(
     return { suggested: false };
   }
 
-  // Find the start point for scanning (after last chapter's end message)
-  // +2 to skip past the end_message_id AND the trigger that created this chapter
+  // Find the start point for scanning:
+  // If the last chapter has a trigger_message_id, start AFTER that trigger message
+  // Otherwise fall back to end_message_id + 2 (for backward compatibility with old chapters)
   let scanStart = 0;
   const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
   if (lastChapter) {
-    const lastChapterEndIndex = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
-    if (lastChapterEndIndex !== -1) {
-      // Start scanning from AFTER the last chapter's end message + trigger
-      // The chapter ends at trigger-1, so we need to skip trigger+1 to avoid re-detecting
-      scanStart = lastChapterEndIndex + 2;
+    if (lastChapter.trigger_message_id) {
+      // New behavior: use the stored trigger_message_id to skip directly past the trigger
+      const triggerIndex = messages.findIndex((m: any) => m.id === lastChapter.trigger_message_id);
+      if (triggerIndex !== -1) {
+        scanStart = triggerIndex + 1; // Start scanning from the message AFTER the trigger
+      }
+    } else {
+      // Fallback for old chapters without trigger_message_id:
+      // The chapter ends before the trigger, so end_message_id + 1 is the trigger itself.
+      // We need to skip past it, so use end_message_id + 2
+      const lastChapterEndIndex = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
+      if (lastChapterEndIndex !== -1) {
+        scanStart = lastChapterEndIndex + 2;
+      }
     }
   }
 
@@ -437,9 +447,9 @@ export function detectChapterTrigger(
     return { suggested: false };
   }
 
-  // Scan messages outside the raw window for triggers (raw window is the most recent messages that won't be summarized)
-  const scanEnd = messagesAfterLastChapter.length - rawWindow;
-  const scanMessages = messagesAfterLastChapter.slice(0, scanEnd);
+  // Scan ALL messages after the last chapter for triggers
+  // The raw_window constraint is enforced later during chapter creation (validateChapterRange)
+  const scanMessages = messagesAfterLastChapter;
 
   for (const trigger of triggerPhrases) {
     const triggerLower = trigger.toLowerCase();

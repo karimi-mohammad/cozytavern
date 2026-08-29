@@ -67,64 +67,127 @@ export default function MessageList({
             // Map end_message_id to chapter for quick lookup
             const chapterByEndId = new Map(chapters.map(c => [c.end_message_id, c]));
 
-            return messages.map((msg, idx) => {
-              const elements: React.ReactNode[] = [];
+            // Split into stable messages (all except last) and streaming last message.
+            // During streaming only the last message content changes; stable messages
+            // have identical object references (store spreads array but only mutates last element),
+            // so React.memo on MessageBubble skips them entirely.
+            const stableMessages = messages.length > 1 ? messages.slice(0, -1) : [];
+            const streamingMessage = messages[messages.length - 1];
 
-              // Check if previous message was a chapter end → insert marker after it
-              if (idx > 0) {
-                const prevMsg = messages[idx - 1];
-                const chapter = chapterByEndId.get(prevMsg.id);
-                if (chapter) {
+            return (
+              <>
+                {/* Stable messages — memoized, no re-render during streaming */}
+                {stableMessages.map((msg, idx) => {
+                  const globalIdx = idx; // index within stableMessages
+                  const elements: React.ReactNode[] = [];
+
+                  // Check if previous message was a chapter end → insert marker after it
+                  if (globalIdx > 0) {
+                    const prevMsg = stableMessages[globalIdx - 1];
+                    const chapter = chapterByEndId.get(prevMsg.id);
+                    if (chapter) {
+                      elements.push(
+                        <div
+                          key={`chapter-${chapter.id}`}
+                          id={`chapter-marker-${chapter.id}`}
+                          className="my-4 flex items-center gap-3 cursor-pointer group"
+                          onClick={() => onChapterClick(chapter)}
+                        >
+                          <div className="flex-1 h-px bg-tavern-accent/30" />
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-tavern-accent/10 border border-tavern-accent/20 group-hover:bg-tavern-accent/20 transition-colors">
+                            <svg className="w-3.5 h-3.5 text-tavern-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            <span className="text-xs text-tavern-accent font-medium">
+                              {chapter.title || 'Chapter'}
+                            </span>
+                          </div>
+                          <div className="flex-1 h-px bg-tavern-accent/30" />
+                        </div>
+                      );
+                    }
+                  }
+
+                  const isMarkedStart = chapterStartId === msg.id;
+                  const isMarkedEnd = chapterEndId === msg.id;
+
                   elements.push(
-                    <div
-                      key={`chapter-${chapter.id}`}
-                      id={`chapter-marker-${chapter.id}`}
-                      className="my-4 flex items-center gap-3 cursor-pointer group"
-                      onClick={() => onChapterClick(chapter)}
-                    >
-                      <div className="flex-1 h-px bg-tavern-accent/30" />
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-tavern-accent/10 border border-tavern-accent/20 group-hover:bg-tavern-accent/20 transition-colors">
-                        <svg className="w-3.5 h-3.5 text-tavern-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                        </svg>
-                        <span className="text-xs text-tavern-accent font-medium">
-                          {chapter.title || 'Chapter'}
-                        </span>
-                      </div>
-                      <div className="flex-1 h-px bg-tavern-accent/30" />
+                    <div key={msg.id} data-message-id={msg.id} className="relative animate-fade-in-up">
+                      {isMarkedStart && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-emerald-400/70" />
+                      )}
+                      {isMarkedEnd && (
+                        <div className="absolute right-0 top-0 bottom-0 w-1 rounded-r bg-red-400/70" />
+                      )}
+                      <MessageBubble
+                        message={msg}
+                        isLast={false}
+                        onEditMessage={onEditMessage}
+                        onDeleteMessage={onDeleteMessage}
+                        onBranch={onBranch}
+                        currentCharacter={currentCharacter}
+                        currentChat={currentChat}
+                        activePersona={activePersona}
+                        isGenerating={false}
+                      />
                     </div>
                   );
-                }
-              }
 
-              // نوار کناری برای پیام‌های علامت‌گذاری‌شده به‌عنوان مرز فصل
-              const isMarkedStart = chapterStartId === msg.id;
-              const isMarkedEnd = chapterEndId === msg.id;
+                  return elements;
+                }).flat()}
 
-              elements.push(
-                <div key={msg.id} data-message-id={msg.id} className="relative animate-fade-in-up">
-                  {isMarkedStart && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-emerald-400/70" />
-                  )}
-                  {isMarkedEnd && (
-                    <div className="absolute right-0 top-0 bottom-0 w-1 rounded-r bg-red-400/70" />
-                  )}
-                  <MessageBubble
-                    message={msg}
-                    isLast={messages[messages.length - 1]?.id === msg.id}
-                    onEditMessage={onEditMessage}
-                    onDeleteMessage={onDeleteMessage}
-                    onBranch={onBranch}
-                    currentCharacter={currentCharacter}
-                    currentChat={currentChat}
-                    activePersona={activePersona}
-                    isGenerating={isGenerating}
-                  />
-                </div>
-              );
+                {/* Streaming (last) message — re-renders on every token but only ONE component */}
+                {streamingMessage && (() => {
+                  const prevMsg = stableMessages.length > 0 ? stableMessages[stableMessages.length - 1] : null;
+                  const chapter = prevMsg ? chapterByEndId.get(prevMsg.id) : null;
+                  const isMarkedStart = chapterStartId === streamingMessage.id;
+                  const isMarkedEnd = chapterEndId === streamingMessage.id;
 
-              return elements;
-            }).flat();
+                  return (
+                    <>
+                      {chapter && (
+                        <div
+                          key={`chapter-${chapter.id}`}
+                          id={`chapter-marker-${chapter.id}`}
+                          className="my-4 flex items-center gap-3 cursor-pointer group"
+                          onClick={() => onChapterClick(chapter)}
+                        >
+                          <div className="flex-1 h-px bg-tavern-accent/30" />
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-tavern-accent/10 border border-tavern-accent/20 group-hover:bg-tavern-accent/20 transition-colors">
+                            <svg className="w-3.5 h-3.5 text-tavern-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            <span className="text-xs text-tavern-accent font-medium">
+                              {chapter.title || 'Chapter'}
+                            </span>
+                          </div>
+                          <div className="flex-1 h-px bg-tavern-accent/30" />
+                        </div>
+                      )}
+                      <div key={streamingMessage.id} data-message-id={streamingMessage.id} className="relative animate-fade-in-up">
+                        {isMarkedStart && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-emerald-400/70" />
+                        )}
+                        {isMarkedEnd && (
+                          <div className="absolute right-0 top-0 bottom-0 w-1 rounded-r bg-red-400/70" />
+                        )}
+                        <MessageBubble
+                          message={streamingMessage}
+                          isLast={true}
+                          onEditMessage={onEditMessage}
+                          onDeleteMessage={onDeleteMessage}
+                          onBranch={onBranch}
+                          currentCharacter={currentCharacter}
+                          currentChat={currentChat}
+                          activePersona={activePersona}
+                          isGenerating={isGenerating}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </>
+            );
           })()
         )}
         <div ref={bottomRef} />

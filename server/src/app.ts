@@ -230,13 +230,45 @@ app.post('/api/chat', async (req, res) => {
     } catch {}
   }
 
-  // لوربوک (اولویت: lorebook_id مستقیم > لینک چت > لینک کاراکتر)
-  const effectiveLorebookId = lorebook_id || chat?.lorebook_id || character?.lorebook_id;
+  // لوربوک‌ها (پشتیبانی از چند لور بوک به ازای هر چت)
+  // اولویت: lorebook_id مستقیم > chat_lorebooks > lorebook_id چت قدیمی > لینک کاراکتر
   let lorebookEntries: any[] = [];
-  if (effectiveLorebookId) {
-    const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(effectiveLorebookId) as any;
+
+  // جمع‌آوری تمام lorebook_id های فعال
+  const lorebookIdsToLoad: string[] = [];
+
+  if (lorebook_id) {
+    // lorebook_id مستقیم از request (مثلاً group chat)
+    lorebookIdsToLoad.push(lorebook_id);
+  } else {
+    // دریافت از chat_lorebooks (جدول جدید)
+    const chatLorebooks = db.prepare(
+      'SELECT cl.lorebook_id, cl.is_active FROM chat_lorebooks cl WHERE cl.chat_id = ? ORDER BY cl.insertion_order ASC'
+    ).all(chat_id) as any[];
+
+    for (const cl of chatLorebooks) {
+      if (cl.is_active) {
+        lorebookIdsToLoad.push(cl.lorebook_id);
+      }
+    }
+
+    // fallback: اگر chat_lorebooks خالی باشد، از lorebook_id قدیمی چت استفاده کن
+    if (lorebookIdsToLoad.length === 0 && chat?.lorebook_id) {
+      lorebookIdsToLoad.push(chat.lorebook_id);
+    }
+
+    // fallback: لوربوک کاراکتر
+    if (lorebookIdsToLoad.length === 0 && character?.lorebook_id) {
+      lorebookIdsToLoad.push(character.lorebook_id);
+    }
+  }
+
+  // بارگذاری و ادغام entries از تمام لوربوک‌های فعال
+  const allLoadedLorebooks: any[] = [];
+  for (const lbId of lorebookIdsToLoad) {
+    const lorebook = db.prepare('SELECT * FROM lorebooks WHERE id = ?').get(lbId) as any;
     if (lorebook) {
-      const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ?').all(effectiveLorebookId).map((e: any) => ({
+      const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ?').all(lbId).map((e: any) => ({
         ...e,
         key: JSON.parse(e.keys || '[]'),
         keysecondary: JSON.parse(e.keys_secondary || '[]'),
@@ -244,9 +276,19 @@ app.post('/api/chat', async (req, res) => {
         selective: !!e.selective,
         disable: !!e.disable,
       }));
-      lorebookEntries = activateWorldInfo(messages, { ...lorebook, entries });
+      const activated = activateWorldInfo(messages, { ...lorebook, entries });
+      lorebookEntries.push(...activated);
+      allLoadedLorebooks.push({ id: lbId, name: lorebook.name, token_budget: lorebook.token_budget });
     }
   }
+
+  // حذف duplicate entries بر اساس id (اگر چند لوربوک entry یکسانی داشته باشند)
+  const seenIds = new Set<string>();
+  lorebookEntries = lorebookEntries.filter((e: any) => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    return true;
+  });
 
   // ساخت prompt (با در نظر گرفتن chapter summaries + raw window دینامیک)
   const chapters = db.prepare('SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC').all(chat_id) as any[];
@@ -526,17 +568,25 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
-      // بروزرسانی محتوای پیام (حتی اگر abort شده باشد — متن partial حفظ می‌شود)
-      db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
-      // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
-      if (update_message_id && fullContent) {
-        const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
-        if (msg) {
-          const swipes = JSON.parse(msg.swipes || '[]');
-          swipes.push(fullContent);
-          db.prepare('UPDATE messages SET swipes = ?, swipe_id = ? WHERE id = ?')
-            .run(JSON.stringify(swipes), swipes.length - 1, msgId);
+      // بروزرسانی محتوای پیام
+      if (fullContent) {
+        // محتوا داریم — ذخیره کن
+        db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
+        // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
+        if (update_message_id) {
+          const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
+          if (msg) {
+            const swipes = JSON.parse(msg.swipes || '[]');
+            swipes.push(fullContent);
+            db.prepare('UPDATE messages SET swipes = ?, swipe_id = ? WHERE id = ?')
+              .run(JSON.stringify(swipes), swipes.length - 1, msgId);
+          }
         }
+      } else if (!update_message_id && !streamAborted) {
+        // پیام جدید بود ولی محتوا خالی موند (LLLLM خالی برگردوند)
+        // پیام خالی رو حذف کن تا ghost نمونه
+        db.prepare('DELETE FROM messages WHERE id = ?').run(msgId);
+        console.log(`[Chat] Empty response — deleted empty message ${msgId}`);
       }
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), chat_id);
 

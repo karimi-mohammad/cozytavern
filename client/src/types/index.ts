@@ -85,7 +85,24 @@ export interface Lorebook {
   scan_depth: number;
   token_budget: number;
   entries: LorebookEntry[];
+  entry_count?: number;
+  active_entry_count?: number;
   created_at: string;
+}
+
+export interface ChatLorebook {
+  id: string;
+  chat_id: string;
+  lorebook_id: string;
+  is_active: boolean;
+  insertion_order: number;
+  created_at: string;
+  // Joined fields
+  lorebook_name: string;
+  scan_depth: number;
+  token_budget: number;
+  active_entries: number;
+  total_entries: number;
 }
 
 export interface ApiSettings {
@@ -142,6 +159,7 @@ export interface Chapter {
   chat_id: string;
   start_message_id: string;
   end_message_id: string;
+  trigger_message_id: string;
   title: string;
   summary: string;
   generation_model: string;
