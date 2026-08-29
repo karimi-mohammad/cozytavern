@@ -47,6 +47,9 @@ test-*.mjs
 github_search.png
 github_search_results.yml
 
+# Reference screenshots
+sillytavern/
+
 # Lock files (keep package-lock)
 yarn.lock
 pnpm-lock.yaml
