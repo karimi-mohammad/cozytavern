@@ -131,6 +131,326 @@
   --tavern-assistant: 255 255 255;
 }
 
+.theme-midnight {
+  --tavern-bg: 10 15 30;
+  --tavern-surface: 18 25 45;
+  --tavern-surface2: 25 35 55;
+  --tavern-input: 22 32 52;
+  --tavern-hover: 30 42 65;
+  --tavern-sidebar: 18 25 45;
+  --tavern-card: 25 35 55;
+  --tavern-icon-bar: 18 25 45;
+  --tavern-topbar: 18 25 45;
+  --tavern-right-panel: 18 25 45;
+  --tavern-panel-header: 25 35 55;
+  --tavern-border: 45 60 90;
+  --tavern-border-subtle: 35 48 72;
+  --tavern-border-focus: 70 120 200;
+  --tavern-text: 180 195 220;
+  --tavern-text-bright: 210 225 250;
+  --tavern-muted: 120 140 170;
+  --tavern-dim: 90 110 140;
+  --tavern-faint: 70 90 120;
+  --tavern-accent: 70 120 200;
+  --tavern-accent-hover: 90 140 220;
+  --tavern-cta: 255 140 50;
+  --tavern-cta-hover: 255 160 70;
+  --tavern-dialogue: 255 200 100;
+  --tavern-danger: 255 80 80;
+  --tavern-success: 80 200 120;
+  --tavern-info: 80 160 230;
+  --tavern-user: 180 195 220;
+  --tavern-assistant: 18 25 45;
+}
+
+.theme-forest {
+  --tavern-bg: 10 18 12;
+  --tavern-surface: 18 30 20;
+  --tavern-surface2: 25 40 28;
+  --tavern-input: 22 35 25;
+  --tavern-hover: 30 45 32;
+  --tavern-sidebar: 18 30 20;
+  --tavern-card: 25 40 28;
+  --tavern-icon-bar: 18 30 20;
+  --tavern-topbar: 18 30 20;
+  --tavern-right-panel: 18 30 20;
+  --tavern-panel-header: 25 40 28;
+  --tavern-border: 45 65 50;
+  --tavern-border-subtle: 35 52 40;
+  --tavern-border-focus: 80 160 100;
+  --tavern-text: 180 200 185;
+  --tavern-text-bright: 210 230 215;
+  --tavern-muted: 120 145 125;
+  --tavern-dim: 90 115 95;
+  --tavern-faint: 70 95 75;
+  --tavern-accent: 80 160 100;
+  --tavern-accent-hover: 100 180 120;
+  --tavern-cta: 200 140 60;
+  --tavern-cta-hover: 220 160 80;
+  --tavern-dialogue: 255 200 100;
+  --tavern-danger: 220 80 80;
+  --tavern-success: 80 180 100;
+  --tavern-info: 80 140 180;
+  --tavern-user: 180 200 185;
+  --tavern-assistant: 18 30 20;
+}
+
+.theme-sunset {
+  --tavern-bg: 20 12 10;
+  --tavern-surface: 32 20 18;
+  --tavern-surface2: 42 28 25;
+  --tavern-input: 38 24 22;
+  --tavern-hover: 48 32 30;
+  --tavern-sidebar: 32 20 18;
+  --tavern-card: 42 28 25;
+  --tavern-icon-bar: 32 20 18;
+  --tavern-topbar: 32 20 18;
+  --tavern-right-panel: 32 20 18;
+  --tavern-panel-header: 42 28 25;
+  --tavern-border: 70 50 45;
+  --tavern-border-subtle: 55 38 35;
+  --tavern-border-focus: 220 120 80;
+  --tavern-text: 200 185 180;
+  --tavern-text-bright: 230 215 210;
+  --tavern-muted: 140 120 115;
+  --tavern-dim: 110 90 85;
+  --tavern-faint: 90 72 68;
+  --tavern-accent: 220 120 80;
+  --tavern-accent-hover: 240 140 100;
+  --tavern-cta: 255 160 50;
+  --tavern-cta-hover: 255 180 70;
+  --tavern-dialogue: 255 180 80;
+  --tavern-danger: 240 80 70;
+  --tavern-success: 100 180 90;
+  --tavern-info: 100 140 200;
+  --tavern-user: 200 185 180;
+  --tavern-assistant: 32 20 18;
+}
+
+.theme-ocean {
+  --tavern-bg: 240 245 250;
+  --tavern-surface: 255 255 255;
+  --tavern-surface2: 230 238 245;
+  --tavern-input: 255 255 255;
+  --tavern-hover: 220 230 240;
+  --tavern-sidebar: 245 248 252;
+  --tavern-card: 255 255 255;
+  --tavern-icon-bar: 245 248 252;
+  --tavern-topbar: 255 255 255;
+  --tavern-right-panel: 245 248 252;
+  --tavern-panel-header: 230 238 245;
+  --tavern-border: 190 210 225;
+  --tavern-border-subtle: 205 218 230;
+  --tavern-border-focus: 60 140 200;
+  --tavern-text: 40 60 80;
+  --tavern-text-bright: 20 35 50;
+  --tavern-muted: 90 110 130;
+  --tavern-dim: 110 130 150;
+  --tavern-faint: 140 155 170;
+  --tavern-accent: 60 140 200;
+  --tavern-accent-hover: 80 160 220;
+  --tavern-cta: 220 100 70;
+  --tavern-cta-hover: 200 85 60;
+  --tavern-dialogue: 180 120 50;
+  --tavern-danger: 200 70 70;
+  --tavern-success: 50 150 90;
+  --tavern-info: 50 120 180;
+  --tavern-user: 40 60 80;
+  --tavern-assistant: 255 255 255;
+}
+
+.theme-slate {
+  --tavern-bg: 60 64 72;
+  --tavern-surface: 48 52 60;
+  --tavern-surface2: 72 76 86;
+  --tavern-input: 52 56 64;
+  --tavern-hover: 78 82 92;
+  --tavern-sidebar: 48 52 60;
+  --tavern-card: 72 76 86;
+  --tavern-icon-bar: 48 52 60;
+  --tavern-topbar: 48 52 60;
+  --tavern-right-panel: 48 52 60;
+  --tavern-panel-header: 72 76 86;
+  --tavern-border: 90 95 105;
+  --tavern-border-subtle: 72 76 86;
+  --tavern-border-focus: 96 165 250;
+  --tavern-text: 235 240 245;
+  --tavern-text-bright: 255 255 255;
+  --tavern-muted: 160 168 180;
+  --tavern-dim: 130 138 150;
+  --tavern-faint: 110 118 130;
+  --tavern-accent: 96 165 250;
+  --tavern-accent-hover: 120 180 255;
+  --tavern-cta: 251 146 60;
+  --tavern-cta-hover: 255 165 80;
+  --tavern-dialogue: 253 224 71;
+  --tavern-danger: 248 113 113;
+  --tavern-success: 74 222 128;
+  --tavern-info: 96 165 250;
+  --tavern-user: 235 240 245;
+  --tavern-assistant: 48 52 60;
+}
+
+.theme-mocha {
+  --tavern-bg: 70 60 55;
+  --tavern-surface: 55 46 42;
+  --tavern-surface2: 85 74 68;
+  --tavern-input: 60 50 46;
+  --tavern-hover: 92 80 74;
+  --tavern-sidebar: 55 46 42;
+  --tavern-card: 85 74 68;
+  --tavern-icon-bar: 55 46 42;
+  --tavern-topbar: 55 46 42;
+  --tavern-right-panel: 55 46 42;
+  --tavern-panel-header: 85 74 68;
+  --tavern-border: 105 92 85;
+  --tavern-border-subtle: 85 74 68;
+  --tavern-border-focus: 225 150 105;
+  --tavern-text: 245 238 230;
+  --tavern-text-bright: 255 250 245;
+  --tavern-muted: 170 155 145;
+  --tavern-dim: 140 125 115;
+  --tavern-faint: 115 102 95;
+  --tavern-accent: 225 150 105;
+  --tavern-accent-hover: 240 170 125;
+  --tavern-cta: 230 120 80;
+  --tavern-cta-hover: 245 140 100;
+  --tavern-dialogue: 240 190 110;
+  --tavern-danger: 220 90 90;
+  --tavern-success: 120 175 120;
+  --tavern-info: 120 155 190;
+  --tavern-user: 245 238 230;
+  --tavern-assistant: 55 46 42;
+}
+
+.theme-teal {
+  --tavern-bg: 32 42 46;
+  --tavern-surface: 42 54 59;
+  --tavern-surface2: 53 67 73;
+  --tavern-input: 37 48 53;
+  --tavern-hover: 58 74 80;
+  --tavern-sidebar: 42 54 59;
+  --tavern-card: 53 67 73;
+  --tavern-icon-bar: 42 54 59;
+  --tavern-topbar: 42 54 59;
+  --tavern-right-panel: 42 54 59;
+  --tavern-panel-header: 53 67 73;
+  --tavern-border: 75 92 100;
+  --tavern-border-subtle: 53 67 73;
+  --tavern-border-focus: 70 170 160;
+  --tavern-text: 215 225 228;
+  --tavern-text-bright: 240 245 247;
+  --tavern-muted: 145 162 168;
+  --tavern-dim: 115 132 138;
+  --tavern-faint: 92 108 114;
+  --tavern-accent: 70 170 160;
+  --tavern-accent-hover: 90 190 180;
+  --tavern-cta: 240 140 70;
+  --tavern-cta-hover: 250 155 90;
+  --tavern-dialogue: 255 185 100;
+  --tavern-danger: 220 85 85;
+  --tavern-success: 90 185 130;
+  --tavern-info: 70 150 180;
+  --tavern-user: 215 225 228;
+  --tavern-assistant: 42 54 59;
+}
+
+.theme-softslate {
+  --tavern-bg: 36 40 48;
+  --tavern-surface: 48 53 63;
+  --tavern-surface2: 60 66 78;
+  --tavern-input: 42 47 56;
+  --tavern-hover: 66 72 84;
+  --tavern-sidebar: 48 53 63;
+  --tavern-card: 60 66 78;
+  --tavern-icon-bar: 48 53 63;
+  --tavern-topbar: 48 53 63;
+  --tavern-right-panel: 48 53 63;
+  --tavern-panel-header: 60 66 78;
+  --tavern-border: 85 93 108;
+  --tavern-border-subtle: 60 66 78;
+  --tavern-border-focus: 100 160 220;
+  --tavern-text: 220 224 230;
+  --tavern-text-bright: 242 245 250;
+  --tavern-muted: 155 162 175;
+  --tavern-dim: 125 132 145;
+  --tavern-faint: 100 108 120;
+  --tavern-accent: 100 160 220;
+  --tavern-accent-hover: 120 178 235;
+  --tavern-cta: 255 150 70;
+  --tavern-cta-hover: 255 168 90;
+  --tavern-dialogue: 255 190 110;
+  --tavern-danger: 230 90 90;
+  --tavern-success: 80 180 130;
+  --tavern-info: 80 140 200;
+  --tavern-user: 220 224 230;
+  --tavern-assistant: 48 53 63;
+}
+
+.theme-stone {
+  --tavern-bg: 42 36 34;
+  --tavern-surface: 54 47 44;
+  --tavern-surface2: 66 58 54;
+  --tavern-input: 48 42 39;
+  --tavern-hover: 74 65 60;
+  --tavern-sidebar: 54 47 44;
+  --tavern-card: 66 58 54;
+  --tavern-icon-bar: 54 47 44;
+  --tavern-topbar: 54 47 44;
+  --tavern-right-panel: 54 47 44;
+  --tavern-panel-header: 66 58 54;
+  --tavern-border: 95 85 80;
+  --tavern-border-subtle: 66 58 54;
+  --tavern-border-focus: 200 130 90;
+  --tavern-text: 225 218 212;
+  --tavern-text-bright: 245 240 236;
+  --tavern-muted: 160 148 140;
+  --tavern-dim: 130 120 112;
+  --tavern-faint: 105 96 90;
+  --tavern-accent: 200 130 90;
+  --tavern-accent-hover: 218 148 108;
+  --tavern-cta: 230 140 60;
+  --tavern-cta-hover: 245 155 80;
+  --tavern-dialogue: 245 180 100;
+  --tavern-danger: 225 85 80;
+  --tavern-success: 100 175 110;
+  --tavern-info: 100 140 170;
+  --tavern-user: 225 218 212;
+  --tavern-assistant: 54 47 44;
+}
+
+.theme-graphite {
+  --tavern-bg: 38 40 44;
+  --tavern-surface: 50 53 58;
+  --tavern-surface2: 62 66 72;
+  --tavern-input: 44 47 51;
+  --tavern-hover: 68 72 78;
+  --tavern-sidebar: 50 53 58;
+  --tavern-card: 62 66 72;
+  --tavern-icon-bar: 50 53 58;
+  --tavern-topbar: 50 53 58;
+  --tavern-right-panel: 50 53 58;
+  --tavern-panel-header: 62 66 72;
+  --tavern-border: 90 95 105;
+  --tavern-border-subtle: 62 66 72;
+  --tavern-border-focus: 120 150 200;
+  --tavern-text: 218 222 228;
+  --tavern-text-bright: 240 243 248;
+  --tavern-muted: 152 158 168;
+  --tavern-dim: 122 128 138;
+  --tavern-faint: 98 104 114;
+  --tavern-accent: 120 150 200;
+  --tavern-accent-hover: 140 168 218;
+  --tavern-cta: 255 145 75;
+  --tavern-cta-hover: 255 163 95;
+  --tavern-dialogue: 255 185 110;
+  --tavern-danger: 230 90 95;
+  --tavern-success: 85 185 140;
+  --tavern-info: 90 135 190;
+  --tavern-user: 218 222 228;
+  --tavern-assistant: 50 53 58;
+}
+
 /* ============================================
    Body & Root
    ============================================ */
@@ -160,6 +480,79 @@ body.theme-light {
     linear-gradient(180deg, #f4f4f8 0%, #fbfbfd 50%, #eef0f6 100%);
 }
 
+body.theme-midnight {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(40, 80, 160, 0.18) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 60, 140, 0.14) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 100%, rgba(20, 50, 100, 0.10) 0%, transparent 40%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-forest {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(40, 120, 60, 0.15) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 100, 50, 0.12) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 100%, rgba(20, 80, 40, 0.08) 0%, transparent 40%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-sunset {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(180, 80, 40, 0.15) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(160, 60, 30, 0.12) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 100%, rgba(140, 50, 20, 0.08) 0%, transparent 40%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-ocean {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(40, 100, 160, 0.06) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(30, 80, 140, 0.05) 0%, transparent 35%),
+    linear-gradient(180deg, #f0f5fa 0%, #fbfcfe 50%, #e6eef5 100%);
+}
+
+body.theme-slate {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(60, 100, 200, 0.12) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(80, 60, 160, 0.10) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-mocha {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(160, 100, 60, 0.12) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(140, 80, 50, 0.10) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-teal {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(60, 140, 140, 0.12) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(50, 120, 130, 0.10) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-softslate {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(60, 100, 200, 0.10) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(80, 70, 180, 0.08) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-stone {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(160, 100, 60, 0.10) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(140, 80, 50, 0.08) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
+body.theme-graphite {
+  background-image:
+    radial-gradient(ellipse at 5% 95%, rgba(80, 90, 140, 0.10) 0%, transparent 35%),
+    radial-gradient(ellipse at 95% 5%, rgba(70, 80, 120, 0.08) 0%, transparent 35%),
+    linear-gradient(180deg, rgb(var(--tavern-bg)) 0%, rgb(var(--tavern-surface)) 30%, rgb(var(--tavern-surface2)) 60%, rgb(var(--tavern-bg)) 100%);
+}
+
 /* Background wallpaper overlay - neon room effect */
 #root::before {
   content: '';
@@ -182,6 +575,43 @@ body.theme-light {
 /* در تم روشن والپیپر کمتر دیده شود */
 body.theme-light #root::before {
   opacity: 0.35;
+  filter: saturate(0.4);
+}
+
+/* Ocean theme - same as light */
+body.theme-ocean #root::before {
+  opacity: 0.3;
+  filter: saturate(0.3) hue-rotate(20deg);
+}
+
+/* Mid-tone themes — softer overlay for comfortable contrast */
+body.theme-slate #root::before {
+  opacity: 0.5;
+  filter: saturate(0.5);
+}
+
+body.theme-mocha #root::before {
+  opacity: 0.45;
+  filter: saturate(0.4) sepia(0.2);
+}
+
+body.theme-teal #root::before {
+  opacity: 0.45;
+  filter: saturate(0.4) hue-rotate(30deg);
+}
+
+body.theme-softslate #root::before {
+  opacity: 0.5;
+  filter: saturate(0.45);
+}
+
+body.theme-stone #root::before {
+  opacity: 0.45;
+  filter: saturate(0.4) sepia(0.15);
+}
+
+body.theme-graphite #root::before {
+  opacity: 0.5;
   filter: saturate(0.4);
 }
 

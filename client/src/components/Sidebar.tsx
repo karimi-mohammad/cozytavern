@@ -522,20 +522,85 @@ export default function Sidebar() {
       {/* Theme */}
       <div>
         <h3 className="text-sm font-medium mb-2 text-tavern-text-bright">Theme</h3>
-        <div className="grid grid-cols-3 gap-2">
-          {(['dark', 'darker', 'light'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTheme(t)}
-              className={`p-2 rounded-lg text-xs capitalize transition-colors ${
-                theme === t
-                  ? 'bg-tavern-input border border-tavern-accent text-tavern-accent'
-                  : 'bg-tavern-input border border-tavern-border text-tavern-muted hover:bg-tavern-hover'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+        <div className="space-y-3">
+          {/* Dark themes */}
+          <div>
+            <p className="text-[10px] text-tavern-faint uppercase tracking-wider mb-1.5">Dark</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: 'dark' as const, label: 'Dark', color: 'bg-purple-900' },
+                { id: 'darker' as const, label: 'Darker', color: 'bg-gray-900' },
+                { id: 'midnight' as const, label: 'Midnight', color: 'bg-blue-900' },
+                { id: 'forest' as const, label: 'Forest', color: 'bg-green-900' },
+                { id: 'sunset' as const, label: 'Sunset', color: 'bg-orange-900' },
+              ]).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`p-1.5 rounded-lg text-[10px] capitalize transition-colors flex flex-col items-center gap-1 ${
+                    theme === t.id
+                      ? 'bg-tavern-input border border-tavern-accent text-tavern-accent'
+                      : 'bg-tavern-input border border-tavern-border text-tavern-muted hover:bg-tavern-hover'
+                  }`}
+                >
+                  <span className={`w-3.5 h-3.5 rounded-full border border-tavern-border ${t.color}`} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Light themes */}
+          <div>
+            <p className="text-[10px] text-tavern-faint uppercase tracking-wider mb-1.5">Light</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: 'light' as const, label: 'Light', color: 'bg-gray-100' },
+                { id: 'ocean' as const, label: 'Ocean', color: 'bg-cyan-100' },
+              ]).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`p-1.5 rounded-lg text-[10px] capitalize transition-colors flex flex-col items-center gap-1 ${
+                    theme === t.id
+                      ? 'bg-tavern-input border border-tavern-accent text-tavern-accent'
+                      : 'bg-tavern-input border border-tavern-border text-tavern-muted hover:bg-tavern-hover'
+                  }`}
+                >
+                  <span className={`w-3.5 h-3.5 rounded-full border border-tavern-border ${t.color}`} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mid-tone themes */}
+          <div>
+            <p className="text-[10px] text-tavern-faint uppercase tracking-wider mb-1.5">Mid-tone</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: 'slate' as const, label: 'Slate', color: 'bg-gray-600' },
+                { id: 'softslate' as const, label: 'Soft Slate', color: 'bg-slate-600' },
+                { id: 'graphite' as const, label: 'Graphite', color: 'bg-zinc-600' },
+                { id: 'mocha' as const, label: 'Mocha', color: 'bg-amber-800' },
+                { id: 'stone' as const, label: 'Stone', color: 'bg-stone-700' },
+                { id: 'teal' as const, label: 'Teal', color: 'bg-teal-700' },
+              ]).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  className={`p-1.5 rounded-lg text-[10px] capitalize transition-colors flex flex-col items-center gap-1 ${
+                    theme === t.id
+                      ? 'bg-tavern-input border border-tavern-accent text-tavern-accent'
+                      : 'bg-tavern-input border border-tavern-border text-tavern-muted hover:bg-tavern-hover'
+                  }`}
+                >
+                  <span className={`w-3.5 h-3.5 rounded-full border border-tavern-border ${t.color}`} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

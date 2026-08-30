@@ -9,6 +9,7 @@ import CharacterAvatar from './CharacterAvatar';
 import CodeBlock from './CodeBlock';
 import StateChangeIndicator from './StateChangeIndicator';
 import { DialogueParagraph, renderHighlightedText } from '../utils/remarkDialogue';
+import { stripToolCalls } from '../utils/stripToolCalls';
 
 function formatMessageTime(isoDate: string): string {
   const date = new Date(isoDate);
@@ -140,12 +141,14 @@ function MessageBubbleInner({
     || message.content.match(/<reflection>([\s\S]*?)<\/reflection>/)
     || message.content.match(/\[thinking\]([\s\S]*?)\[\/thinking\]/);
   const thinkingContent = thinkMatch ? thinkMatch[1].trim() : null;
-  const mainContent = message.content
-    .replace(/<think>[\s\S]*?<\/think>/g, '')
-    .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
-    .replace(/<reflection>[\s\S]*?<\/reflection>/g, '')
-    .replace(/\[thinking\][\s\S]*?\[\/thinking\]/g, '')
-    .trim();
+  const mainContent = stripToolCalls(
+    message.content
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
+      .replace(/<reflection>[\s\S]*?<\/reflection>/g, '')
+      .replace(/\[thinking\][\s\S]*?\[\/thinking\]/g, '')
+      .trim()
+  );
 
   // تخمین زمان تفکر بر اساس طول محتوا (~50 توکن در ثانیه)
   const thinkingTimeEstimate = thinkingContent

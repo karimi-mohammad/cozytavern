@@ -23,9 +23,10 @@ function App() {
 
   // اعمال تم ذخیره‌شده در اولین رندر
   useEffect(() => {
-    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light');
+    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light', 'theme-midnight', 'theme-forest', 'theme-sunset', 'theme-ocean', 'theme-slate', 'theme-mocha', 'theme-teal', 'theme-softslate', 'theme-stone', 'theme-graphite');
     document.documentElement.classList.add(`theme-${theme}`);
     document.body.classList.toggle('theme-light', theme === 'light');
+    document.body.classList.toggle('theme-ocean', theme === 'ocean');
   }, []);
 
   useEffect(() => {

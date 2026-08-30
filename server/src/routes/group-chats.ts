@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { stripToolCallsFromContent } from '../utils/strip-tool-calls';
 
 const router = Router();
 
@@ -457,6 +458,7 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
         }
       }
 
+      fullContent = stripToolCallsFromContent(fullContent);
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
       // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
       if (update_message_id && fullContent) {

@@ -17,6 +17,8 @@ import storyStateRouter from './routes/story-state';
 import { getChapterSettingsCompat } from './utils/plugin-store';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } from './utils/providers';
 import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition } from './utils/prompt-builder';
+import { stripToolCallsFromContent } from './utils/strip-tool-calls';
+import { parseToolCallsFromText } from './utils/parse-tool-calls-from-text';
 import { getDb } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -91,47 +93,6 @@ function extractStateFromText(text: string, characterName: string): any {
   return null;
 }
 
-// Parse tool calls from text response (fallback when model outputs tool calls as text)
-function parseToolCallsFromText(text: string): any[] {
-  const toolCalls: any[] = [];
-  
-  // Pattern to match JSON-like tool call blocks in text
-  const toolCallPattern = /(?:<\|tool_call_begin\|>|<\|tool_call_begin\|>|\[TOOL_CALL\]|```json\s*\{\s*"name"\s*:\s*"update_story_state")/i;
-  
-  // Try to find update_story_state tool calls in text
-  const patterns = [
-    // Pattern 1: Standard function calling format in text
-    /update_story_state\s*\(\s*(\{[\s\S]*?\})\s*\)/gi,
-    // Pattern 2: JSON code block with function call
-    /```json\s*\{\s*"name"\s*:\s*"update_story_state"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/gi,
-    // Pattern 3: Direct JSON object with update_story_state
-    /\{\s*"name"\s*:\s*"update_story_state"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/gi,
-    // Pattern 4: <tool_call> tags (some models)
-    /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/gi,
-  ];
-
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      try {
-        const argsStr = match[1];
-        const args = JSON.parse(argsStr);
-        toolCalls.push({
-          id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          type: 'function',
-          function: {
-            name: 'update_story_state',
-            arguments: JSON.stringify(args),
-          },
-        });
-      } catch (e) {
-        console.log('[StoryState] Failed to parse tool call from text:', e);
-      }
-    }
-  }
-
-  return toolCalls;
-}
 
 // Deep merge for story state
 function deepMergeState(target: any, source: any): any {
@@ -583,6 +544,7 @@ app.post('/api/chat', async (req, res) => {
       // بروزرسانی محتوای پیام
       if (fullContent) {
         // محتوا داریم — ذخیره کن
+        // نکته: fullContent بعد از پردازش tool call‌های متنی strip میشه (در انتهای این بلوک)
         db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
         // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
         if (update_message_id) {
@@ -711,6 +673,28 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
+      // حالا که tool call‌ها پارس و اعمال شدن، محتوا رو برای ذخیره نهایی strip کن
+      if (fullContent) {
+        const strippedContent = stripToolCallsFromContent(fullContent);
+        if (strippedContent !== fullContent) {
+          fullContent = strippedContent;
+          db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
+          // آپدیت swipes هم اگر ریجنریت بود
+          if (update_message_id) {
+            const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
+            if (msg) {
+              const swipes = JSON.parse(msg.swipes || '[]');
+              if (swipes.length > 0) {
+                swipes[swipes.length - 1] = fullContent;
+                db.prepare('UPDATE messages SET swipes = ? WHERE id = ?')
+                  .run(JSON.stringify(swipes), msgId);
+              }
+            }
+          }
+          console.log(`[Chat] Stripped tool call artifacts from message ${msgId}`);
+        }
+      }
+
       // ارسال story state update قبل از DONE
       if (storyStateUpdated && newStoryState) {
         res.write(`data: ${JSON.stringify({ story_state_updated: true, state: newStoryState })}\n\n`);
@@ -725,7 +709,9 @@ app.post('/api/chat', async (req, res) => {
     } else {
       // Non-streaming response
       const data = await response.json();
-      const content = parseNonStreamingResponse(data);
+      let content = parseNonStreamingResponse(data);
+      // حذف tool call‌هایی که مدل به صورت متن در content برگردانده
+      content = stripToolCallsFromContent(content);
 
       // ذخیره یا بروزرسانی پیام
       let msgId: string;

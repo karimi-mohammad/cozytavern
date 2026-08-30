@@ -100,8 +100,8 @@ interface AppState {
   scrollToMessage: (messageId: string) => void;
 
   // UI State
-  theme: 'dark' | 'darker' | 'light';
-  setTheme: (theme: 'dark' | 'darker' | 'light') => void;
+  theme: 'dark' | 'darker' | 'light' | 'midnight' | 'forest' | 'sunset' | 'ocean' | 'slate' | 'mocha' | 'teal' | 'softslate' | 'stone' | 'graphite';
+  setTheme: (theme: 'dark' | 'darker' | 'light' | 'midnight' | 'forest' | 'sunset' | 'ocean' | 'slate' | 'mocha' | 'teal' | 'softslate' | 'stone' | 'graphite') => void;
   sidebarOpen: boolean;
   settingsOpen: boolean;
   characterEditorOpen: boolean;
@@ -541,11 +541,12 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  theme: (localStorage.getItem('cozytavern.theme') as 'dark' | 'darker' | 'light') || 'dark',
+  theme: (localStorage.getItem('cozytavern.theme') as 'dark' | 'darker' | 'light' | 'midnight' | 'forest' | 'sunset' | 'ocean' | 'slate' | 'mocha' | 'teal' | 'softslate' | 'stone' | 'graphite') || 'dark',
   setTheme: (theme) => {
-    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light');
+    document.documentElement.classList.remove('theme-dark', 'theme-darker', 'theme-light', 'theme-midnight', 'theme-forest', 'theme-sunset', 'theme-ocean', 'theme-slate', 'theme-mocha', 'theme-teal', 'theme-softslate', 'theme-stone', 'theme-graphite');
     document.documentElement.classList.add(`theme-${theme}`);
     document.body.classList.toggle('theme-light', theme === 'light');
+    document.body.classList.toggle('theme-ocean', theme === 'ocean');
     try { localStorage.setItem('cozytavern.theme', theme); } catch {}
     set({ theme });
   },

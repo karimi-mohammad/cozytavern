@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/state';
+import { api } from '../api/client';
 import { StoryState, CharacterState } from '../types';
 
 interface Props {
@@ -39,7 +40,6 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
     if (!currentChat) return;
     setLoading(true);
     try {
-      const { api } = await import('../api/client');
       const snap = await api.getSnapshot(currentChat.id, messageId);
       setSnapshot(snap);
       calculateDiff(snap);

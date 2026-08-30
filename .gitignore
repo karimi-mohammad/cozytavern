@@ -53,3 +53,6 @@ sillytavern/
 # Lock files (keep package-lock)
 yarn.lock
 pnpm-lock.yaml
+
+# Documentation (internal planning docs)
+docs/
