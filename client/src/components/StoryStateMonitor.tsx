@@ -254,6 +254,49 @@ export default function StoryStateMonitor() {
     setEditState({ ...editState, relationships: newRels });
   };
 
+  // Add relationship detail
+  const addRelationshipDetail = () => {
+    const pair = prompt('Relationship pair (e.g., Alice-Bob):');
+    if (pair && editState) {
+      const newDetails = { ...(editState as any).relationship_details || {} };
+      newDetails[pair] = {
+        love: 50, trust: 50, respect: 50, anger: 0, fear: 0,
+        gratitude: 0, jealousy: 0, shame: 0, affection: 50, summary: ''
+      };
+      setEditState({ ...editState, relationship_details: newDetails } as any);
+    }
+  };
+
+  // Update relationship detail emotion
+  const updateRelationshipDetailEmotion = (pair: string, emotion: string, value: number) => {
+    if (!editState) return;
+    const newDetails = { ...(editState as any).relationship_details || {} };
+    if (!newDetails[pair]) {
+      newDetails[pair] = {};
+    }
+    newDetails[pair][emotion] = Math.max(0, Math.min(100, value));
+    setEditState({ ...editState, relationship_details: newDetails } as any);
+  };
+
+  // Update relationship detail summary
+  const updateRelationshipDetailSummary = (pair: string, summary: string) => {
+    if (!editState) return;
+    const newDetails = { ...(editState as any).relationship_details || {} };
+    if (!newDetails[pair]) {
+      newDetails[pair] = {};
+    }
+    newDetails[pair].summary = summary;
+    setEditState({ ...editState, relationship_details: newDetails } as any);
+  };
+
+  // Remove relationship detail
+  const removeRelationshipDetail = (pair: string) => {
+    if (!editState) return;
+    const newDetails = { ...(editState as any).relationship_details || {} };
+    delete newDetails[pair];
+    setEditState({ ...editState, relationship_details: newDetails } as any);
+  };
+
   // Add rule
   const addRule = () => {
     const rule = prompt('New rule:');
@@ -537,17 +580,28 @@ export default function StoryStateMonitor() {
                         <h3 className="text-sm font-semibold text-tavern-text-bright">Relationship Details</h3>
                         <span className="text-xs text-tavern-dim">({Object.keys((displayState as any).relationship_details || {}).length})</span>
                       </div>
+                      {isEditing && (
+                        <button onClick={addRelationshipDetail} className="text-xs text-tavern-accent hover:underline">+ Add</button>
+                      )}
                     </div>
                     {Object.keys((displayState as any).relationship_details || {}).length > 0 ? (
                       <div className="space-y-3">
                         {Object.entries((displayState as any).relationship_details || {}).map(([pair, detail]: [string, any]) => (
                           <div key={pair} className="bg-tavern-surface rounded-lg border border-tavern-border p-3">
-                            <div className="flex items-center gap-1 mb-2">
-                              <span className="text-xs font-medium text-tavern-text-bright">{pair.split('-')[0]}</span>
-                              <svg className="w-3 h-3 text-tavern-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                              </svg>
-                              <span className="text-xs font-medium text-tavern-text-bright">{pair.split('-')[1]}</span>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs font-medium text-tavern-text-bright">{pair.split('-')[0]}</span>
+                                <svg className="w-3 h-3 text-tavern-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                                <span className="text-xs font-medium text-tavern-text-bright">{pair.split('-')[1]}</span>
+                              </div>
+                              {isEditing && (
+                                <button
+                                  onClick={() => removeRelationshipDetail(pair)}
+                                  className="text-red-400 text-xs hover:underline"
+                                >Remove</button>
+                              )}
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                               {[
@@ -563,19 +617,44 @@ export default function StoryStateMonitor() {
                               ].map(({ key, label, color }) => (
                                 <div key={key} className="text-center">
                                   <span className="text-[10px] text-tavern-dim block mb-1">{label}</span>
-                                  <div className="relative h-2 bg-tavern-bg rounded-full overflow-hidden">
-                                    <div
-                                      className={`absolute left-0 top-0 h-full ${color} rounded-full`}
-                                      style={{ width: `${detail[key] || 0}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-[10px] text-tavern-text">{detail[key] || 0}%</span>
+                                  {isEditing ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={100}
+                                        value={detail[key] || 0}
+                                        onChange={(e) => updateRelationshipDetailEmotion(pair, key, parseInt(e.target.value))}
+                                        className="w-full h-1 accent-tavern-accent"
+                                      />
+                                      <span className="text-[10px] text-tavern-text">{detail[key] || 0}%</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="relative h-2 bg-tavern-bg rounded-full overflow-hidden">
+                                        <div
+                                          className={`absolute left-0 top-0 h-full ${color} rounded-full`}
+                                          style={{ width: `${detail[key] || 0}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] text-tavern-text">{detail[key] || 0}%</span>
+                                    </>
+                                  )}
                                 </div>
                               ))}
                             </div>
-                            {detail.summary && (
+                            {isEditing ? (
+                              <div className="mt-2">
+                                <input
+                                  value={detail.summary || ''}
+                                  onChange={(e) => updateRelationshipDetailSummary(pair, e.target.value)}
+                                  className="w-full bg-tavern-bg border border-tavern-border rounded px-2 py-1 text-[10px] focus:outline-none focus:border-tavern-accent"
+                                  placeholder="Summary..."
+                                />
+                              </div>
+                            ) : detail.summary ? (
                               <p className="text-[10px] text-tavern-dim mt-2 italic">{detail.summary}</p>
-                            )}
+                            ) : null}
                           </div>
                         ))}
                       </div>

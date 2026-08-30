@@ -8,8 +8,10 @@ const router = Router();
 const defaultState = {
   characters: {},
   relationships: {},
+  relationship_details: {},
   current_situation: '',
   rules: [],
+  memories: [],
 };
 
 // دریافت state یک چت
