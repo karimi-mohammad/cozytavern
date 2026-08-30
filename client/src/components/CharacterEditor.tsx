@@ -71,7 +71,7 @@ export default function CharacterEditor() {
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
-    if (editingCharacter) {
+    if (editingCharacter?.id) {
       await updateCharacter(editingCharacter.id, form);
     } else {
       await createCharacter(form);

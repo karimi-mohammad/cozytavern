@@ -175,6 +175,7 @@ export default function CharacterWizard() {
   const [messages, setMessages] = useState<WizardMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingPhase, setGeneratingPhase] = useState<'idle' | 'thinking' | 'writing'>('idle');
   const [generatedCharacter, setGeneratedCharacter] = useState<GeneratedCharacter | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [editCharId, setEditCharId] = useState<string | null>(null);
@@ -234,15 +235,24 @@ export default function CharacterWizard() {
       const userMsg: WizardMessage = { role: 'user', content: 'Hi! I want to create a new character.' };
       setMessages([userMsg, { role: 'assistant', content: '' }]);
       setIsGenerating(true);
+      setGeneratingPhase('thinking');
 
       try {
-        await streamChat([userMsg], conv.id, null, updateLastAssistant, (fullContent) => {
+        await streamChat([userMsg], conv.id, null, (token) => {
+          setGeneratingPhase('writing');
+          updateLastAssistant(token);
+        }, (fullContent) => {
           const char = extractCharacterFromResponse(fullContent);
-          if (char) setGeneratedCharacter(char);
+          if (char) {
+            setGeneratedCharacter(char);
+          } else if (fullContent.includes('WIZARD_READY')) {
+            addToast('Character generated but JSON is incomplete. Try again or describe more details.', 'error');
+          }
         });
       } catch {}
 
       setIsGenerating(false);
+      setGeneratingPhase('idle');
       wizardApi.listConversations().then(setConversations).catch(() => {});
     } catch {
       addToast('Failed to start conversation', 'error');
@@ -266,15 +276,24 @@ export default function CharacterWizard() {
       const userMsg: WizardMessage = { role: 'user', content: `I want to edit my character "${char.name}". What can I change?` };
       setMessages([userMsg, { role: 'assistant', content: '' }]);
       setIsGenerating(true);
+      setGeneratingPhase('thinking');
 
       try {
-        await streamChat([userMsg], conv.id, charId, updateLastAssistant, (fullContent) => {
+        await streamChat([userMsg], conv.id, charId, (token) => {
+          setGeneratingPhase('writing');
+          updateLastAssistant(token);
+        }, (fullContent) => {
           const charData = extractCharacterFromResponse(fullContent);
-          if (charData) setGeneratedCharacter(charData);
+          if (charData) {
+            setGeneratedCharacter(charData);
+          } else if (fullContent.includes('WIZARD_READY')) {
+            addToast('Character generated but JSON is incomplete. Try again or describe more details.', 'error');
+          }
         });
       } catch {}
 
       setIsGenerating(false);
+      setGeneratingPhase('idle');
       wizardApi.listConversations().then(setConversations).catch(() => {});
     } catch {
       addToast('Failed to start editing', 'error');
@@ -291,11 +310,19 @@ export default function CharacterWizard() {
     setMessages([...newMessages, { role: 'assistant', content: '' }]);
     setInputValue('');
     setIsGenerating(true);
+    setGeneratingPhase('thinking');
 
     try {
-      await streamChat(newMessages, activeConvId, editCharId, updateLastAssistant, (fullContent) => {
+      await streamChat(newMessages, activeConvId, editCharId, (token) => {
+        setGeneratingPhase('writing');
+        updateLastAssistant(token);
+      }, (fullContent) => {
         const char = extractCharacterFromResponse(fullContent);
-        if (char) setGeneratedCharacter(char);
+        if (char) {
+          setGeneratedCharacter(char);
+        } else if (fullContent.includes('WIZARD_READY')) {
+          addToast('Character generated but JSON is incomplete. Try again or describe more details.', 'error');
+        }
       });
     } catch {
       setMessages(prev => {
@@ -305,6 +332,7 @@ export default function CharacterWizard() {
       });
     } finally {
       setIsGenerating(false);
+      setGeneratingPhase('idle');
       wizardApi.listConversations().then(setConversations).catch(() => {});
     }
   };
@@ -345,6 +373,7 @@ export default function CharacterWizard() {
     setGeneratedCharacter(null);
     setInputValue('');
     setIsGenerating(false);
+    setGeneratingPhase('idle');
     setActiveConvId(null);
     setEditCharId(null);
   };
@@ -487,13 +516,29 @@ export default function CharacterWizard() {
             );
           })}
 
-          {isGenerating && messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content === '' && (
+          {isGenerating && generatingPhase === 'thinking' && (
             <div className="flex justify-start">
               <div className="rounded-2xl rounded-bl-md px-4 py-3" style={{ backgroundColor: '#1a1d2e', border: '1px solid #2a2d3e' }}>
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '300ms' }} />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <div className="w-5 h-5 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+                  </div>
+                  <span className="text-sm" style={{ color: '#94a3b8' }}>Thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isGenerating && generatingPhase === 'writing' && messages[messages.length - 1]?.content === '' && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl rounded-bl-md px-4 py-3" style={{ backgroundColor: '#1a1d2e', border: '1px solid #2a2d3e' }}>
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: '#6366f1', animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-sm" style={{ color: '#94a3b8' }}>Writing...</span>
                 </div>
               </div>
             </div>
