@@ -31,6 +31,7 @@ interface AppState {
   chapters: Chapter[];
   chapterSettings: ChapterSettings | null;
   chapterSuggestion: { trigger_message_id: string; trigger_phrase: string } | null;
+  chapterPendingTrigger: { trigger_message_id: string; trigger_phrase: string } | null;
   // انتخاب دستی مرزهای فصل (start/end) روی پیام‌ها
   chapterStartId: string | null;
   chapterEndId: string | null;
@@ -270,6 +271,7 @@ export const useStore = create<AppState>((set, get) => ({
   chapters: [],
   chapterSettings: null,
   chapterSuggestion: null,
+  chapterPendingTrigger: null,
   chapterStartId: null,
   chapterEndId: null,
 
@@ -714,7 +716,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ loadingMessages: true });
     try {
       const chat = await api.getChat(chatId);
-      set({ currentChat: chat, chapterStartId: null, chapterEndId: null, chapterSuggestion: null });
+      set({ currentChat: chat, chapterStartId: null, chapterEndId: null, chapterSuggestion: null, chapterPendingTrigger: null });
       // لود فصل‌ها و تنظیمات
       get().loadChapters(chatId);
       get().loadChapterSettings();
@@ -1706,7 +1708,15 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const result = await api.detectTrigger(chatId);
       if (result.suggested) {
-        set({ chapterSuggestion: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase } });
+        set({
+          chapterSuggestion: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase },
+          chapterPendingTrigger: null,
+        });
+      } else if (result.trigger_message_id) {
+        // تریگر پیدا شده ولی فاصله کافی نیست — برای نمایش در progress tracker
+        set({ chapterPendingTrigger: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase } });
+      } else {
+        set({ chapterPendingTrigger: null });
       }
     } catch {}
   },

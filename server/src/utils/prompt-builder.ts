@@ -250,12 +250,9 @@ export function buildPrompt(
     if (rawMessagesAvailable <= 0) {
       // All messages are covered by chapters — use standard raw window
       rawStartIndex = Math.max(0, totalMessages - effectiveRawWindow);
-    } else if (rawMessagesAvailable <= effectiveRawWindow) {
-      // Few uncovered messages — send all of them (they're within budget)
-      rawStartIndex = rawStartFromChapter;
     } else {
-      // Many uncovered messages — apply raw window to limit context size
-      rawStartIndex = Math.max(rawStartFromChapter, totalMessages - effectiveRawWindow);
+      // Uncovered messages exist — send ALL of them (no chapter summary for these!)
+      rawStartIndex = rawStartFromChapter;
     }
 
     // Insert chapter summaries sequentially (narrative format, one after another)

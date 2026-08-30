@@ -308,6 +308,7 @@ export default function MessageInput() {
           onKeyDown={handleKeyDown}
           placeholder={currentCharacter ? `Message ${currentCharacter.name}... or / for commands` : 'Type a message, or /? for help'}
           className="flex-1 bg-tavern-input border border-tavern-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-tavern-accent placeholder-tavern-dim text-tavern-text min-h-[36px] max-h-[120px]"
+          dir="auto"
           rows={1}
         />
 

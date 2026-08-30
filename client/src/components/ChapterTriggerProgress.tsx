@@ -12,6 +12,7 @@ export default function ChapterTriggerProgress() {
   const chapters = useStore(s => s.chapters);
   const chapterSettings = useStore(s => s.chapterSettings);
   const chapterSuggestion = useStore(s => s.chapterSuggestion);
+  const chapterPendingTrigger = useStore(s => s.chapterPendingTrigger);
 
   if (!currentChat || !chapterSettings || !chapterSettings.auto_detect_enabled) return null;
 
@@ -39,19 +40,6 @@ export default function ChapterTriggerProgress() {
     }
   }
 
-  // فاصله از آخرین چپتر (تعداد پیام بعد از آخرین چپتر)
-  const lastChapterDistance = lastChapterEndIndex !== -1
-    ? messages.length - 1 - lastChapterEndIndex
-    : messages.length;
-
-  const rawWindow = chapterSettings.raw_window || 10;
-  const progress = Math.min(1, lastChapterDistance / rawWindow);
-  const isReady = lastChapterDistance >= rawWindow;
-  const remaining = Math.max(0, rawWindow - lastChapterDistance);
-
-  // اگر تریگری فعال باشد، نمایش نده (چون ChapterSuggestion نمایش داده می‌شود)
-  if (chapterSuggestion) return null;
-
   // اگر هیچ تریگری تنظیم نشده، نمایش نده
   const triggerPhrases = chapterSettings.trigger_phrases || [];
   if (triggerPhrases.length === 0) return null;
@@ -67,6 +55,49 @@ export default function ChapterTriggerProgress() {
       }
     }
   }
+
+  // اگه تریگر پندینگ وجود داره، فاصله رو از اون حساب کن
+  let lastTriggerMsgIndex = -1;
+  if (chapterPendingTrigger) {
+    lastTriggerMsgIndex = messages.findIndex(m => m.id === chapterPendingTrigger.trigger_message_id);
+  }
+  // اگه از store نبود، خودمون آخرین تریگر رو پیدا کنیم
+  if (lastTriggerMsgIndex === -1) {
+    for (let i = messages.length - 1; i >= scanStartIndex; i--) {
+      const msg = messages[i];
+      if (!msg.content) continue;
+      for (const phrase of triggerPhrases) {
+        if (msg.content.toLowerCase().includes(phrase.toLowerCase()) && !chapterMessageIndices.has(i)) {
+          lastTriggerMsgIndex = i;
+          break;
+        }
+      }
+      if (lastTriggerMsgIndex !== -1) break;
+    }
+  }
+
+  // فاصله بر اساس آخرین تریگر (اگه وجود داره) یا آخرین چپتر
+  let distanceSource: 'trigger' | 'chapter';
+  let distance: number;
+
+  if (lastTriggerMsgIndex !== -1) {
+    distance = messages.length - 1 - lastTriggerMsgIndex;
+    distanceSource = 'trigger';
+  } else {
+    distance = lastChapterEndIndex !== -1
+      ? messages.length - 1 - lastChapterEndIndex
+      : messages.length;
+    distanceSource = 'chapter';
+  }
+
+  const rawWindow = chapterSettings.raw_window || 10;
+  const progress = Math.min(1, distance / rawWindow);
+  const isReady = distance >= rawWindow;
+  const remaining = Math.max(0, rawWindow - distance);
+  const hasPendingTrigger = lastTriggerMsgIndex !== -1;
+
+  // اگر تریگری فعال باشد، نمایش نده (چون ChapterSuggestion نمایش داده می‌شود)
+  if (chapterSuggestion) return null;
 
   // پیدا کردن تمام پیام‌های تریگر در تمام چت
   const allTriggerMatches: {
@@ -135,18 +166,26 @@ export default function ChapterTriggerProgress() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             <span className="font-medium text-[11px]">
-              {isReady
-                ? 'Auto-trigger ready'
-                : hasTriggerInScan
-                  ? 'Trigger detected'
-                  : 'Auto-trigger scanning'}
+              {isReady && hasPendingTrigger
+                ? 'Chapter suggestion ready'
+                : hasPendingTrigger
+                  ? 'Trigger found'
+                  : isReady
+                    ? 'Auto-trigger scanning'
+                    : 'Auto-trigger scanning'}
             </span>
             {/* Compact info badges */}
             {!expanded && (
               <div className="flex items-center gap-1.5">
-                {lastChapter && (
+                {hasPendingTrigger ? (
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                    isReady ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {distance}/{rawWindow} from trigger
+                  </span>
+                ) : lastChapter && (
                   <span className="px-1.5 py-0.5 rounded bg-tavern-border/20 text-[9px] font-mono opacity-70">
-                    {lastChapterDistance} msgs since chapter
+                    {distance} msgs since chapter
                   </span>
                 )}
                 {triggerCount > 0 && (
@@ -161,7 +200,7 @@ export default function ChapterTriggerProgress() {
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] opacity-70">
-              {lastChapterDistance}/{rawWindow}
+              {distance}/{rawWindow}
             </span>
             {/* Progress bar mini */}
             <div className="w-16 h-1 bg-tavern-border/30 rounded-full overflow-hidden">
@@ -180,11 +219,13 @@ export default function ChapterTriggerProgress() {
           <div className="px-3 pb-3 space-y-3 animate-fade-in">
             {/* Status text */}
             <div className="text-[10px] opacity-70">
-              {isReady
-                ? 'Trigger detection active — new triggers will suggest chapters'
-                : hasTriggerInScan
-                  ? `Trigger found! ${remaining} more message${remaining !== 1 ? 's' : ''} needed for context`
-                  : `${remaining} more message${remaining !== 1 ? 's' : ''} until trigger detection activates`}
+              {isReady && hasPendingTrigger
+                ? 'Chapter suggestion ready — click the suggestion to create a chapter'
+                : hasPendingTrigger
+                  ? `Trigger found! ${remaining} more message${remaining !== 1 ? 's' : ''} until chapter suggestion`
+                  : isReady
+                    ? 'Trigger detection active — waiting for a trigger phrase'
+                    : `${remaining} more message${remaining !== 1 ? 's' : ''} until trigger detection activates`}
             </div>
 
             {/* Last Chapter Distance */}
@@ -198,8 +239,25 @@ export default function ChapterTriggerProgress() {
                   {lastChapter.title || `Chapter ${chapters.indexOf(lastChapter) + 1}`}
                 </span>
                 <span className="opacity-50 mx-0.5">—</span>
-                <span className={`font-mono ${lastChapterDistance >= rawWindow ? 'text-emerald-400' : 'text-tavern-text'}`}>
-                  {lastChapterDistance} msgs ago
+                <span className="font-mono opacity-70">
+                  {lastChapterEndIndex !== -1 ? messages.length - 1 - lastChapterEndIndex : messages.length} msgs ago
+                </span>
+              </div>
+            )}
+
+            {/* Pending Trigger Info */}
+            {hasPendingTrigger && (
+              <div className="flex items-center gap-1.5 text-[10px]">
+                <svg className="w-2.5 h-2.5 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="opacity-60">Pending trigger:</span>
+                <span className="font-mono font-medium text-amber-400">
+                  "{chapterPendingTrigger?.trigger_phrase}"
+                </span>
+                <span className="opacity-50 mx-0.5">—</span>
+                <span className={`font-mono ${isReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {distance}/{rawWindow} msgs
                 </span>
               </div>
             )}

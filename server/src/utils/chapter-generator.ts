@@ -119,124 +119,26 @@ If the conversation contains little meaningful information, produce a very short
 
 If the conversation is extremely long, prioritize information based on its importance to future story continuity rather than trying to preserve every event.`;
 
-const SUMMARIZER_WITH_CONTEXT_PROMPT = `You are a Roleplay Conversation Summarizer.
+const SUMMARIZER_WITH_CONTEXT_PROMPT = `You are an Expert Roleplay Narrator. Your objective is to synthesize the NEW conversation segment into a detailed, flowing narrative that seamlessly continues the story from the PREVIOUS summary. Do NOT over-compress. Preserve the richness of the story, including important dialogue, emotional shifts, and character dynamics.
+Narrative Continuity & Focus
 
-Your job is to compress roleplay conversations into concise, story-like summaries that preserve everything important for continuing the roleplay naturally.
+1. Smooth Transition: Connect the new events naturally to the existing context. While focusing on new developments, weave them seamlessly so the story doesn't feel disjointed.
+2. Preserve Depth: Capture the nuances of important dialogue, promises, threats, and unspoken tensions. Maintain character identities and relationship statuses.
+3. Cause and Effect: Write like a novelist in the past tense. Focus on what happened → why it happened → how characters reacted → what changed.
+4. Key Elements to Keep: Plot progression, discovered secrets, location changes, combat/injuries, items acquired, and unresolved conflicts.
 
-You will receive a PREVIOUS story summary and a NEW conversation segment. Your task is to summarize ONLY the new events.
+Exclusions
 
-## Main Goal
+* Omit trivial small talk, repetitive greetings, or purely filler actions.
+* Do not invent events, motivations, or thoughts not present in the text.
+* Maintain the strict boundary of what each character objectively knows vs. what they only suspect.
 
-Transform the new conversation segment into a coherent narrative summary that continues from where the previous summary left off.
+Output Strict Rules
 
-Do NOT simply list events or write bullet points.
-
-Do NOT repeat information from the previous summary.
-
-## Critical Rules
-
-1. Do NOT repeat any information already covered in the previous summary
-2. Only include NEW events, NEW dialogue, NEW developments
-3. The summary should flow naturally from the previous context
-4. Focus on: what changed, what's new, what decisions were made, what tensions arose
-
-## What to Preserve (from the NEW segment only)
-
-* Plot events and major developments
-* Character identities, personalities, relationships, and roles
-* Important dialogue and things characters explicitly said
-* Decisions and actions that affect future events
-* Emotional changes and character motivations
-* Conflicts, arguments, promises, secrets, threats, and agreements
-* Important locations and changes of location
-* Important objects, items, abilities, injuries, or resources
-* Romantic or interpersonal developments
-* Information discovered by the characters
-* Unresolved situations and ongoing conflicts
-* Important consequences of previous actions
-
-## What to Remove
-
-Do not waste space on:
-
-* Repetitive dialogue
-* Trivial small talk
-* Repeated descriptions
-* Unimportant actions
-* Filler interactions
-* Information already covered in the previous summary
-* Duplicate events
-
-## Narrative Style
-
-Write the summary as a continuous narrative.
-
-Use past tense.
-
-Write it as if you are summarizing the next chapter of an ongoing novel.
-
-Keep the chronology clear.
-
-Mention important dialogue indirectly when possible, but preserve exact wording when a specific statement, promise, threat, confession, revelation, or phrase is important.
-
-Focus on cause and effect:
-what happened → why it happened → how the characters reacted → what changed afterward.
-
-Preserve the characters' emotional states and relationship dynamics.
-
-Do not invent events, thoughts, dialogue, motivations, or information that were not present in the conversation.
-
-## Roleplay Continuity
-
-The summary must prioritize information necessary for continuing the story.
-
-Pay special attention to:
-
-* Current character relationships
-* Current location
-* Current situation
-* Recent events
-* Character goals
-* Unresolved conflicts
-* Secrets
-* Promises
-* Important consequences
-* What each character currently knows or does not know
-
-Do not reveal information to a character if that information was only known by another character.
-
-Maintain the distinction between what is objectively established in the story and what characters merely believe or suspect.
-
-## Important Rule
-
-Do not summarize the conversation as an AI analyzing a conversation.
-
-The output should feel like a natural story recap.
-
-Bad:
-"Character A became angry after Character B said X. They then argued."
-
-Better:
-"After B revealed the truth, A's expression hardened. The revelation quickly turned their conversation into an argument, with A accusing B of hiding the truth from her. Although neither backed down, the confrontation ended when..."
-
-## Output
-
-Return ONLY the new story summary.
-
-Do not include:
-
-* "Summary:"
-* "Here is the summary:"
-* Analysis
-* Bullet points
-* Character lists
-* Commentary about what you chose to omit
-* Suggestions for continuing the roleplay
-* Any reference to "previous summary" or "new segment"
-
-The result should be concise but sufficiently detailed to preserve continuity.
-
-If the new conversation contains little meaningful information, produce a very short summary rather than inventing details.`;
+* Output ONLY the narrative continuation text.
+* NO titles (Do not write "Summary:").
+* NO bullet points or character lists.
+* NO meta-commentary, AI analysis, or suggestions. Write it as the next natural paragraph(s) of an ongoing book.`;
 
 // ─── Build Chapter Summary Request ───
 
@@ -329,8 +231,8 @@ Remember: Do NOT continue the story. Output ONLY the narrative summary.`;
   ];
   const requestBody = buildRequestBody(promptParts, {
     model,
-    temperature: 0.3,
-    max_tokens: 2048,
+    temperature: 0.7,
+    max_tokens: 8192,
     stream: false,
   });
 
@@ -359,8 +261,8 @@ export async function generateChapterSummary(
   const requestBody = (editedMessages && Array.isArray(editedMessages) && editedMessages.length > 0)
     ? buildRequestBody(editedMessages.map(m => ({ role: m.role as any, content: m.content })), {
         model: info.model,
-        temperature: 0.3,
-        max_tokens: 2048,
+        temperature: 0.7,
+        max_tokens: 8192,
         stream: false,
       })
     : info.requestBody;
@@ -412,26 +314,20 @@ export function detectChapterTrigger(
   rawWindow: number,
   triggerPhrases: string[],
 ): TriggerDetectionResult {
-  if (messages.length < rawWindow || triggerPhrases.length === 0) {
+  if (triggerPhrases.length === 0) {
     return { suggested: false };
   }
 
-  // Find the start point for scanning:
-  // If the last chapter has a trigger_message_id, start AFTER that trigger message
-  // Otherwise fall back to end_message_id + 2 (for backward compatibility with old chapters)
+  // پیدا کردن شروع اسکن: بعد از آخرین چپتر
   let scanStart = 0;
   const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
   if (lastChapter) {
     if (lastChapter.trigger_message_id) {
-      // New behavior: use the stored trigger_message_id to skip directly past the trigger
       const triggerIndex = messages.findIndex((m: any) => m.id === lastChapter.trigger_message_id);
       if (triggerIndex !== -1) {
-        scanStart = triggerIndex + 1; // Start scanning from the message AFTER the trigger
+        scanStart = triggerIndex + 1;
       }
     } else {
-      // Fallback for old chapters without trigger_message_id:
-      // The chapter ends before the trigger, so end_message_id + 1 is the trigger itself.
-      // We need to skip past it, so use end_message_id + 2
       const lastChapterEndIndex = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
       if (lastChapterEndIndex !== -1) {
         scanStart = lastChapterEndIndex + 2;
@@ -439,15 +335,9 @@ export function detectChapterTrigger(
     }
   }
 
-  // Only scan messages after the last chapter
   const messagesAfterLastChapter = messages.slice(scanStart);
 
-  // Not enough messages after last chapter
-  if (messagesAfterLastChapter.length < rawWindow) {
-    return { suggested: false };
-  }
-
-  // Build a set of message indices that are inside any chapter
+  // پیدا کردن آخرین تریگر (نه اولین) بعد از آخرین چپتر
   const chapterMessageIds = new Set<string>();
   for (const ch of chapters) {
     const startIdx = messages.findIndex((m: any) => m.id === ch.start_message_id);
@@ -459,26 +349,43 @@ export function detectChapterTrigger(
     }
   }
 
-  // Scan messages after the last chapter for triggers
-  // Skip messages that are already inside any chapter
-  const scanMessages = messagesAfterLastChapter;
+  let lastTriggerIndex = -1;
+  let lastTriggerPhrase = '';
 
-  for (const trigger of triggerPhrases) {
-    const triggerLower = trigger.toLowerCase();
-    for (const msg of scanMessages) {
-      // Skip if message is already inside a chapter
-      if (chapterMessageIds.has(msg.id)) {
-        continue;
-      }
-      if (msg.content && msg.content.toLowerCase().includes(triggerLower)) {
-        return {
-          suggested: true,
-          trigger_message_id: msg.id,
-          trigger_phrase: trigger,
-        };
+  for (const msg of messagesAfterLastChapter) {
+    if (chapterMessageIds.has(msg.id)) {
+      continue;
+    }
+    for (const trigger of triggerPhrases) {
+      if (msg.content && msg.content.toLowerCase().includes(trigger.toLowerCase())) {
+        const msgIndex = messages.indexOf(msg);
+        if (msgIndex > lastTriggerIndex) {
+          lastTriggerIndex = msgIndex;
+          lastTriggerPhrase = trigger;
+        }
       }
     }
   }
 
-  return { suggested: false };
+  if (lastTriggerIndex === -1) {
+    return { suggested: false };
+  }
+
+  // فاصله از تریگر تا آخر پیام‌ها
+  const distanceFromTrigger = messages.length - 1 - lastTriggerIndex;
+
+  if (distanceFromTrigger >= rawWindow) {
+    return {
+      suggested: true,
+      trigger_message_id: messages[lastTriggerIndex].id,
+      trigger_phrase: lastTriggerPhrase,
+    };
+  }
+
+  // تریگر پیدا شده ولی فاصله کافی نیست — trigger info رو برگردون (برای UI)
+  return {
+    suggested: false,
+    trigger_message_id: messages[lastTriggerIndex].id,
+    trigger_phrase: lastTriggerPhrase,
+  };
 }

@@ -74,7 +74,7 @@ function MessageBubbleInner({
   if (isSystem) {
     return (
       <div className="flex justify-center py-2 my-1">
-        <div className="text-xs text-tavern-dim italic px-4 py-1.5 bg-tavern-surface/50 rounded-full border border-tavern-border/30">
+        <div dir="auto" className="text-xs text-tavern-dim italic px-4 py-1.5 bg-tavern-surface/50 rounded-full border border-tavern-border/30">
           {message.content}
         </div>
       </div>
@@ -257,7 +257,7 @@ function MessageBubbleInner({
                     showThought ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'
                   }`}
                 >
-                  <div className="text-sm text-tavern-dim pl-4 border-l-2 border-tavern-accent/40 leading-relaxed thinking-block bg-tavern-input/30 rounded-r-lg p-3">
+                  <div dir="auto" className="text-sm text-tavern-dim pl-4 border-l-2 border-tavern-accent/40 leading-relaxed thinking-block bg-tavern-input/30 rounded-r-lg p-3">
                     {thinkingContent}
                   </div>
                 </div>
@@ -266,11 +266,11 @@ function MessageBubbleInner({
 
             {/* Main content */}
             {isAssistant ? (
-              <div className={`prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed ${isLast && isGenerating ? 'is-streaming' : ''}`}>
+              <div dir="auto" className={`prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed ${isLast && isGenerating ? 'is-streaming' : ''}`}>
                 <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>{mainContent}</Markdown>
               </div>
             ) : (
-              <div className={`text-[15px] text-tavern-text leading-7 whitespace-pre-wrap ${isLast && isGenerating ? 'is-streaming' : ''}`}>
+              <div dir="auto" className={`text-[15px] text-tavern-text leading-7 whitespace-pre-wrap ${isLast && isGenerating ? 'is-streaming' : ''}`}>
                 {renderHighlightedText(mainContent)}
                 {isLast && isGenerating && <span className="streaming-caret" />}
               </div>
