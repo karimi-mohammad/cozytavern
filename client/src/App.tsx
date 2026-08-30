@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import RightPanel from './components/RightPanel';
 import CharacterEditor from './components/CharacterEditor';
+import CharacterWizard from './components/CharacterWizard';
 import ChatSettings from './components/ChatSettings';
 import PromptInspectorModal from './components/PromptInspectorModal';
 import LorebookEditor from './components/LorebookEditor';
@@ -81,6 +82,7 @@ function App() {
       </div>
 
       {/* Modals - هر مودال در ErrorBoundary جدا، تا خطای یکی بقیه را از کار نیندازد */}
+      <ErrorBoundary label="CharacterWizard"><CharacterWizard /></ErrorBoundary>
       <ErrorBoundary label="CharacterEditor"><CharacterEditor /></ErrorBoundary>
       <ErrorBoundary label="ChatSettings"><ChatSettings /></ErrorBoundary>
       <ErrorBoundary label="PromptInspector"><PromptInspectorModal /></ErrorBoundary>

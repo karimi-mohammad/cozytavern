@@ -14,6 +14,7 @@ import groupChatsRouter from './routes/group-chats';
 import pluginsRouter from './routes/plugins';
 import backupRouter from './routes/backup';
 import storyStateRouter from './routes/story-state';
+import characterWizardRouter from './routes/character-wizard';
 import { getChapterSettingsCompat } from './utils/plugin-store';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } from './utils/providers';
 import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition } from './utils/prompt-builder';
@@ -146,6 +147,7 @@ app.use('/api/group-chats', groupChatsRouter);
 app.use('/api/plugins', pluginsRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/story-state', storyStateRouter);
+app.use('/api/character-wizard', characterWizardRouter);
 
 // Serve static files in production (client build)
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');

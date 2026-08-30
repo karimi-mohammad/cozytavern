@@ -106,6 +106,8 @@ interface AppState {
   settingsOpen: boolean;
   characterEditorOpen: boolean;
   editingCharacter: Character | null;
+  characterWizardOpen: boolean;
+  setCharacterWizardOpen: (open: boolean) => void;
   lorebookEditorOpen: boolean;
   personaEditorOpen: boolean;
   editingPersona: Persona | null;
@@ -554,6 +556,8 @@ export const useStore = create<AppState>((set, get) => ({
   settingsOpen: false,
   characterEditorOpen: false,
   editingCharacter: null,
+  characterWizardOpen: false,
+  setCharacterWizardOpen: (open) => set({ characterWizardOpen: open }),
   lorebookEditorOpen: false,
   personaEditorOpen: false,
   editingPersona: null,
