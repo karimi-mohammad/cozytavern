@@ -2,50 +2,84 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { getPluginSettings } from '../utils/plugin-store';
-import { buildEndpoint, buildHeaders, buildRequestBody } from '../utils/providers';
+import { buildEndpoint, buildHeaders, buildRequestBody, parseNonStreamingResponse } from '../utils/providers';
 
 const router = Router();
 
 // ─── تابع کمکی: استخراج JSON از پاسخ AI ───
 // پاسخ AI ممکنه شامل متن + کد بلاک + JSON باشه — باید همه حالت‌ها رو handle کنه
-function extractJsonFromAIResponse(content: string, type: 'array' | 'object'): any {
+function extractJsonFromAIResponse(content: any, type: 'array' | 'object'): any {
   if (!content) return null;
 
-  // مرحله ۱: تلاش برای پیدا کردن کد بلاک JSON
-  // ````json ... ```` یا ``` ... ```
-  const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/g;
+  // Defensive: some providers return content as object/array instead of string
+  if (typeof content !== 'string') {
+    console.log('[extractJson] content is not a string, type:', typeof content, '→ stringifying');
+    if (typeof content === 'object') {
+      // If it's already a parsed array/object, return directly if it matches the type
+      if (type === 'array' && Array.isArray(content)) return content;
+      if (type === 'object' && typeof content === 'object' && !Array.isArray(content)) return content;
+    }
+    content = JSON.stringify(content);
+  }
+
+  console.log('[extractJson] content length:', content.length, 'starts with:', content.slice(0, 80));
+
+  // ── Stage 0: Direct parse (content might already be clean JSON) ──
+  try {
+    const directParsed = JSON.parse(content.trim());
+    if (type === 'array' && Array.isArray(directParsed) && directParsed.length > 0) {
+      console.log('[extractJson] Stage 0 (direct parse) SUCCESS — array of', directParsed.length);
+      return directParsed;
+    }
+    if (type === 'object' && typeof directParsed === 'object' && !Array.isArray(directParsed) && directParsed !== null) {
+      console.log('[extractJson] Stage 0 (direct parse) SUCCESS — object');
+      return directParsed;
+    }
+  } catch (e) {
+    console.log('[extractJson] Stage 0 (direct parse) failed:', (e as Error).message?.slice(0, 80));
+  }
+
+  // ── Stage 1: Try code blocks (```json ... ``` or ~~~json ... ~~~) ──
+  // Matches: ````json`, `````, `~~~json`, `~~~`, and variants with extra backticks
+  const codeBlockRegex = /(?:```+|~~~+)(?:json)?\s*\n?([\s\S]*?)\n?\s*(?:```+|~~~+)/g;
   let match;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     try {
       const parsed = JSON.parse(match[1].trim());
-      if (type === 'array' && Array.isArray(parsed)) return parsed;
-      if (type === 'object' && typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null) return parsed;
+      if (type === 'array' && Array.isArray(parsed)) {
+        console.log('[extractJson] Stage 1 (code block) SUCCESS — array of', parsed.length);
+        return parsed;
+      }
+      if (type === 'object' && typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null) {
+        console.log('[extractJson] Stage 1 (code block) SUCCESS — object');
+        return parsed;
+      }
     } catch (e) {
-      // اگر پارس نشد، تلاش بعدی
+      // try next code block
     }
   }
 
-  // مرحله ۱.۵: پیدا کردن JSON با greedy matching (برای آرایه‌های تو در تو)
-  // از انتهای متن شروع می‌کنیم چون معمولاً JSON اصلی آخره
+  // ── Stage 2: Greedy bracket matching from the last opener ──
+  // Start from the last `[` or `{` since the real JSON is usually at the end
   if (type === 'array') {
-    // تلاش با greedy match — ``[\s\S]+`` ممکنه خیلی بزرگ باشه پس اول آخرین [ رو پیدا می‌کنیم
     const lastArrayStart = content.lastIndexOf('[');
     if (lastArrayStart !== -1) {
       const slice = content.slice(lastArrayStart);
-      // پیدا کردن آخرین ] که جزو یک آرایه معتبر باشه
       for (let i = slice.length - 1; i >= 0; i--) {
         if (slice[i] === ']') {
           try {
             const candidate = slice.slice(0, i + 1);
             const parsed = JSON.parse(candidate);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log('[extractJson] Stage 2 (greedy) SUCCESS — array of', parsed.length);
+              return parsed;
+            }
           } catch {}
         }
       }
     }
   } else {
-    // برای object — مشابه آرایه ولی با curly braces
     const lastObjStart = content.lastIndexOf('{');
     if (lastObjStart !== -1) {
       const slice = content.slice(lastObjStart);
@@ -54,14 +88,47 @@ function extractJsonFromAIResponse(content: string, type: 'array' | 'object'): a
           try {
             const candidate = slice.slice(0, i + 1);
             const parsed = JSON.parse(candidate);
-            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed;
+            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+              console.log('[extractJson] Stage 2 (greedy) SUCCESS — object');
+              return parsed;
+            }
           } catch {}
         }
       }
     }
   }
 
-  // مرحله ۲: تلاش برای پیدا کردن JSON مستقیم (بدون کد بلاک)
+  console.log('[extractJson] Stages 0-2 failed, trying Stage 3 (brace-counting)');
+
+  // ── Stage 3: Brace-counting extraction ──
+  // More reliable than lazy regex for nested structures
+  if (type === 'array') {
+    const result = extractByBraceCounting(content, '[', ']');
+    if (result) {
+      try {
+        const parsed = JSON.parse(result);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log('[extractJson] Stage 3 (brace-counting) SUCCESS — array of', parsed.length);
+          return parsed;
+        }
+      } catch {}
+    }
+  } else {
+    const result = extractByBraceCounting(content, '{', '}');
+    if (result) {
+      try {
+        const parsed = JSON.parse(result);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          console.log('[extractJson] Stage 3 (brace-counting) SUCCESS — object');
+          return parsed;
+        }
+      } catch {}
+    }
+  }
+
+  console.log('[extractJson] Stages 0-3 failed, trying Stage 4 (regex)');
+
+  // ── Stage 4: Regex-based extraction (lazy, collects all matches) ──
   if (type === 'array') {
     const allArrays: any[] = [];
     const arrayRegex = /\[[\s\S]*?\]/g;
@@ -75,6 +142,7 @@ function extractJsonFromAIResponse(content: string, type: 'array' | 'object'): a
       } catch {}
     }
     if (allArrays.length > 0) {
+      console.log('[extractJson] Stage 4 (regex) SUCCESS — array of', allArrays[allArrays.length - 1].length);
       return allArrays[allArrays.length - 1];
     }
   } else {
@@ -90,26 +158,78 @@ function extractJsonFromAIResponse(content: string, type: 'array' | 'object'): a
       } catch {}
     }
     if (allObjects.length > 0) {
+      console.log('[extractJson] Stage 4 (regex) SUCCESS — object');
       return allObjects[allObjects.length - 1];
     }
   }
 
-  // مرحله ۳: تلاش نهایی با تصحیح متن
+  console.log('[extractJson] Stage 4 failed, trying Stage 5 (cleanup)');
+
+  // ── Stage 5: Cleanup & retry ──
   try {
     let cleaned = content
       .replace(/[\n\r\t]/g, ' ')
       .replace(/,\s*([\]}])/g, '$1')
-      .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')  // اضافه کردن کوتیشن به کلیدها
+      .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')
       .trim();
 
     if (type === 'array') {
       const arrMatch = cleaned.match(/\[[\s\S]+\]/);
-      if (arrMatch) return JSON.parse(arrMatch[0]);
+      if (arrMatch) {
+        console.log('[extractJson] Stage 5 (cleanup) SUCCESS — array');
+        return JSON.parse(arrMatch[0]);
+      }
     } else {
       const objMatch = cleaned.match(/\{[\s\S]+\}/);
-      if (objMatch) return JSON.parse(objMatch[0]);
+      if (objMatch) {
+        console.log('[extractJson] Stage 5 (cleanup) SUCCESS — object');
+        return JSON.parse(objMatch[0]);
+      }
     }
   } catch {}
+
+  console.log('[extractJson] ALL STAGES FAILED — returning null');
+  return null;
+}
+
+// ── Helper: extract JSON by counting open/close braces ──
+function extractByBraceCounting(content: string, open: string, close: string): string | null {
+  // Find the last opening bracket (most likely to contain the full structure)
+  const lastStart = content.lastIndexOf(open);
+  if (lastStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = lastStart; i < content.length; i++) {
+    const ch = content[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) {
+        return content.slice(lastStart, i + 1);
+      }
+    }
+  }
 
   return null;
 }
@@ -336,9 +456,14 @@ Return ONLY the JSON array.`;
     }
 
     const data = await response.json() as any;
-    const content = data.choices?.[0]?.message?.content || '';
+    let content = data.choices?.[0]?.message?.content || '';
+    // Fallback: some providers return content in different formats
+    if (!content && typeof parseNonStreamingResponse === 'function') {
+      content = parseNonStreamingResponse(data);
+    }
+    console.log('[AI Suggest] content type:', typeof content, 'is array:', Array.isArray(content));
     console.log('[AI Suggest] === RAW RESPONSE START ===');
-    console.log(content);
+    console.log(typeof content === 'string' ? content : JSON.stringify(content, null, 2));
     console.log('[AI Suggest] === RAW RESPONSE END ===');
 
     let topics: any[] = [];
@@ -349,36 +474,44 @@ Return ONLY the JSON array.`;
       console.error('[AI Suggest] Parse error:', e);
     }
 
-    // Fallback: اگر parse خالی برگردوند
+    // Fallback: اگر parse خالی برگردوند — با brace-counting برای آبجکت‌های چندخطی
     if (topics.length === 0 && content.length > 10) {
       console.log('[AI Suggest] Trying fallback extraction...');
-      const objectMatches = content.match(/\{[^{}]*"topic"[^{}]*\}/g);
-      if (objectMatches) {
-        console.log('[AI Suggest] Found', objectMatches.length, 'topic-like objects');
-        for (const objStr of objectMatches) {
-          try {
-            const parsed = JSON.parse(objStr);
-            if (parsed.topic) {
-              topics.push({
-                topic: parsed.topic,
-                category: parsed.category || 'concept',
-                keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
-                note: parsed.note || '',
-                _selected: true,
-              });
-            }
-          } catch {}
-        }
+      // Try brace-counting to find complete objects with "topic" field
+      let pos = 0;
+      while (pos < content.length) {
+        const objStart = content.indexOf('{', pos);
+        if (objStart === -1) break;
+
+        const objStr = extractByBraceCounting(content.slice(objStart), '{', '}');
+        if (!objStr) { pos = objStart + 1; continue; }
+
+        try {
+          const parsed = JSON.parse(objStr);
+          if (parsed.topic) {
+            topics.push({
+              topic: parsed.topic,
+              category: parsed.category || 'concept',
+              keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+              note: parsed.note || '',
+              _selected: true,
+            });
+          }
+        } catch {}
+        pos = objStart + objStr.length;
       }
+      console.log('[AI Suggest] Fallback found', topics.length, 'topics');
     }
 
-    // اعتبارسنجی
+    // اعتبارسنجی — فقط topic الزامیه، بقیه فیلدها با مقدار پیش‌فرض پر میشن
     const validTopics = topics
-      .filter((t: any) => t.topic && t.category && Array.isArray(t.keywords) && t.keywords.length > 0)
+      .filter((t: any) => t.topic)
       .map((t: any) => ({
         topic: String(t.topic).trim(),
         category: ['location', 'character', 'item', 'concept', 'event'].includes(t.category) ? t.category : 'concept',
-        keywords: t.keywords.filter((k: any) => typeof k === 'string' && k.trim()).slice(0, 5),
+        keywords: Array.isArray(t.keywords)
+          ? t.keywords.filter((k: any) => typeof k === 'string' && k.trim()).slice(0, 5)
+          : [],
         note: String(t.note || '').trim(),
         _selected: true,
       }));
