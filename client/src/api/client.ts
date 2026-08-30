@@ -327,4 +327,53 @@ export const api = {
       setTimeout(() => onDone(), 0);
     }
   },
+
+  // ─── Character Wizard ───
+  wizardChat: async (
+    messages: { role: string; content: string }[],
+    onToken: (token: string) => void,
+    onDone: () => void,
+    signal?: AbortSignal
+  ) => {
+    const res = await fetch(`${BASE}/character-wizard/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+      signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error' }));
+      throw new Error(err.error || 'Connection error');
+    }
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+
+      buffer += decoder.decode(result.value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') {
+            onDone();
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.token) onToken(parsed.token);
+          } catch {}
+        }
+      }
+    }
+    onDone();
+  },
 };

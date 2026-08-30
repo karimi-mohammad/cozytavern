@@ -8,6 +8,7 @@ export default function CharacterGallery() {
     characters, selectCharacter, setCharacterEditorOpen,
     setGalleryView, loadingCharacters,
     importCharacterFromFile, exportCharacter,
+    setCharacterWizardOpen,
   } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +34,12 @@ export default function CharacterGallery() {
           <span className="text-xs text-tavern-muted bg-tavern-card px-2 py-0.5 rounded-full">{characters.length}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCharacterWizardOpen(true)}
+            className="text-tavern-dim hover:text-tavern-accent text-sm px-3 py-1.5 rounded-lg border border-tavern-border hover:border-tavern-accent/40 transition-colors flex items-center gap-1.5"
+          >
+            ✨ AI Wizard
+          </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="text-tavern-dim hover:text-tavern-accent text-sm px-3 py-1.5 rounded-lg border border-tavern-border hover:border-tavern-accent/40 transition-colors"
@@ -70,12 +77,20 @@ export default function CharacterGallery() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           <p className="text-sm">No characters yet</p>
-          <button
-            onClick={() => setCharacterEditorOpen(true)}
-            className="mt-3 text-tavern-accent hover:text-tavern-accent-hover text-sm transition-colors"
-          >
-            Create your first character
-          </button>
+          <div className="flex flex-col gap-2 mt-3">
+            <button
+              onClick={() => setCharacterWizardOpen(true)}
+              className="text-tavern-accent hover:text-tavern-accent-hover text-sm transition-colors flex items-center gap-1"
+            >
+              ✨ Create with AI Wizard
+            </button>
+            <button
+              onClick={() => setCharacterEditorOpen(true)}
+              className="text-tavern-muted hover:text-tavern-text text-sm transition-colors"
+            >
+              Or create manually
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
