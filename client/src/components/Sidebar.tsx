@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '../store/state';
 import { Chapter } from '../types';
 import CharacterAvatar from './CharacterAvatar';
@@ -6,6 +6,21 @@ import PluginsPanel from './PluginsPanel';
 import ChapterEditor from './ChapterEditor';
 import { CharacterSkeleton, ChatSkeleton, PersonaSkeleton, LorebookSkeleton } from './LoadingSkeleton';
 import { useDebounce } from '../hooks/useDebounce';
+
+const MIN_WIDTH = 220;
+const MAX_WIDTH = 420;
+const DEFAULT_WIDTH = 288;
+
+function getStoredSidebarWidth(): number {
+  try {
+    const stored = localStorage.getItem('cozytavern.sidebarWidth');
+    if (stored) {
+      const w = parseInt(stored);
+      if (w >= MIN_WIDTH && w <= MAX_WIDTH) return w;
+    }
+  } catch {}
+  return DEFAULT_WIDTH;
+}
 
 export default function Sidebar() {
   const {
@@ -38,6 +53,52 @@ export default function Sidebar() {
   const [groupChatName, setGroupChatName] = useState('');
   const [selectedGroupChars, setSelectedGroupChars] = useState<string[]>([]);
   const chatImportRef = useRef<HTMLInputElement>(null);
+  const [panelWidth, setPanelWidth] = useState(getStoredSidebarWidth);
+  const [isResizing, setIsResizing] = useState(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    startX.current = e.clientX;
+    startWidth.current = panelWidth;
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX.current;
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      try {
+        localStorage.setItem('cozytavern.sidebarWidth', String(panelWidth));
+      } catch {}
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, panelWidth]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cozytavern.sidebarWidth', String(panelWidth));
+    } catch {}
+  }, [panelWidth]);
 
   const isMobile = () => window.innerWidth < 768;
   const closeSidebarIfMobile = () => { if (isMobile()) useStore.setState({ panelOpen: false }); };
@@ -731,7 +792,22 @@ export default function Sidebar() {
   };
 
   return panelOpen ? (
-    <div className="absolute left-0 top-0 bottom-0 w-72 bg-tavern-surface border-r border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl">
+    <div
+      className="absolute left-0 top-0 bottom-0 bg-tavern-surface border-r border-tavern-border flex flex-col flex-shrink-0 z-30 animate-slide-in shadow-xl"
+      style={{ width: panelWidth }}
+    >
+      {/* Resize Handle */}
+      <div
+        className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-tavern-accent/50 transition-colors z-50 ${
+          isResizing ? 'bg-tavern-accent/70' : ''
+        }`}
+        onMouseDown={handleResizeMouseDown}
+      >
+        <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-l transition-opacity ${
+          isResizing ? 'opacity-100' : 'opacity-0'
+        } bg-tavern-accent`} />
+      </div>
+
       {/* Panel Header */}
       <div className="h-[50px] border-b border-tavern-border flex items-center justify-between px-3 flex-shrink-0">
         <h2 className="text-sm font-semibold text-tavern-text-bright">{panelTitles[activePanel || 'characters']}</h2>
