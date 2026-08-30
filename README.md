@@ -50,7 +50,7 @@ A lightweight, modern AI chat frontend designed for **D&D sessions**, **tabletop
 - [Node.js](https://nodejs.org/) 18 or higher
 - An API key from any supported provider
 
-### One-Click Start
+### One-Click Start (Production)
 
 **Windows:**
 ```bash
@@ -63,21 +63,31 @@ chmod +x start.sh
 ./start.sh
 ```
 
-### Manual Setup
+### Quick Setup (Recommended)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/karimi-mohammad/cozytavern.git
 cd CozyTavern
 
-# 2. Install all dependencies
-npm run install:all
+# 2. Install, build, and start
+npm run setup
 
-# 3. Start development server
+# Or do it manually:
+npm run install:all    # Install dependencies
+npm run build          # Build server & client
+npm start              # Start production server
+```
+
+Open your browser to **http://localhost:3002**
+
+### Development Mode
+
+```bash
 npm run dev
 ```
 
-Open your browser to **http://localhost:5173**
+This starts both server (port 3002) and client (port 5173) with hot reload.
 
 ---
 
@@ -148,10 +158,13 @@ CozyTavern/
 ### Available Scripts
 
 ```bash
-npm run dev              # Start both server and client
+npm run setup            # Install + Build everything (one command)
+npm run dev              # Start both server and client (dev mode)
 npm run dev:server       # Start only server (port 3002)
 npm run dev:client       # Start only client (port 5173)
-npm run build            # Build client for production
+npm run build            # Build server & client for production
+npm run build:server     # Build only server
+npm run build:client     # Build only client
 npm start                # Start production server
 npm run install:all      # Install all dependencies
 ```
