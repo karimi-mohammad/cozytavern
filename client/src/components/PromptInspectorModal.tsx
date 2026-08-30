@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/state';
 import { PromptInspection, PromptPart } from '../types';
+import { estimateTokens, formatTokenCount } from '../utils/tokenEstimate';
 
 // ─── Role chip رنگ‌بندی نقش پیام ───
 const ROLE_STYLES: Record<string, string> = {
@@ -79,6 +80,16 @@ export default function PromptInspectorModal() {
     ? promptInspection
     : promptInspectHistory.find(h => h.id === viewingId);
   if (!view) return null;
+
+  // Calculate token counts for each message and total
+  const calculateTokenCounts = () => {
+    const messages = editing ? editedMessages : view.messages;
+    const tokenCounts = messages.map(m => estimateTokens(m.content));
+    const totalTokens = tokenCounts.reduce((sum, count) => sum + count, 0);
+    return { tokenCounts, totalTokens };
+  };
+
+  const { tokenCounts, totalTokens } = calculateTokenCounts();
 
   const decide = (send: boolean, withEdits?: boolean) => {
     if (isLive) {
@@ -166,6 +177,10 @@ export default function PromptInspectorModal() {
             <span className="text-tavern-dim">messages</span>
             <span className="text-tavern-text">{view.messages.length}</span>
           </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-tavern-dim">total tokens</span>
+            <span className="text-tavern-accent font-semibold">{formatTokenCount(totalTokens)}</span>
+          </div>
         </div>
 
         {/* Edit toolbar */}
@@ -211,6 +226,9 @@ export default function PromptInspectorModal() {
                 <RoleChip role={m.role} />
                 <span className="text-[11px] text-tavern-dim truncate flex-1" dir="auto">
                   {m.content.slice(0, 100)}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-tavern-surface2 border border-tavern-border text-tavern-dim font-mono flex-shrink-0">
+                  {formatTokenCount(tokenCounts[i])}
                 </span>
                 {editing && m.content !== view.messages[i]?.content && (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-tavern-accent/20 text-tavern-accent flex-shrink-0">
