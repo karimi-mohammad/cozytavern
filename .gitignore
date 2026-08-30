@@ -56,3 +56,8 @@ pnpm-lock.yaml
 
 # Documentation (internal planning docs)
 docs/
+*.md
+
+# Build utility scripts
+check-build.js
+smart-build.js

@@ -11,5 +11,20 @@ export default defineConfig({
                 changeOrigin: true,
             }
         }
+    },
+    build: {
+        // Split vendor chunks for better caching
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // React ecosystem in its own chunk
+                    'vendor-react': ['react', 'react-dom'],
+                    // Markdown rendering (heavy)
+                    'vendor-markdown': ['react-markdown', 'remark-gfm', 'rehype-highlight'],
+                    // Virtualization
+                    'vendor-virtuoso': ['react-virtuoso'],
+                }
+            }
+        }
     }
 });
