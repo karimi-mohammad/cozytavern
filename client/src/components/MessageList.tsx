@@ -3,6 +3,7 @@ import { Message, Character, Chat, Persona, Chapter } from '../types';
 import { useStore } from '../store/state';
 import MessageBubble from './MessageBubble';
 import { MessageSkeleton } from './LoadingSkeleton';
+import ChapterTriggerProgress from './ChapterTriggerProgress';
 
 interface Props {
   messages: Message[];
@@ -190,6 +191,8 @@ export default function MessageList({
             );
           })()
         )}
+        {/* نمایش پیشرفت تریگر خودکار */}
+        <ChapterTriggerProgress />
         <div ref={bottomRef} />
       </div>
 
