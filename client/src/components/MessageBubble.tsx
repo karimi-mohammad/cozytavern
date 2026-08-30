@@ -47,6 +47,15 @@ function MessageBubbleInner({
   const chapterStartId = useStore(s => s.chapterStartId);
   const chapterEndId = useStore(s => s.chapterEndId);
   const chapterFlowEndId = useStore(s => s.chapterFlowEndId);
+  const chapterSettings = useStore(s => s.chapterSettings);
+
+  // Check if message contains a trigger phrase
+  const triggerPhrases = chapterSettings?.trigger_phrases || [];
+  const matchedTrigger = triggerPhrases.length > 0
+    ? triggerPhrases.find(phrase =>
+        message.content?.toLowerCase().includes(phrase.toLowerCase())
+      )
+    : null;
   const isMarkedStart = chapterStartId === message.id;
   const isMarkedEnd = chapterEndId === message.id;
   const isFlowEnd = chapterFlowEndId === message.id;
@@ -178,6 +187,18 @@ function MessageBubbleInner({
           </span>
           <span className="text-[11px] text-tavern-dim">{formatMessageTime(message.send_date)}</span>
           {message.is_edited && <span className="text-[10px] text-tavern-faint italic">(edited)</span>}
+          {/* Trigger phrase indicator */}
+          {matchedTrigger && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 text-[10px] font-medium"
+              title={`Trigger phrase: "${matchedTrigger}"`}
+            >
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span className="hidden sm:inline">Trigger</span>
+            </span>
+          )}
         </div>
 
         {/* Message Body */}

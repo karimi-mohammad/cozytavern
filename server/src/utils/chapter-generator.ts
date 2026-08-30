@@ -447,13 +447,29 @@ export function detectChapterTrigger(
     return { suggested: false };
   }
 
-  // Scan ALL messages after the last chapter for triggers
-  // The raw_window constraint is enforced later during chapter creation (validateChapterRange)
+  // Build a set of message indices that are inside any chapter
+  const chapterMessageIds = new Set<string>();
+  for (const ch of chapters) {
+    const startIdx = messages.findIndex((m: any) => m.id === ch.start_message_id);
+    const endIdx = messages.findIndex((m: any) => m.id === ch.end_message_id);
+    if (startIdx !== -1 && endIdx !== -1) {
+      for (let i = startIdx; i <= endIdx; i++) {
+        chapterMessageIds.add(messages[i].id);
+      }
+    }
+  }
+
+  // Scan messages after the last chapter for triggers
+  // Skip messages that are already inside any chapter
   const scanMessages = messagesAfterLastChapter;
 
   for (const trigger of triggerPhrases) {
     const triggerLower = trigger.toLowerCase();
     for (const msg of scanMessages) {
+      // Skip if message is already inside a chapter
+      if (chapterMessageIds.has(msg.id)) {
+        continue;
+      }
       if (msg.content && msg.content.toLowerCase().includes(triggerLower)) {
         return {
           suggested: true,
