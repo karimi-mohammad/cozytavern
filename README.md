@@ -67,8 +67,8 @@ chmod +x start.sh
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/cozytavern.git
-cd cozytavern
+git clone https://github.com/karimi-mohammad/cozytavern.git
+cd CozyTavern
 
 # 2. Install all dependencies
 npm run install:all
