@@ -273,7 +273,7 @@ router.post('/', async (req: Request, res: Response) => {
   res.status(201).json(rowToChapter(chapter));
 });
 
-// ─── PUT /:id — Update chapter (title / summary) ───
+// ─── PUT /:id — Update chapter (title / summary / start / end) ───
 
 router.put('/:id', (req: Request, res: Response) => {
   const db = getDb();
@@ -283,16 +283,70 @@ router.put('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  const { title, summary } = req.body;
+  const { title, summary, start_message_id, end_message_id } = req.body;
   const now = new Date().toISOString();
+
+  // اگر start یا end تغییر کرده، validation انجام بده
+  const newStart = start_message_id !== undefined ? start_message_id : chapter.start_message_id;
+  const newEnd = end_message_id !== undefined ? end_message_id : chapter.end_message_id;
+
+  if (start_message_id !== undefined || end_message_id !== undefined) {
+    // بررسی وجود پیام‌ها
+    const startMsg = db.prepare('SELECT rowid FROM messages WHERE id = ? AND chat_id = ?').get(newStart, chapter.chat_id) as any;
+    const endMsg = db.prepare('SELECT rowid FROM messages WHERE id = ? AND chat_id = ?').get(newEnd, chapter.chat_id) as any;
+
+    if (!startMsg || !endMsg) {
+      res.status(400).json({ error: 'One of the messages was not found' });
+      return;
+    }
+
+    if (startMsg.rowid >= endMsg.rowid) {
+      res.status(400).json({ error: 'Start message must come before end message' });
+      return;
+    }
+
+    // بررسی raw_window
+    const settings = getChapterSettings(db);
+    const rawWindow = settings?.raw_window || 10;
+    const totalMessages = db.prepare('SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ?').get(chapter.chat_id) as any;
+    const endMsgIndex = db.prepare(
+      'SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ? AND rowid <= (SELECT rowid FROM messages WHERE id = ?)'
+    ).get(chapter.chat_id, newEnd) as any;
+
+    if (totalMessages.cnt - endMsgIndex.cnt < rawWindow) {
+      res.status(400).json({ error: `Chapter must end at least ${rawWindow} messages before the last message` });
+      return;
+    }
+
+    // بررسی تداخل با فصل‌های دیگر (به جز خود این فصل)
+    const overlap = db.prepare(`
+      SELECT c.id FROM chapters c
+      WHERE c.chat_id = ?
+        AND c.id != ?
+        AND NOT (
+          COALESCE((SELECT m.rowid FROM messages m WHERE m.id = c.end_message_id), -1) <
+            (SELECT m.rowid FROM messages m WHERE m.id = ?)
+          OR
+          COALESCE((SELECT m.rowid FROM messages m WHERE m.id = c.start_message_id), 999999999999) >
+            (SELECT m.rowid FROM messages m WHERE m.id = ?)
+        )
+    `).get(chapter.chat_id, req.params.id, newStart, newEnd);
+
+    if (overlap) {
+      res.status(400).json({ error: 'This range overlaps with another chapter' });
+      return;
+    }
+  }
 
   db.prepare(`
     UPDATE chapters
-    SET title = ?, summary = ?, manually_edited = 1, updated_at = ?
+    SET title = ?, summary = ?, start_message_id = ?, end_message_id = ?, manually_edited = 1, updated_at = ?
     WHERE id = ?
   `).run(
     title !== undefined ? title : chapter.title,
     summary !== undefined ? summary : chapter.summary,
+    newStart,
+    newEnd,
     now,
     req.params.id
   );

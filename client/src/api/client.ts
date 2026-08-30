@@ -128,7 +128,7 @@ export const api = {
   getChapters: (chatId: string) => request(`/chapters/chat/${chatId}`),
   createChapter: (data: { chat_id: string; start_message_id: string; end_message_id: string; trigger_message_id?: string; title?: string; auto_summarize?: boolean; edited_messages?: { role: string; content: string }[] }) =>
     request('/chapters', { method: 'POST', body: JSON.stringify(data) }),
-  updateChapter: (id: string, data: { title?: string; summary?: string }) =>
+  updateChapter: (id: string, data: { title?: string; summary?: string; start_message_id?: string; end_message_id?: string }) =>
     request(`/chapters/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteChapter: (id: string) => request(`/chapters/${id}`, { method: 'DELETE' }),
   regenerateChapter: (id: string, editedMessages?: { role: string; content: string }[]) =>
