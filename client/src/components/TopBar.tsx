@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/state';
 import { formatTokenCount } from '../utils/tokenEstimate';
+import ChatContextExport from './ChatContextExport';
 
 export default function TopBar() {
   const {
@@ -14,6 +15,7 @@ export default function TopBar() {
   } = useStore();
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
+  const [showContextExport, setShowContextExport] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // بستن dropdown با کلیک بیرون یا Escape
@@ -219,6 +221,17 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setShowContextExport(true)}
+          disabled={!currentChat}
+          className="w-7 h-7 flex items-center justify-center rounded-md active:scale-90 text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
+          title="Export chat context as JSON"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </button>
+
+        <button
           onClick={toggleRightPanel}
           className={`w-7 h-7 flex items-center justify-center rounded-md active:scale-90 transition-colors ${rightPanelOpen ? 'bg-tavern-accent/20 text-tavern-accent' : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'}`}
           title="Toggle Info Panel"
@@ -228,6 +241,11 @@ export default function TopBar() {
           </svg>
         </button>
       </div>
+
+      <ChatContextExport
+        isOpen={showContextExport}
+        onClose={() => setShowContextExport(false)}
+      />
     </div>
   );
 }
