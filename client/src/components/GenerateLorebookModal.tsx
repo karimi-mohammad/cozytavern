@@ -37,11 +37,14 @@ interface Props {
 }
 
 export default function GenerateLorebookModal({ isOpen, onClose, targetLorebookId }: Props) {
-  const {
-    currentChat, currentCharacter, lorebooks,
-    loadLorebooks, addChatLorebook, loadChatLorebooks,
-    addToast,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const currentChat = useStore(s => s.currentChat);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const lorebooks = useStore(s => s.lorebooks);
+  const loadLorebooks = useStore(s => s.loadLorebooks);
+  const addChatLorebook = useStore(s => s.addChatLorebook);
+  const loadChatLorebooks = useStore(s => s.loadChatLorebooks);
+  const addToast = useStore(s => s.addToast);
 
   // ─── State ───
   const [mode, setMode] = useState<Mode>('menu');

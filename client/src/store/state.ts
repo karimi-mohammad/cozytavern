@@ -316,13 +316,17 @@ export const useStore = create<AppState>((set, get) => ({
   setStoryStateOpen: (open) => set({ storyStateOpen: open }),
   // Listen for story state updates from SSE
   _initStoryStateListener: () => {
-    window.addEventListener('story-state-updated', ((e: CustomEvent) => {
+    // Store cleanup function to prevent listener leaks
+    const handler = ((e: CustomEvent) => {
       const { currentChat } = get();
       if (currentChat) {
         // Reload state from server
         get().loadStoryState(currentChat.id);
       }
-    }) as EventListener);
+    }) as EventListener;
+    window.addEventListener('story-state-updated', handler);
+    // Return cleanup function for potential future use
+    return () => window.removeEventListener('story-state-updated', handler);
   },
 
   // Group Chat state

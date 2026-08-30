@@ -14,17 +14,31 @@ export default function ChatView() {
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
   const [showGroupManager, setShowGroupManager] = useState(false);
 
-  const {
-    currentCharacter, currentChat, characters, chats,
-    selectCharacter, selectChat, createChat, deleteChat, renameChat, autoNameChat,
-    setSettingsOpen,
-    setCharacterEditorOpen, loadChats,
-    editMessage, deleteMessage, branchChat,
-    activePersona, isGenerating, showConfirm,
-    loadingMessages, loadingCharacters, loadingChats,
-    chapters,
-    setStoryStateOpen,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const currentChat = useStore(s => s.currentChat);
+  const characters = useStore(s => s.characters);
+  const chats = useStore(s => s.chats);
+  const selectCharacter = useStore(s => s.selectCharacter);
+  const selectChat = useStore(s => s.selectChat);
+  const createChat = useStore(s => s.createChat);
+  const deleteChat = useStore(s => s.deleteChat);
+  const renameChat = useStore(s => s.renameChat);
+  const autoNameChat = useStore(s => s.autoNameChat);
+  const setSettingsOpen = useStore(s => s.setSettingsOpen);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const loadChats = useStore(s => s.loadChats);
+  const editMessage = useStore(s => s.editMessage);
+  const deleteMessage = useStore(s => s.deleteMessage);
+  const branchChat = useStore(s => s.branchChat);
+  const activePersona = useStore(s => s.activePersona);
+  const isGenerating = useStore(s => s.isGenerating);
+  const showConfirm = useStore(s => s.showConfirm);
+  const loadingMessages = useStore(s => s.loadingMessages);
+  const loadingCharacters = useStore(s => s.loadingCharacters);
+  const loadingChats = useStore(s => s.loadingChats);
+  const chapters = useStore(s => s.chapters);
+  const setStoryStateOpen = useStore(s => s.setStoryStateOpen);
 
   const handleBranch = async (messageId: string, sendDate: string) => {
     if (!currentChat || !currentCharacter) return;

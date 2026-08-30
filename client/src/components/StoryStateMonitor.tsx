@@ -10,7 +10,14 @@ interface StateLogEntry {
 }
 
 export default function StoryStateMonitor() {
-  const { storyStateOpen, setStoryStateOpen, storyState, loadingStoryState, loadStoryState, currentChat, updateStoryState } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const storyStateOpen = useStore(s => s.storyStateOpen);
+  const setStoryStateOpen = useStore(s => s.setStoryStateOpen);
+  const storyState = useStore(s => s.storyState);
+  const loadingStoryState = useStore(s => s.loadingStoryState);
+  const loadStoryState = useStore(s => s.loadStoryState);
+  const currentChat = useStore(s => s.currentChat);
+  const updateStoryState = useStore(s => s.updateStoryState);
   const [activeTab, setActiveTab] = useState<'state' | 'log' | 'raw'>('state');
   const [stateLog, setStateLog] = useState<StateLogEntry[]>([]);
   const [expandedChars, setExpandedChars] = useState<Record<string, boolean>>({});

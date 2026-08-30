@@ -4,15 +4,26 @@ import { formatTokenCount } from '../utils/tokenEstimate';
 import ChatContextExport from './ChatContextExport';
 
 export default function TopBar() {
-  const {
-    apiSettings, setSettingsOpen, isGenerating,
-    rightPanelOpen, toggleRightPanel, currentCharacter,
-    chats, currentChat, selectChat, createChat,
-    setCharacterEditorOpen, editingCharacter,
-    activePanel, setActivePanel, panelOpen,
-    regenerateMessage, contextUsage,
-    promptInspectEnabled, togglePromptInspect,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const apiSettings = useStore(s => s.apiSettings);
+  const setSettingsOpen = useStore(s => s.setSettingsOpen);
+  const isGenerating = useStore(s => s.isGenerating);
+  const rightPanelOpen = useStore(s => s.rightPanelOpen);
+  const toggleRightPanel = useStore(s => s.toggleRightPanel);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const chats = useStore(s => s.chats);
+  const currentChat = useStore(s => s.currentChat);
+  const selectChat = useStore(s => s.selectChat);
+  const createChat = useStore(s => s.createChat);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const editingCharacter = useStore(s => s.editingCharacter);
+  const activePanel = useStore(s => s.activePanel);
+  const setActivePanel = useStore(s => s.setActivePanel);
+  const panelOpen = useStore(s => s.panelOpen);
+  const regenerateMessage = useStore(s => s.regenerateMessage);
+  const contextUsage = useStore(s => s.contextUsage);
+  const promptInspectEnabled = useStore(s => s.promptInspectEnabled);
+  const togglePromptInspect = useStore(s => s.togglePromptInspect);
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
   const [showContextExport, setShowContextExport] = useState(false);

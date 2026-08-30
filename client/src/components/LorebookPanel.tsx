@@ -5,11 +5,17 @@ import { ChatLorebook, Lorebook } from '../types';
 import GenerateLorebookModal from './GenerateLorebookModal';
 
 export default function LorebookPanel() {
-  const {
-    currentChat, chatLorebooks, loadingChatLorebooks, lorebooks,
-    loadChatLorebooks, addChatLorebook, updateChatLorebook, removeChatLorebook,
-    loadLorebooks, setLorebookEditorOpen,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const currentChat = useStore(s => s.currentChat);
+  const chatLorebooks = useStore(s => s.chatLorebooks);
+  const loadingChatLorebooks = useStore(s => s.loadingChatLorebooks);
+  const lorebooks = useStore(s => s.lorebooks);
+  const loadChatLorebooks = useStore(s => s.loadChatLorebooks);
+  const addChatLorebook = useStore(s => s.addChatLorebook);
+  const updateChatLorebook = useStore(s => s.updateChatLorebook);
+  const removeChatLorebook = useStore(s => s.removeChatLorebook);
+  const loadLorebooks = useStore(s => s.loadLorebooks);
+  const setLorebookEditorOpen = useStore(s => s.setLorebookEditorOpen);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

@@ -23,9 +23,10 @@ function RoleChip({ role }: { role: string }) {
 }
 
 export default function PromptInspectorModal() {
-  const {
-    promptInspection, resolveInspection, promptInspectHistory,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const promptInspection = useStore(s => s.promptInspection);
+  const resolveInspection = useStore(s => s.resolveInspection);
+  const promptInspectHistory = useStore(s => s.promptInspectHistory);
   // null = نمای زنده (entry در انتظار تصمیم)؛ در غیر این صورت id از تاریخچه
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});

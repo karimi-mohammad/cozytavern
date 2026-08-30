@@ -23,21 +23,50 @@ function getStoredSidebarWidth(): number {
 }
 
 export default function Sidebar() {
-  const {
-    characters, currentCharacter, chats, currentChat,
-    selectCharacter, selectChat, createChat, deleteCharacter, deleteChat, renameChat, moveChatToFolder,
-    setCharacterEditorOpen, setCharacterWizardOpen, setSettingsOpen, setActivePanel,
-    exportChatAction, importChatFile, importCharacterFromFile, exportCharacter,
-    personas, activePersona, setActivePersona,
-    lorebooks, activeLorebook, setActiveLorebook,
-    loadLorebooks, setLorebookEditorOpen, setPersonaEditorOpen,
-    exportBackup, restoreBackupFile, setTheme, theme,
-    showConfirm, addToast,
-    activePanel, panelOpen,
-    loadingCharacters, loadingChats, loadingPersonas, loadingLorebooks,
-    chapters, chapterSettings, deleteChapter,
-    createGroupChat, selectChat: selectChatAction,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const characters = useStore(s => s.characters);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const chats = useStore(s => s.chats);
+  const currentChat = useStore(s => s.currentChat);
+  const selectCharacter = useStore(s => s.selectCharacter);
+  const selectChat = useStore(s => s.selectChat);
+  const createChat = useStore(s => s.createChat);
+  const deleteCharacter = useStore(s => s.deleteCharacter);
+  const deleteChat = useStore(s => s.deleteChat);
+  const renameChat = useStore(s => s.renameChat);
+  const moveChatToFolder = useStore(s => s.moveChatToFolder);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const setCharacterWizardOpen = useStore(s => s.setCharacterWizardOpen);
+  const setSettingsOpen = useStore(s => s.setSettingsOpen);
+  const setActivePanel = useStore(s => s.setActivePanel);
+  const exportChatAction = useStore(s => s.exportChatAction);
+  const importChatFile = useStore(s => s.importChatFile);
+  const importCharacterFromFile = useStore(s => s.importCharacterFromFile);
+  const exportCharacter = useStore(s => s.exportCharacter);
+  const personas = useStore(s => s.personas);
+  const activePersona = useStore(s => s.activePersona);
+  const setActivePersona = useStore(s => s.setActivePersona);
+  const lorebooks = useStore(s => s.lorebooks);
+  const activeLorebook = useStore(s => s.activeLorebook);
+  const setActiveLorebook = useStore(s => s.setActiveLorebook);
+  const setLorebookEditorOpen = useStore(s => s.setLorebookEditorOpen);
+  const setPersonaEditorOpen = useStore(s => s.setPersonaEditorOpen);
+  const exportBackup = useStore(s => s.exportBackup);
+  const restoreBackupFile = useStore(s => s.restoreBackupFile);
+  const setTheme = useStore(s => s.setTheme);
+  const theme = useStore(s => s.theme);
+  const showConfirm = useStore(s => s.showConfirm);
+  const addToast = useStore(s => s.addToast);
+  const activePanel = useStore(s => s.activePanel);
+  const panelOpen = useStore(s => s.panelOpen);
+  const loadingCharacters = useStore(s => s.loadingCharacters);
+  const loadingChats = useStore(s => s.loadingChats);
+  const loadingPersonas = useStore(s => s.loadingPersonas);
+  const loadingLorebooks = useStore(s => s.loadingLorebooks);
+  const chapters = useStore(s => s.chapters);
+  const chapterSettings = useStore(s => s.chapterSettings);
+  const deleteChapter = useStore(s => s.deleteChapter);
+  const createGroupChat = useStore(s => s.createGroupChat);
 
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
   const [search, setSearch] = useState('');
@@ -992,7 +1021,7 @@ export default function Sidebar() {
                       name: groupChatName.trim() || undefined,
                       character_ids: selectedGroupChars,
                     });
-                    await selectChatAction(chat.id);
+                    await selectChat(chat.id);
                     setShowGroupChatDialog(false);
                     setSelectedGroupChars([]);
                     setGroupChatName('');

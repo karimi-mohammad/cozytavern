@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { useStore } from '../store/state';
 import { Message, Character, Chat, Persona } from '../types';
 import Markdown from 'react-markdown';
@@ -10,6 +10,55 @@ import CodeBlock from './CodeBlock';
 import StateChangeIndicator from './StateChangeIndicator';
 import { DialogueParagraph, renderHighlightedText } from '../utils/remarkDialogue';
 import { stripToolCalls } from '../utils/stripToolCalls';
+
+// Custom Markdown components for enhanced rendering - memoized outside render
+const markdownComponents: Components = {
+  code: ({ className, children, ...props }) => {
+    const isInline = !className && typeof children === 'string' && !children.includes('\n');
+    return <CodeBlock className={className} inline={isInline}>{children}</CodeBlock>;
+  },
+  em: ({ children, ...props }) => (
+    <em {...props} className="msg-narration">{children}</em>
+  ),
+  strong: ({ children, ...props }) => (
+    <strong {...props} className="msg-emphasis">{children}</strong>
+  ),
+  u: ({ children, ...props }) => (
+    <u {...props} className="msg-underlined">{children}</u>
+  ),
+  a: ({ children, ...props }) => (
+    <a {...props} target="_blank" rel="noopener noreferrer" className="text-tavern-accent hover:text-tavern-accent-hover underline underline-offset-2 transition-colors">
+      {children}
+    </a>
+  ),
+  table: ({ children, ...props }) => (
+    <div className="overflow-x-auto my-2 rounded-lg border border-tavern-border/50">
+      <table {...props} className="w-full text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children, ...props }) => (
+    <thead {...props} className="bg-tavern-surface2/80 border-b border-tavern-border/50">{children}</thead>
+  ),
+  th: ({ children, ...props }) => (
+    <th {...props} className="px-3 py-2 text-left text-xs font-medium text-tavern-dim">{children}</th>
+  ),
+  td: ({ children, ...props }) => (
+    <td {...props} className="px-3 py-2 border-t border-tavern-border/30 text-tavern-text">{children}</td>
+  ),
+  blockquote: ({ children, ...props }) => (
+    <blockquote {...props} className="border-l-4 border-tavern-accent/40 pl-4 my-2 text-tavern-dim italic">
+      {children}
+    </blockquote>
+  ),
+  p: DialogueParagraph,
+  hr: (props) => (
+    <hr {...props} className="my-4 border-tavern-border/50" />
+  ),
+};
+
+// Memoized remark/rehype plugins
+const remarkPlugins = [remarkGfm];
+const rehypePlugins = [rehypeHighlight];
 
 function formatMessageTime(isoDate: string): string {
   const date = new Date(isoDate);
@@ -88,51 +137,6 @@ function MessageBubbleInner({
 
   const handleBranch = () => {
     onBranch(message.id, message.send_date);
-  };
-
-  // Custom Markdown components for enhanced rendering
-  const markdownComponents: Components = {
-    code: ({ className, children, ...props }) => {
-      const isInline = !className && typeof children === 'string' && !children.includes('\n');
-      return <CodeBlock className={className} inline={isInline}>{children}</CodeBlock>;
-    },
-    em: ({ children, ...props }) => (
-      <em {...props} className="msg-narration">{children}</em>
-    ),
-    strong: ({ children, ...props }) => (
-      <strong {...props} className="msg-emphasis">{children}</strong>
-    ),
-    u: ({ children, ...props }) => (
-      <u {...props} className="msg-underlined">{children}</u>
-    ),
-    a: ({ children, ...props }) => (
-      <a {...props} target="_blank" rel="noopener noreferrer" className="text-tavern-accent hover:text-tavern-accent-hover underline underline-offset-2 transition-colors">
-        {children}
-      </a>
-    ),
-    table: ({ children, ...props }) => (
-      <div className="overflow-x-auto my-2 rounded-lg border border-tavern-border/50">
-        <table {...props} className="w-full text-sm">{children}</table>
-      </div>
-    ),
-    thead: ({ children, ...props }) => (
-      <thead {...props} className="bg-tavern-surface2/80 border-b border-tavern-border/50">{children}</thead>
-    ),
-    th: ({ children, ...props }) => (
-      <th {...props} className="px-3 py-2 text-left text-xs font-medium text-tavern-dim">{children}</th>
-    ),
-    td: ({ children, ...props }) => (
-      <td {...props} className="px-3 py-2 border-t border-tavern-border/30 text-tavern-text">{children}</td>
-    ),
-    blockquote: ({ children, ...props }) => (
-      <blockquote {...props} className="border-l-4 border-tavern-accent/40 pl-4 my-2 text-tavern-dim italic">
-        {children}
-      </blockquote>
-    ),
-    p: DialogueParagraph,
-    hr: (props) => (
-      <hr {...props} className="my-4 border-tavern-border/50" />
-    ),
   };
 
   // Extract thinking content — supports multiple formats
@@ -267,7 +271,7 @@ function MessageBubbleInner({
             {/* Main content */}
             {isAssistant ? (
               <div dir="auto" className={`prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed ${isLast && isGenerating ? 'is-streaming' : ''}`}>
-                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>{mainContent}</Markdown>
+                <Markdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>{mainContent}</Markdown>
               </div>
             ) : (
               <div dir="auto" className={`text-[15px] text-tavern-text leading-7 whitespace-pre-wrap ${isLast && isGenerating ? 'is-streaming' : ''}`}>

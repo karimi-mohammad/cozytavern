@@ -4,10 +4,17 @@ import { useDebounce } from '../hooks/useDebounce';
 import CharacterAvatar from './CharacterAvatar';
 
 export default function SearchPanel() {
-  const {
-    searchQuery, searchResults, searchTotal, searchLoading, searchOpen,
-    setSearchQuery, setSearchOpen, searchMessages, loadMoreSearchResults, scrollToMessage,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const searchQuery = useStore(s => s.searchQuery);
+  const searchResults = useStore(s => s.searchResults);
+  const searchTotal = useStore(s => s.searchTotal);
+  const searchLoading = useStore(s => s.searchLoading);
+  const searchOpen = useStore(s => s.searchOpen);
+  const setSearchQuery = useStore(s => s.setSearchQuery);
+  const setSearchOpen = useStore(s => s.setSearchOpen);
+  const searchMessages = useStore(s => s.searchMessages);
+  const loadMoreSearchResults = useStore(s => s.loadMoreSearchResults);
+  const scrollToMessage = useStore(s => s.scrollToMessage);
 
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'assistant'>('all');

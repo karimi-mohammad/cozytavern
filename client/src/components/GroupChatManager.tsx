@@ -7,13 +7,19 @@ interface Props {
 }
 
 export default function GroupChatManager({ onClose }: Props) {
-  const {
-    characters, currentChat, groupChatParticipants,
-    addParticipant, removeParticipant, toggleParticipant,
-    addCharacterToChat,
-    generateGroupResponse, selectedCharacterForResponse, setSelectedCharacterForResponse,
-    isGenerating, groupChatGenerating,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const characters = useStore(s => s.characters);
+  const currentChat = useStore(s => s.currentChat);
+  const groupChatParticipants = useStore(s => s.groupChatParticipants);
+  const addParticipant = useStore(s => s.addParticipant);
+  const removeParticipant = useStore(s => s.removeParticipant);
+  const toggleParticipant = useStore(s => s.toggleParticipant);
+  const addCharacterToChat = useStore(s => s.addCharacterToChat);
+  const generateGroupResponse = useStore(s => s.generateGroupResponse);
+  const selectedCharacterForResponse = useStore(s => s.selectedCharacterForResponse);
+  const setSelectedCharacterForResponse = useStore(s => s.setSelectedCharacterForResponse);
+  const isGenerating = useStore(s => s.isGenerating);
+  const groupChatGenerating = useStore(s => s.groupChatGenerating);
 
   const [showAddCharacter, setShowAddCharacter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

@@ -19,10 +19,11 @@ function getStoredWidth(): number {
 }
 
 export default function RightPanel() {
-  const {
-    rightPanelOpen, currentCharacter, currentChat,
-    setCharacterEditorOpen,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const rightPanelOpen = useStore(s => s.rightPanelOpen);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const currentChat = useStore(s => s.currentChat);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
 
   const [panelWidth, setPanelWidth] = useState(getStoredWidth);
   const [isResizing, setIsResizing] = useState(false);

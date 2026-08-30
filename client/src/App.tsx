@@ -5,22 +5,36 @@ import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import RightPanel from './components/RightPanel';
-import CharacterEditor from './components/CharacterEditor';
-import CharacterWizard from './components/CharacterWizard';
-import ChatSettings from './components/ChatSettings';
-import PromptInspectorModal from './components/PromptInspectorModal';
-import LorebookEditor from './components/LorebookEditor';
-import PersonaEditor from './components/PersonaEditor';
-import StoryStateMonitor from './components/StoryStateMonitor';
-import SearchPanel from './components/SearchPanel';
 import Toast from './components/Toast';
 import ConfirmModal from './components/ConfirmModal';
 import ErrorBoundary from './components/ErrorBoundary';
-import ChapterPreviewModal from './components/ChapterPreviewModal';
-import ChapterReviewModal from './components/ChapterReviewModal';
+import { lazy, Suspense } from 'react';
+
+// Code Splitting: لود تنبل کامپوننت‌های سنگین
+const CharacterEditor = lazy(() => import('./components/CharacterEditor'));
+const CharacterWizard = lazy(() => import('./components/CharacterWizard'));
+const ChatSettings = lazy(() => import('./components/ChatSettings'));
+const PromptInspectorModal = lazy(() => import('./components/PromptInspectorModal'));
+const LorebookEditor = lazy(() => import('./components/LorebookEditor'));
+const PersonaEditor = lazy(() => import('./components/PersonaEditor'));
+const StoryStateMonitor = lazy(() => import('./components/StoryStateMonitor'));
+const SearchPanel = lazy(() => import('./components/SearchPanel'));
+const ChapterPreviewModal = lazy(() => import('./components/ChapterPreviewModal'));
+const ChapterReviewModal = lazy(() => import('./components/ChapterReviewModal'));
 
 function App() {
-  const { loadCharacters, loadPersonas, loadLorebooks, loadApiSettings, loadQuickReplies, personas, lorebooks, setActivePersona, setActiveLorebook, theme, _initStoryStateListener } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const loadCharacters = useStore(s => s.loadCharacters);
+  const loadPersonas = useStore(s => s.loadPersonas);
+  const loadLorebooks = useStore(s => s.loadLorebooks);
+  const loadApiSettings = useStore(s => s.loadApiSettings);
+  const loadQuickReplies = useStore(s => s.loadQuickReplies);
+  const personas = useStore(s => s.personas);
+  const lorebooks = useStore(s => s.lorebooks);
+  const setActivePersona = useStore(s => s.setActivePersona);
+  const setActiveLorebook = useStore(s => s.setActiveLorebook);
+  const theme = useStore(s => s.theme);
+  const _initStoryStateListener = useStore(s => s._initStoryStateListener);
 
   // اعمال تم ذخیره‌شده در اولین رندر
   useEffect(() => {
@@ -28,7 +42,7 @@ function App() {
     document.documentElement.classList.add(`theme-${theme}`);
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-ocean', theme === 'ocean');
-  }, []);
+  }, [theme]);
 
   useEffect(() => {
     loadCharacters();
@@ -37,7 +51,7 @@ function App() {
     loadApiSettings();
     loadQuickReplies();
     _initStoryStateListener();
-  }, []);
+  }, [loadCharacters, loadPersonas, loadLorebooks, loadApiSettings, loadQuickReplies, _initStoryStateListener]);
 
   // بازیابی انتخاب‌های فعال (پرسونا/لوربوک) بعد از load دیتا
   useEffect(() => {
@@ -71,7 +85,7 @@ function App() {
           <ChatView />
 
           {/* Search Panel - absolutely positioned overlay */}
-          <SearchPanel />
+          <Suspense fallback={null}><SearchPanel /></Suspense>
 
           {/* Sidebar - absolutely positioned overlay */}
           <Sidebar />
@@ -82,15 +96,17 @@ function App() {
       </div>
 
       {/* Modals - هر مودال در ErrorBoundary جدا، تا خطای یکی بقیه را از کار نیندازد */}
-      <ErrorBoundary label="CharacterWizard"><CharacterWizard /></ErrorBoundary>
-      <ErrorBoundary label="CharacterEditor"><CharacterEditor /></ErrorBoundary>
-      <ErrorBoundary label="ChatSettings"><ChatSettings /></ErrorBoundary>
-      <ErrorBoundary label="PromptInspector"><PromptInspectorModal /></ErrorBoundary>
-      <ErrorBoundary label="LorebookEditor"><LorebookEditor /></ErrorBoundary>
-      <ErrorBoundary label="PersonaEditor"><PersonaEditor /></ErrorBoundary>
-      <ErrorBoundary label="StoryStateMonitor"><StoryStateMonitor /></ErrorBoundary>
-      <ErrorBoundary label="ChapterPreview"><ChapterPreviewModal /></ErrorBoundary>
-      <ErrorBoundary label="ChapterReview"><ChapterReviewModal /></ErrorBoundary>
+      <Suspense fallback={null}>
+        <ErrorBoundary label="CharacterWizard"><CharacterWizard /></ErrorBoundary>
+        <ErrorBoundary label="CharacterEditor"><CharacterEditor /></ErrorBoundary>
+        <ErrorBoundary label="ChatSettings"><ChatSettings /></ErrorBoundary>
+        <ErrorBoundary label="PromptInspector"><PromptInspectorModal /></ErrorBoundary>
+        <ErrorBoundary label="LorebookEditor"><LorebookEditor /></ErrorBoundary>
+        <ErrorBoundary label="PersonaEditor"><PersonaEditor /></ErrorBoundary>
+        <ErrorBoundary label="StoryStateMonitor"><StoryStateMonitor /></ErrorBoundary>
+        <ErrorBoundary label="ChapterPreview"><ChapterPreviewModal /></ErrorBoundary>
+        <ErrorBoundary label="ChapterReview"><ChapterReviewModal /></ErrorBoundary>
+      </Suspense>
       <ErrorBoundary label="Toast"><Toast /></ErrorBoundary>
       <ErrorBoundary label="ConfirmModal"><ConfirmModal /></ErrorBoundary>
     </div>

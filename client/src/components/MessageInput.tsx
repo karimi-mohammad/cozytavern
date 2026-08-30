@@ -22,14 +22,27 @@ export default function MessageInput() {
   const [showGroupCharPicker, setShowGroupCharPicker] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const groupPickerRef = useRef<HTMLDivElement>(null);
-  const {
-    sendMessage, stopGeneration, isGenerating, currentCharacter, currentChat,
-    swipeMessage, continueGeneration, impersonateMessage,
-    regenerateMessage, deleteMessage, addToast,
-    setActivePanel, togglePromptInspect, promptInspectEnabled,
-    quickReplySettings,
-    groupChatParticipants, characters, generateGroupResponse, selectedCharacterForResponse, setSelectedCharacterForResponse,
-  } = useStore();
+  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+  const sendMessage = useStore(s => s.sendMessage);
+  const stopGeneration = useStore(s => s.stopGeneration);
+  const isGenerating = useStore(s => s.isGenerating);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const currentChat = useStore(s => s.currentChat);
+  const swipeMessage = useStore(s => s.swipeMessage);
+  const continueGeneration = useStore(s => s.continueGeneration);
+  const impersonateMessage = useStore(s => s.impersonateMessage);
+  const regenerateMessage = useStore(s => s.regenerateMessage);
+  const deleteMessage = useStore(s => s.deleteMessage);
+  const addToast = useStore(s => s.addToast);
+  const setActivePanel = useStore(s => s.setActivePanel);
+  const togglePromptInspect = useStore(s => s.togglePromptInspect);
+  const promptInspectEnabled = useStore(s => s.promptInspectEnabled);
+  const quickReplySettings = useStore(s => s.quickReplySettings);
+  const groupChatParticipants = useStore(s => s.groupChatParticipants);
+  const characters = useStore(s => s.characters);
+  const generateGroupResponse = useStore(s => s.generateGroupResponse);
+  const selectedCharacterForResponse = useStore(s => s.selectedCharacterForResponse);
+  const setSelectedCharacterForResponse = useStore(s => s.setSelectedCharacterForResponse);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../store/state';
 import { api } from '../api/client';
 import { StoryState, CharacterState } from '../types';
@@ -21,20 +21,8 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [diff, setDiff] = useState<StateDiff | null>(null);
-  const { storyState, currentChat } = useStore();
-
-  useEffect(() => {
-    if (currentChat && !snapshot) {
-      loadSnapshot();
-    }
-  }, [messageId, currentChat]);
-
-  useEffect(() => {
-    if (snapshot && storyState) {
-      calculateDiff(snapshot);
-    }
-  }, [storyState, snapshot]);
+  const storyState = useStore(s => s.storyState);
+  const currentChat = useStore(s => s.currentChat);
 
   const loadSnapshot = async () => {
     if (!currentChat) return;
@@ -42,7 +30,6 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
     try {
       const snap = await api.getSnapshot(currentChat.id, messageId);
       setSnapshot(snap);
-      calculateDiff(snap);
     } catch (e) {
       console.log('No snapshot found for this message');
     } finally {
@@ -50,13 +37,20 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
     }
   };
 
-  const calculateDiff = (snap: any) => {
-    if (!snap || !storyState) return;
+  useEffect(() => {
+    if (currentChat && !snapshot) {
+      loadSnapshot();
+    }
+  }, [messageId, currentChat]);
+
+  // Memoize diff calculation to avoid re-running JSON.stringify on every render
+  const diff = useMemo(() => {
+    if (!snapshot || !storyState) return null;
 
     const diff: StateDiff = {};
 
     // Character changes
-    const oldChars = snap.characters || {};
+    const oldChars = snapshot.characters || {};
     const newChars = storyState.characters || {};
     const charDiff: Record<string, Partial<CharacterState>> = {};
 
@@ -84,39 +78,54 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
       diff.characters = charDiff;
     }
 
-    // Relationship changes
-    if (JSON.stringify(storyState.relationships) !== JSON.stringify(snap.relationships)) {
+    // Relationship changes - use shallow comparison instead of JSON.stringify
+    const oldRels = snapshot.relationships || {};
+    const newRels = storyState.relationships || {};
+    const relKeys = Object.keys(newRels);
+    const relChanged = relKeys.length !== Object.keys(oldRels).length ||
+      relKeys.some(k => newRels[k] !== oldRels[k]);
+    if (relChanged) {
       diff.relationships = storyState.relationships;
     }
 
     // Situation changes
-    if (storyState.current_situation !== snap.current_situation) {
+    if (storyState.current_situation !== snapshot.current_situation) {
       diff.current_situation = storyState.current_situation;
     }
 
-    // Rules changes
-    if (JSON.stringify(storyState.rules) !== JSON.stringify(snap.rules)) {
+    // Rules changes - use shallow comparison
+    const oldRules = snapshot.rules || [];
+    const newRules = storyState.rules || [];
+    const rulesChanged = newRules.length !== oldRules.length ||
+      newRules.some((r: any, i: number) => r !== oldRules[i]);
+    if (rulesChanged) {
       diff.rules = storyState.rules;
     }
 
-    // Relationship Details changes
-    const oldDetails = (snap as any).relationship_details || {};
+    // Relationship Details changes - use shallow comparison
+    const oldDetails = (snapshot as any).relationship_details || {};
     const newDetails = (storyState as any).relationship_details || {};
-    if (JSON.stringify(oldDetails) !== JSON.stringify(newDetails)) {
+    const detailKeys = Object.keys(newDetails);
+    const detailsChanged = detailKeys.length !== Object.keys(oldDetails).length ||
+      detailKeys.some(k => JSON.stringify(newDetails[k]) !== JSON.stringify(oldDetails[k]));
+    if (detailsChanged) {
       diff.relationship_details = newDetails;
     }
 
-    // Memories changes
-    const oldMemories = (snap as any).memories || [];
+    // Memories changes - use shallow comparison
+    const oldMemories = (snapshot as any).memories || [];
     const newMemories = (storyState as any).memories || [];
-    if (JSON.stringify(oldMemories) !== JSON.stringify(newMemories)) {
+    const memoriesChanged = newMemories.length !== oldMemories.length ||
+      newMemories.some((m: any, i: number) => m.content !== oldMemories[i]?.content);
+    if (memoriesChanged) {
       diff.memories = newMemories;
     }
 
     if (Object.keys(diff).length > 0) {
-      setDiff(diff);
+      return diff;
     }
-  };
+    return null;
+  }, [snapshot, storyState]);
 
   if (isUser) return null;
 
