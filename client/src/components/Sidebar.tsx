@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react';
 import { useStore } from '../store/state';
+import { Chapter } from '../types';
 import CharacterAvatar from './CharacterAvatar';
 import PluginsPanel from './PluginsPanel';
+import ChapterEditor from './ChapterEditor';
 import { CharacterSkeleton, ChatSkeleton, PersonaSkeleton, LorebookSkeleton } from './LoadingSkeleton';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -18,10 +20,11 @@ export default function Sidebar() {
     showConfirm, addToast,
     activePanel, panelOpen,
     loadingCharacters, loadingChats, loadingPersonas, loadingLorebooks,
-    chapters, chapterSettings,
+    chapters, chapterSettings, deleteChapter,
     createGroupChat, selectChat: selectChatAction,
   } = useStore();
 
+  const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 150);
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
@@ -632,27 +635,25 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="space-y-1">
-            {chapters.map((ch) => (
+            {chapters.map((ch, chIdx) => (
               <div
                 key={ch.id}
                 className="p-2.5 rounded-lg cursor-pointer mb-1 transition-colors hover:bg-tavern-hover text-tavern-text group"
-                onClick={() => {
-                  // اسکرول به chapter marker در message list
+              >
+                <div className="flex items-start justify-between" onClick={() => {
                   const marker = document.getElementById(`chapter-marker-${ch.id}`);
                   if (marker) {
                     marker.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }
                   closeSidebarIfMobile();
-                }}
-              >
-                <div className="flex items-start justify-between">
+                }}>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <svg className="w-3 h-3 text-tavern-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                       </svg>
                       <span className="text-sm truncate font-medium">
-                        {ch.title || `Chapter ${chapters.indexOf(ch) + 1}`}
+                        {ch.title || `Chapter ${chIdx + 1}`}
                       </span>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-[10px] text-tavern-faint">
@@ -663,6 +664,37 @@ export default function Sidebar() {
                       )}
                     </div>
                   </div>
+                </div>
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingChapter(ch);
+                      closeSidebarIfMobile();
+                    }}
+                    className="text-tavern-dim hover:text-tavern-accent text-[10px] px-2 py-0.5 rounded hover:bg-tavern-hover transition-colors flex items-center gap-1"
+                    title="Edit chapter"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Edit
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const ok = await showConfirm(`Delete "${ch.title || `Chapter ${chIdx + 1}`}"? Messages will not be deleted.`);
+                      if (ok) deleteChapter(ch.id);
+                    }}
+                    className="text-tavern-dim hover:text-red-400 text-[10px] px-2 py-0.5 rounded hover:bg-tavern-hover transition-colors flex items-center gap-1"
+                    title="Delete chapter"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
@@ -828,6 +860,14 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Chapter Editor Modal */}
+      {editingChapter && (
+        <ChapterEditor
+          chapter={editingChapter}
+          onClose={() => setEditingChapter(null)}
+        />
       )}
     </div>
   ) : null;
