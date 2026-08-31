@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message, Character, Chat, Persona, Chapter } from '../types';
 import { useStore } from '../store/state';
@@ -28,7 +28,7 @@ export default function MessageList({
   const prevMessagesLengthRef = useRef(messages.length);
   const chatIdRef = useRef<string | null>(null);
   const isAtBottomRef = useRef(true);
-  const [itemsVersion, setItemsVersion] = useState(0);
+  const itemsCountRef = useRef(0);
   const chapterStartId = useStore(s => s.chapterStartId);
   const chapterEndId = useStore(s => s.chapterEndId);
 
@@ -36,10 +36,14 @@ export default function MessageList({
   const chapterByEndId = new Map(chapters.map(c => [c.end_message_id, c]));
 
   // Helper: scroll to the very last item in the Virtuoso list
+  // Uses a ref for items count so the callback always reads the current value
+  // without needing to be recreated on every render
   const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
-    // itemsVersion is just a dependency trigger; actual items.length is read from Virtuoso's DOM
-    virtuosoRef.current?.scrollToIndex({ index: items.length - 1, align: 'end', behavior });
-  }, [itemsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+    const count = itemsCountRef.current;
+    if (count > 0) {
+      virtuosoRef.current?.scrollToIndex({ index: count - 1, align: 'end', behavior });
+    }
+  }, []);
 
   // وقتی چت عوض می‌شود به پایین برو
   useEffect(() => {
@@ -111,10 +115,10 @@ export default function MessageList({
     items.push({ type: 'streaming', message: streamingMessage });
   }
 
-  // Notify scroll helper that items changed
-  useEffect(() => {
-    setItemsVersion(v => v + 1);
-  }, [items.length]);
+  // Keep itemsCountRef in sync with the current items length
+  // This must run synchronously during render so that scrollToBottom
+  // always sees the latest count (useEffect runs async, too late)
+  itemsCountRef.current = items.length;
 
   const computeItemKey = useCallback((index: number) => {
     const item = items[index];
