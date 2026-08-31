@@ -353,6 +353,11 @@ export const api = {
   clearAdvisorMessages: (chatId: string) => request(`/story-advisor/chats/${chatId}/messages`, { method: 'DELETE' }),
   executeAdvisorTool: (data: { advisor_chat_id: string; tool_name: string; arguments: Record<string, any> }) =>
     request('/story-advisor/execute-tool', { method: 'POST', body: JSON.stringify(data) }),
+  // ─── Character Message Generation ───
+  generateCharacterMessage: (data: { advisor_chat_id: string; character_id: string; instruction: string }) =>
+    request('/story-advisor/generate-message', { method: 'POST', body: JSON.stringify(data) }),
+  insertGeneratedMessage: (data: { advisor_chat_id: string; character_id: string; content: string }) =>
+    request('/story-advisor/insert-message', { method: 'POST', body: JSON.stringify(data) }),
   sendAdvisorMessage: async (
     data: { advisor_chat_id: string; message: string },
     onToken: (token: string) => void,

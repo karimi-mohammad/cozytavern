@@ -127,6 +127,27 @@ export const advisorTools = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_character_message',
+      description: 'Generate a message from a specific character in the chat. Use this when the user wants to write what a character should say or do. The message will be previewed as HTML and requires user approval before being added to the chat.',
+      parameters: {
+        type: 'object',
+        properties: {
+          character_id: {
+            type: 'string',
+            description: 'ID of the character to generate the message for',
+          },
+          instruction: {
+            type: 'string',
+            description: 'The direction/instruction for what the character should do or say (e.g., "Walk to the door and say goodbye")',
+          },
+        },
+        required: ['character_id', 'instruction'],
+      },
+    },
+  },
 ];
 
 // Build context about available lorebooks and characters for the advisor
@@ -149,6 +170,17 @@ export function buildAdvisorToolsContext(db: any): string {
     parts.push(`[Available Characters]\n${charList}`);
   } else {
     parts.push(`[Available Characters]\nNone yet. Use create_character to create one.`);
+  }
+
+  // Also list active group chat participants
+  const chatParticipants = db.prepare(
+    'SELECT c.id, c.name, c.description, c.personality FROM chat_participants cp JOIN characters c ON cp.character_id = c.id WHERE cp.is_active = 1'
+  ).all() as any[];
+  if (chatParticipants.length > 0) {
+    const participantList = chatParticipants.map((p: any) =>
+      `- ${p.name} (ID: ${p.id})${p.description ? `: ${p.description.slice(0, 100)}` : ''}`
+    ).join('\n');
+    parts.push(`[Active Group Chat Participants]\n${participantList}`);
   }
 
   return parts.join('\n\n');
@@ -180,6 +212,9 @@ export async function executeAdvisorTool(
         return executeCreateCharacter(args, db);
       case 'update_character':
         return executeUpdateCharacter(args, db);
+      case 'generate_character_message':
+        // This tool is handled client-side, return success for now
+        return { success: true, message: 'Message generation initiated', data: args };
       default:
         return { success: false, message: `Unknown tool: ${name}` };
     }

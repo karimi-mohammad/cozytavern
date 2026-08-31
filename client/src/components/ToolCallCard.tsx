@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 
 export interface ToolCallData {
   id: string;
@@ -11,6 +14,7 @@ interface ToolCallCardProps {
   toolCall: ToolCallData;
   onApprove: (toolName: string, args: Record<string, any>) => void;
   onReject: () => void;
+  onInsert?: (args: Record<string, any>) => void;
   isExecuting?: boolean;
   result?: { success: boolean; message: string } | null;
 }
@@ -21,6 +25,11 @@ const TOOL_LABELS: Record<string, { icon: string; label: string; description: st
   update_lorebook_entry: { icon: '✏️', label: 'ویرایش Entry لوربوک', description: 'تغییر محتوای یک entry موجود' },
   create_character: { icon: '👤', label: 'ساخت کاراکتر', description: 'ایجاد یک کاراکتر جدید' },
   update_character: { icon: '🔄', label: 'ویرایش کاراکتر', description: 'تغییر اطلاعات کاراکتر موجود' },
+  generate_character_message: {
+    icon: '🎭',
+    label: 'تولید پیام کاراکتر',
+    description: 'تولید یک پیام از طرف کاراکتر بر اساس دستورالعمل'
+  },
 };
 
 function formatArguments(name: string, args: Record<string, any>): { label: string; value: string }[] {
@@ -65,6 +74,10 @@ function formatArguments(name: string, args: Record<string, any>): { label: stri
     if (args.name) items.push({ label: 'نام جدید', value: args.name });
     if (args.description) items.push({ label: 'توضیحات ظاهری', value: args.description.slice(0, 200) + (args.description.length > 200 ? '...' : '') });
     if (args.personality) items.push({ label: 'شخصیت', value: args.personality.slice(0, 200) + (args.personality.length > 200 ? '...' : '') });
+  } else if (name === 'generate_character_message') {
+    if (args.character_id) items.push({ label: 'شناسه کاراکتر', value: args.character_id });
+    if (args.instruction) items.push({ label: 'دستورالعمل', value: args.instruction });
+    if (args.generated_content) items.push({ label: 'پیام تولید شده', value: '✅ نمایش در زیر' });
   }
 
   // Fallback: show all args if no specific handling
@@ -78,7 +91,7 @@ function formatArguments(name: string, args: Record<string, any>): { label: stri
   return items;
 }
 
-export default function ToolCallCard({ toolCall, onApprove, onReject, isExecuting, result }: ToolCallCardProps) {
+export default function ToolCallCard({ toolCall, onApprove, onReject, onInsert, isExecuting, result }: ToolCallCardProps) {
   const [showRaw, setShowRaw] = useState(false);
   const toolInfo = TOOL_LABELS[toolCall.name] || { icon: '🔧', label: toolCall.name, description: '' };
   const argItems = formatArguments(toolCall.name, toolCall.arguments);
@@ -128,6 +141,20 @@ export default function ToolCallCard({ toolCall, onApprove, onReject, isExecutin
         )}
       </div>
 
+      {/* Generated Message Preview (for generate_character_message) */}
+      {!showRaw && toolCall.arguments.generated_content && (
+        <div className="mt-3 border-t border-tavern-border/30 pt-3">
+          <p className="text-[10px] text-tavern-faint mb-2">پیام تولید شده:</p>
+          <div className="bg-tavern-input rounded-lg p-3 border border-tavern-border/50">
+            <div dir="auto" className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-tavern-bg prose-pre:border prose-pre:border-tavern-border leading-relaxed text-xs">
+              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {toolCall.arguments.generated_content}
+              </Markdown>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Result (if executed) */}
       {result && (
         <div className={`px-3 py-2 border-t border-tavern-border/30 text-[10px] ${
@@ -145,6 +172,24 @@ export default function ToolCallCard({ toolCall, onApprove, onReject, isExecutin
             className="flex-1 py-1.5 bg-green-500/10 border border-green-500/30 rounded-lg text-[10px] text-green-400 hover:bg-green-500/20 transition-colors font-medium"
           >
             ✅ تایید و اجرا
+          </button>
+          <button
+            onClick={onReject}
+            className="flex-1 py-1.5 bg-red-500/10 border border-red-500/30 rounded-lg text-[10px] text-red-400 hover:bg-red-500/20 transition-colors font-medium"
+          >
+            ❌ رد
+          </button>
+        </div>
+      )}
+
+      {/* Insert button for generated messages */}
+      {!result && !isExecuting && toolCall.arguments.generated_content && onInsert && (
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-tavern-border/30">
+          <button
+            onClick={() => onInsert(toolCall.arguments)}
+            className="flex-1 py-1.5 bg-green-500/10 border border-green-500/30 rounded-lg text-[10px] text-green-400 hover:bg-green-500/20 transition-colors font-medium"
+          >
+            ✅ درج در چت
           </button>
           <button
             onClick={onReject}

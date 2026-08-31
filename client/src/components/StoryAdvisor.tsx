@@ -20,6 +20,7 @@ interface AdvisorMessage {
 }
 
 const QUICK_ACTIONS = [
+  { label: '🎭 تولید پیام کاراکتر', message: 'بر اساس وضعیت فعلی داستان، یک پیام از طرف یکی از کاراکترهای فعال گروپ چت تولید کن. ابتدا کاراکتر مورد نظر و سپس مسیر داستانی را مشخص کن.' },
   { label: '🎯 مسیر داستانی', message: 'بر اساس وضعیت فعلی داستان، چند مسیر پیشنهادی برای ادامه داستان پیشنهاد بده. مسیرها باید متنوع باشن و شامل تضاد، رشد کاراکتر و لحظات دراماتیک باشن.' },
   { label: '🔍 بررسی مشکلات', message: 'داستان فعلی رو بررسی کن و هرگونه مشکل رو شناسایی کن: plot holes، ناهماهنگی شخصیت‌ها، pacing ضعیف، یا روابطی که منطقی پیش نرفتن. برای هر مشکل یه راهکار پیشنهاد بده.' },
   { label: '✏️ تغییرات کاراکتر', message: 'کاراکتر فعلی رو تحلیل کن و پیشنهاد بده چه تغییراتی در فیلدهای system_prompt، personality یا description باعث بهبود کیفیت پاسخ‌های AI بشه. متن دقیق تغییرات رو بنویس.' },
@@ -43,6 +44,7 @@ export default function StoryAdvisor() {
   const [pendingToolCalls, setPendingToolCalls] = useState<ToolCallData[]>([]);
   const [executingTool, setExecutingTool] = useState<string | null>(null);
   const [toolResults, setToolResults] = useState<Record<string, { success: boolean; message: string }>>({});
+  const [isGeneratingMessage, setIsGeneratingMessage] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -256,6 +258,40 @@ export default function StoryAdvisor() {
   const handleApproveTool = useCallback(async (toolName: string, toolArgs: Record<string, any>) => {
     if (!currentAdvisorChat) return;
 
+    // Special handling for generate_character_message
+    if (toolName === 'generate_character_message') {
+      setIsGeneratingMessage(toolArgs.character_id);
+      try {
+        const result = await api.generateCharacterMessage({
+          advisor_chat_id: currentAdvisorChat.id,
+          character_id: toolArgs.character_id,
+          instruction: toolArgs.instruction,
+        });
+
+        if (result.success && result.content) {
+          // Update the tool call with generated content for preview
+          setPendingToolCalls(prev => prev.map(tc => {
+            if (tc.name === 'generate_character_message' && tc.arguments.character_id === toolArgs.character_id) {
+              return {
+                ...tc,
+                arguments: { ...tc.arguments, generated_content: result.content },
+              };
+            }
+            return tc;
+          }));
+          addToast('Message generated successfully', 'success');
+        } else {
+          addToast(`Error: ${result.error || 'Failed to generate message'}`, 'error');
+        }
+      } catch (error: any) {
+        addToast(`Error: ${error.message}`, 'error');
+      } finally {
+        setIsGeneratingMessage(null);
+      }
+      return;
+    }
+
+    // Default handling for other tools
     setExecutingTool(toolName);
     try {
       const result = await api.executeAdvisorTool({
@@ -287,6 +323,36 @@ export default function StoryAdvisor() {
   const handleRejectTool = useCallback((toolName: string) => {
     setPendingToolCalls(prev => prev.filter(tc => tc.name !== toolName));
   }, []);
+
+  const handleInsertMessage = useCallback(async (toolArgs: Record<string, any>) => {
+    if (!currentAdvisorChat) return;
+
+    const { character_id, generated_content } = toolArgs;
+    if (!generated_content) {
+      addToast('No generated content to insert', 'error');
+      return;
+    }
+
+    try {
+      const result = await api.insertGeneratedMessage({
+        advisor_chat_id: currentAdvisorChat.id,
+        character_id,
+        content: generated_content,
+      });
+
+      if (result.success) {
+        addToast('Message inserted into chat', 'success');
+        // Remove from pending
+        setPendingToolCalls(prev => prev.filter(tc => 
+          !(tc.name === 'generate_character_message' && tc.arguments.character_id === character_id)
+        ));
+      } else {
+        addToast('Failed to insert message', 'error');
+      }
+    } catch (error: any) {
+      addToast(`Error: ${error.message}`, 'error');
+    }
+  }, [currentAdvisorChat, addToast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
@@ -431,13 +497,14 @@ export default function StoryAdvisor() {
 
             {/* Pending Tool Calls */}
             {pendingToolCalls.map((tc) => (
-              <div key={tc.id || tc.name} className="flex justify-start">
+              <div key={tc.id || tc.name || tc.arguments?.character_id} className="flex justify-start">
                 <div className="w-full max-w-[95%]">
                   <ToolCallCard
                     toolCall={tc}
                     onApprove={handleApproveTool}
                     onReject={() => handleRejectTool(tc.name)}
-                    isExecuting={executingTool === tc.name}
+                    onInsert={tc.name === 'generate_character_message' ? handleInsertMessage : undefined}
+                    isExecuting={executingTool === tc.name || (tc.name === 'generate_character_message' && isGeneratingMessage === tc.arguments?.character_id)}
                     result={toolResults[tc.name] || null}
                   />
                 </div>

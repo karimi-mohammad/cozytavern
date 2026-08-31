@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull } from '../utils/providers';
 import { advisorTools, buildAdvisorToolsContext, executeAdvisorTool } from '../utils/advisor-tools';
+import { generateCharacterMessage } from '../utils/generate-message';
 
 const router = Router();
 
@@ -522,6 +523,82 @@ router.post('/send', async (req: Request, res: Response) => {
       res.end();
     }
   }
+});
+
+// ─── POST /generate-message — Generate a character message preview ───
+router.post('/generate-message', async (req: Request, res: Response) => {
+  const db = getDb();
+  const { advisor_chat_id, character_id, instruction } = req.body;
+
+  if (!advisor_chat_id || !character_id || !instruction?.trim()) {
+    res.status(400).json({ error: 'advisor_chat_id, character_id, and instruction are required' });
+    return;
+  }
+
+  const advisorChat = db.prepare('SELECT * FROM story_advisor_chats WHERE id = ?').get(advisor_chat_id) as any;
+  if (!advisorChat) {
+    res.status(404).json({ error: 'Advisor chat not found' });
+    return;
+  }
+
+  const result = await generateCharacterMessage({
+    chat_id: advisorChat.main_chat_id,
+    character_id,
+    instruction: instruction.trim(),
+    db,
+  });
+
+  res.json(result);
+});
+
+// ─── POST /insert-message — Insert a generated message into the main chat ───
+router.post('/insert-message', async (req: Request, res: Response) => {
+  const db = getDb();
+  const { advisor_chat_id, character_id, content } = req.body;
+
+  if (!advisor_chat_id || !character_id || !content?.trim()) {
+    res.status(400).json({ error: 'advisor_chat_id, character_id, and content are required' });
+    return;
+  }
+
+  const advisorChat = db.prepare('SELECT * FROM story_advisor_chats WHERE id = ?').get(advisor_chat_id) as any;
+  if (!advisorChat) {
+    res.status(404).json({ error: 'Advisor chat not found' });
+    return;
+  }
+
+  // Get character info
+  const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
+  if (!character) {
+    res.status(404).json({ error: 'Character not found' });
+    return;
+  }
+
+  // Insert message into main chat
+  const messageId = uuidv4();
+  const now = new Date().toISOString();
+
+  db.prepare(
+    `INSERT INTO messages (id, chat_id, role, content, sender_name, sender_avatar, sender_character_id, swipes, swipe_id, is_edited, is_system, send_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    messageId,
+    advisorChat.main_chat_id,
+    'assistant',
+    content.trim(),
+    character.name,
+    character.avatar || '',
+    character_id,
+    '[]',
+    0,
+    0,
+    0,
+    now
+  );
+
+  // Update chat timestamp
+  db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(now, advisorChat.main_chat_id);
+
+  res.json({ success: true, message_id: messageId });
 });
 
 // ─── POST /execute-tool — Execute an approved tool call ───
