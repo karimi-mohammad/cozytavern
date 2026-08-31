@@ -139,7 +139,7 @@ export default function ChapterTriggerProgress() {
   const inChapterTriggerCount = allTriggerMatches.filter(t => t.isInChapter).length;
 
   return (
-    <div className="my-2 mx-4">
+    <div className="my-2 max-w-[50vw] mx-auto w-full">
       <div className={`rounded-lg border text-xs transition-all ${
         isReady
           ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'

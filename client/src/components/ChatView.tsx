@@ -8,6 +8,7 @@ import { ChatSkeleton } from './LoadingSkeleton';
 import { Chapter } from '../types';
 import ChapterEditor from './ChapterEditor';
 import ChapterSuggestion from './ChapterSuggestion';
+import ChapterTriggerProgress from './ChapterTriggerProgress';
 
 export default function ChatView() {
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
@@ -251,6 +252,7 @@ export default function ChatView() {
             onBranch={handleBranch}
             onChapterClick={(ch) => setEditingChapter(ch)}
           />
+          <ChapterTriggerProgress />
           <MessageInput />
           <ChapterSuggestion />
           {editingChapter && (
