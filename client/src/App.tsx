@@ -19,6 +19,7 @@ const LorebookEditor = lazy(() => import('./components/LorebookEditor'));
 const PersonaEditor = lazy(() => import('./components/PersonaEditor'));
 const StoryStateMonitor = lazy(() => import('./components/StoryStateMonitor'));
 const SearchPanel = lazy(() => import('./components/SearchPanel'));
+const StoryAdvisor = lazy(() => import('./components/StoryAdvisor'));
 const ChapterPreviewModal = lazy(() => import('./components/ChapterPreviewModal'));
 const ChapterReviewModal = lazy(() => import('./components/ChapterReviewModal'));
 
@@ -88,6 +89,9 @@ function App() {
 
           {/* Search Panel - absolutely positioned overlay */}
           <Suspense fallback={null}><SearchPanel /></Suspense>
+
+          {/* Story Advisor Panel - absolutely positioned overlay */}
+          <Suspense fallback={null}><StoryAdvisor /></Suspense>
 
           {/* Sidebar - absolutely positioned overlay */}
           <Sidebar />

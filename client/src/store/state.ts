@@ -100,6 +100,10 @@ interface AppState {
   loadMoreSearchResults: () => Promise<void>;
   scrollToMessage: (messageId: string) => void;
 
+  // Story Advisor
+  storyAdvisorOpen: boolean;
+  setStoryAdvisorOpen: (open: boolean) => void;
+
   // UI State
   theme: 'dark' | 'darker' | 'light' | 'midnight' | 'forest' | 'sunset' | 'ocean' | 'slate' | 'mocha' | 'teal' | 'softslate' | 'stone' | 'graphite';
   setTheme: (theme: 'dark' | 'darker' | 'light' | 'midnight' | 'forest' | 'sunset' | 'ocean' | 'slate' | 'mocha' | 'teal' | 'softslate' | 'stone' | 'graphite') => void;
@@ -290,6 +294,10 @@ export const useStore = create<AppState>((set, get) => ({
   chapterFlowSummary: '',
   chapterFlowSummaryMetadata: null,
   chapterFlowCreatedChapterId: null,
+
+  // Story Advisor
+  storyAdvisorOpen: false,
+  setStoryAdvisorOpen: (open) => set({ storyAdvisorOpen: open, ...(open ? { searchOpen: false } : {}), ...(open ? { panelOpen: false } : {}) }),
 
   // Plugins
   lorebookPluginSettings: null,
@@ -575,7 +583,7 @@ export const useStore = create<AppState>((set, get) => ({
   searchLoading: false,
   searchOpen: false,
   setSearchQuery: (query) => set({ searchQuery: query }),
-  setSearchOpen: (open) => set({ searchOpen: open }),
+  setSearchOpen: (open) => set({ searchOpen: open, ...(open ? { storyAdvisorOpen: false } : {}) }),
   searchMessages: async (query, opts) => {
     if (!query.trim()) {
       set({ searchResults: [], searchTotal: 0 });
@@ -641,7 +649,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (s.activePanel === panel && s.panelOpen) {
       return { panelOpen: false };
     }
-    return { activePanel: panel, panelOpen: true };
+    return { activePanel: panel, panelOpen: true, storyAdvisorOpen: false };
   }),
   togglePanel: () => set(s => ({ panelOpen: !s.panelOpen })),
   toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),

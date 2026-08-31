@@ -1,7 +1,7 @@
 import { useStore } from '../store/state';
 
 export default function IconBar() {
-  const { activePanel, setActivePanel, panelOpen, searchOpen, setSearchOpen } = useStore();
+  const { activePanel, setActivePanel, panelOpen, searchOpen, setSearchOpen, storyAdvisorOpen, setStoryAdvisorOpen } = useStore();
 
   const icons = [
     {
@@ -99,6 +99,24 @@ export default function IconBar() {
           </button>
         );
       })}
+
+      {/* Story Guide button */}
+      <button
+        onClick={() => setStoryAdvisorOpen(!storyAdvisorOpen)}
+        className={`relative w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 group ${
+          storyAdvisorOpen
+            ? 'bg-tavern-accent/20 text-tavern-accent'
+            : 'text-tavern-muted hover:text-tavern-text-bright hover:bg-tavern-hover'
+        } active:scale-90`}
+        aria-label="Story Guide"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+        </svg>
+        <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-tavern-surface2 border border-tavern-border text-[11px] font-medium text-tavern-text whitespace-nowrap shadow-lg shadow-black/30 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 delay-300 z-50">
+          Story Guide
+        </span>
+      </button>
 
       {/* Separator */}
       <div className="w-6 h-px bg-tavern-border/50 my-1" />

@@ -290,6 +290,27 @@ export function initDb(): void {
     );
   `);
 
+  // ─── Story Advisor tables ───
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS story_advisor_chats (
+      id TEXT PRIMARY KEY,
+      main_chat_id TEXT NOT NULL,
+      name TEXT DEFAULT 'Advisor Chat',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (main_chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS story_advisor_messages (
+      id TEXT PRIMARY KEY,
+      advisor_chat_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+      content TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (advisor_chat_id) REFERENCES story_advisor_chats(id) ON DELETE CASCADE
+    );
+  `);
+
   // ─── Performance indexes ───
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
@@ -299,6 +320,8 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_chapters_chat_id ON chapters(chat_id);
     CREATE INDEX IF NOT EXISTS idx_chat_participants_chat_id ON chat_participants(chat_id);
     CREATE INDEX IF NOT EXISTS idx_settings_chat ON group_chat_settings(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_advisor_chats_main_chat ON story_advisor_chats(main_chat_id);
+    CREATE INDEX IF NOT EXISTS idx_advisor_msgs_chat ON story_advisor_messages(advisor_chat_id);
   `);
 
   // Migration: انتقال lorebook_id از chats به chat_lorebooks (پشتیبانی از چند لور بوک)

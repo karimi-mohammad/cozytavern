@@ -342,6 +342,80 @@ export const api = {
     }
   },
 
+  // ─── Story Advisor ───
+  getAdvisorChats: (mainChatId: string) => request(`/story-advisor/chats/${mainChatId}`),
+  createAdvisorChat: (data: { main_chat_id: string; name?: string }) =>
+    request('/story-advisor/chats', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAdvisorChat: (id: string) => request(`/story-advisor/chats/${id}`, { method: 'DELETE' }),
+  renameAdvisorChat: (id: string, name: string) =>
+    request(`/story-advisor/chats/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  getAdvisorMessages: (chatId: string) => request(`/story-advisor/chats/${chatId}/messages`),
+  clearAdvisorMessages: (chatId: string) => request(`/story-advisor/chats/${chatId}/messages`, { method: 'DELETE' }),
+  sendAdvisorMessage: async (
+    data: { advisor_chat_id: string; message: string },
+    onToken: (token: string) => void,
+    onDone: () => void,
+    signal?: AbortSignal
+  ) => {
+    const res = await fetch(`${BASE}/story-advisor/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error' }));
+      throw new Error(err.error || 'Connection error');
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+
+    if (contentType.includes('text/event-stream')) {
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        let result: { done: boolean; value?: Uint8Array };
+        try {
+          result = await reader.read();
+        } catch (e: any) {
+          if (signal?.aborted) throw e;
+          throw e;
+        }
+        if (result.done) break;
+
+        buffer += decoder.decode(result.value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              onDone();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.token) onToken(parsed.token);
+              else if (parsed.error) throw new Error(parsed.error);
+            } catch (e: any) {
+              if (e?.message && !e.message.includes('JSON')) throw e;
+            }
+          }
+        }
+      }
+      onDone();
+    } else {
+      const data = await res.json();
+      if (data.content) onToken(data.content);
+      setTimeout(() => onDone(), 0);
+    }
+  },
+
   // ─── Character Wizard ───
   wizardChat: async (
     messages: { role: string; content: string }[],
