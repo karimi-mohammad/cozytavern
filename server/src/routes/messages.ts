@@ -145,7 +145,7 @@ router.put('/:id', (req: Request, res: Response) => {
   });
 });
 
-// حذف پیام — فقط همون پیام حذف می‌شه، بقیه پیام‌ها دست‌نخورده باقی می‌مونن
+// حذف پیام — با بازگردانی state به snapshot قبل از آن پیام
 router.delete('/:id', (req: Request, res: Response) => {
   const db = getDb();
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
@@ -154,9 +154,37 @@ router.delete('/:id', (req: Request, res: Response) => {
     return;
   }
 
+  // ─── Story State Rollback ───
+  // پیدا کردن snapshot مرتبط با این پیام و بازگردانی state به آن
+  const snapshotToRestore = db.prepare(
+    'SELECT * FROM chat_state_snapshots WHERE chat_id = ? AND message_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(message.chat_id, req.params.id) as any;
+
+  if (snapshotToRestore) {
+    console.log(`[StoryState] Message ${req.params.id} deleted, restoring state from snapshot...`);
+    const now = new Date().toISOString();
+
+    // بروزرسانی state به مقدار snapshot
+    const existingState = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(message.chat_id) as any;
+    if (existingState) {
+      db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+        .run(snapshotToRestore.state_json, now, message.chat_id);
+    } else {
+      // اگر state وجود نداشت، از snapshot ایجاد کن
+      db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+        .run(uuidv4(), message.chat_id, snapshotToRestore.state_json, now);
+    }
+
+    // پاکسازی: حذف snapshot پیام حذف‌شده
+    db.prepare('DELETE FROM chat_state_snapshots WHERE id = ?').run(snapshotToRestore.id);
+
+    console.log(`[StoryState] State rolled back to snapshot from message ${req.params.id}`);
+  }
+
+  // حذف پیام
   db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
 
-  res.json({ success: true });
+  res.json({ success: true, story_state_rolled_back: !!snapshotToRestore });
 });
 
 // Regenerate - بازسازی آخرین پاسخ
