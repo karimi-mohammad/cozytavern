@@ -154,6 +154,8 @@ export const api = {
     request('/chapters', { method: 'POST', body: JSON.stringify({ ...data, inspect: true }) }),
   inspectRegenerateChapter: (id: string) =>
     request(`/chapters/${id}/regenerate`, { method: 'POST', body: JSON.stringify({ inspect: true }) }),
+  inspectGroupChat: (chatId: string, data: any) =>
+    request(`/group-chats/${chatId}/generate`, { method: 'POST', body: JSON.stringify({ ...data, inspect: true }) }),
 
   // ─── Group Chats ───
   createGroupChat: (data: { name?: string; character_ids: string[]; lorebook_id?: string }) =>
@@ -171,7 +173,7 @@ export const api = {
     request(`/group-chats/${chatId}/generate`, { method: 'POST', body: JSON.stringify(data) }),
   generateGroupChatResponseStream: async (
     chatId: string,
-    data: { character_id: string; persona_id?: string; lorebook_id?: string; continue_mode?: boolean; update_message_id?: string },
+    data: { character_id: string; persona_id?: string; lorebook_id?: string; continue_mode?: boolean; update_message_id?: string; edited_messages?: any[] },
     onMessageId: (id: string) => void,
     onToken: (token: string) => void,
     onDone: () => void,
@@ -231,6 +233,11 @@ export const api = {
     }
   },
 
+  // ─── Group Chat Settings ───
+  getGroupChatSettings: (chatId: string) => request(`/group-chats/${chatId}/settings`),
+  updateGroupChatSettings: (chatId: string, data: any) =>
+    request(`/group-chats/${chatId}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
+
   // ─── Character Import/Export ───
   exportCharacterJson: (id: string) => downloadBlob(`/characters/${id}/export/json`, 'character.json'),
   exportCharacterPng: (id: string) => downloadBlob(`/characters/${id}/export/png`, 'character.png'),
@@ -239,11 +246,13 @@ export const api = {
   importCharacterFromBase64: (fileB64: string) =>
     request('/characters/import', { method: 'POST', body: JSON.stringify({ file_b64: fileB64 }) }),
 
-  // ─── Chat Export/Import ───
+  // ─── Chat Export/Import/Duplicate ───
   exportChat: (chatId: string, chatName: string) =>
     downloadBlob(`/chats/${chatId}/export`, `chat-${chatName || chatId}.json`),
   importChat: (characterId: string, data: any) =>
     request('/chats/import', { method: 'POST', body: JSON.stringify({ character_id: characterId, data }) }),
+  duplicateChat: (chatId: string, name?: string) =>
+    request(`/chats/${chatId}/duplicate`, { method: 'POST', body: JSON.stringify({ name }) }),
 
   // ─── Full Database Backup ───
   exportBackup: () => downloadBlob('/backup/export', 'cozytavern-backup.json'),
@@ -308,13 +317,18 @@ export const api = {
               const parsed = JSON.parse(data);
               if (parsed.message_id) onMessageId(parsed.message_id);
               else if (parsed.token) onToken(parsed.token);
+              else if (parsed.error) {
+                throw new Error(parsed.error);
+              }
               else if (parsed.story_state_updated) {
                 // Story state was updated by AI - trigger reload in store
                 try {
                   window.dispatchEvent(new CustomEvent('story-state-updated', { detail: parsed.state }));
                 } catch {}
               }
-            } catch {}
+            } catch (e: any) {
+              if (e?.message && !e.message.includes('JSON')) throw e;
+            }
           }
         }
       }

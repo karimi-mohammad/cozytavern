@@ -17,17 +17,13 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  // Use first character as primary (for backward compat)
   const primaryCharId = character_ids[0];
-
-  // Create the chat
   const chatName = name || 'Group Chat';
   db.prepare(`
     INSERT INTO chats (id, character_id, name, is_group_chat, group_chat_name, lorebook_id, created_at, updated_at)
     VALUES (?, ?, ?, 1, ?, ?, ?, ?)
   `).run(id, primaryCharId, chatName, chatName, lorebook_id || '', now, now);
 
-  // Add participants
   const insertParticipant = db.prepare(`
     INSERT INTO chat_participants (id, chat_id, character_id, display_name, display_avatar, is_active, created_at)
     VALUES (?, ?, ?, ?, ?, 1, ?)
@@ -35,12 +31,7 @@ router.post('/', (req: Request, res: Response) => {
 
   for (const charId of character_ids) {
     const char = db.prepare('SELECT name, avatar FROM characters WHERE id = ?').get(charId) as any;
-    insertParticipant.run(
-      uuidv4(), id, charId,
-      char?.name || '',
-      char?.avatar || '',
-      now
-    );
+    insertParticipant.run(uuidv4(), id, charId, char?.name || '', char?.avatar || '', now);
   }
 
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(id) as any;
@@ -91,7 +82,6 @@ router.post('/:id/participants', (req: Request, res: Response) => {
     return;
   }
 
-  // Check if already a participant
   const existing = db.prepare(
     'SELECT id FROM chat_participants WHERE chat_id = ? AND character_id = ?'
   ).get(req.params.id, character_id);
@@ -129,7 +119,6 @@ router.post('/:id/add-character', (req: Request, res: Response) => {
     return;
   }
 
-  // Check if character exists
   const newChar = db.prepare('SELECT name, avatar FROM characters WHERE id = ?').get(character_id) as any;
   if (!newChar) {
     res.status(404).json({ error: 'Character not found' });
@@ -138,13 +127,10 @@ router.post('/:id/add-character', (req: Request, res: Response) => {
 
   const now = new Date().toISOString();
   const transaction = db.transaction(() => {
-    // If not a group chat, convert it
     if (!chat.is_group_chat) {
-      // Set as group chat
       db.prepare('UPDATE chats SET is_group_chat = 1, group_chat_name = ? WHERE id = ?')
         .run(chat.name, chat.id);
 
-      // Add original character as participant
       const originalChar = db.prepare('SELECT name, avatar FROM characters WHERE id = ?')
         .get(chat.character_id) as any;
 
@@ -153,39 +139,36 @@ router.post('/:id/add-character', (req: Request, res: Response) => {
           INSERT INTO chat_participants (id, chat_id, character_id, display_name, display_avatar, is_active, created_at)
           VALUES (?, ?, ?, ?, ?, 1, ?)
         `).run(uuidv4(), chat.id, chat.character_id, originalChar.name, originalChar.avatar || '', now);
+
+        db.prepare(`
+          UPDATE messages
+          SET sender_name = ?, sender_avatar = ?, sender_character_id = ?
+          WHERE chat_id = ? AND role = 'assistant' AND (sender_name = '' OR sender_name IS NULL)
+        `).run(originalChar.name, originalChar.avatar || '', chat.character_id, chat.id);
       }
     }
 
-    // Check if new character is already a participant
     const existing = db.prepare(
       'SELECT id FROM chat_participants WHERE chat_id = ? AND character_id = ?'
     ).get(chat.id, character_id);
 
     if (!existing) {
-      // Add new character as participant
       db.prepare(`
         INSERT INTO chat_participants (id, chat_id, character_id, display_name, display_avatar, is_active, created_at)
         VALUES (?, ?, ?, ?, ?, 1, ?)
       `).run(uuidv4(), chat.id, character_id, newChar.name, newChar.avatar || '', now);
     }
 
-    // Add system message if requested
     if (add_system_message !== false) {
       db.prepare(`
         INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date, sender_name)
         VALUES (?, ?, 'system', ?, '[]', 0, 0, 1, ?, '')
-      `).run(
-        uuidv4(),
-        chat.id,
-        `*${newChar.name} has entered the chat.*`,
-        now
-      );
+      `).run(uuidv4(), chat.id, `*${newChar.name} has entered the chat.*`, now);
     }
   });
 
   transaction();
 
-  // Return updated chat with participants
   const updatedChat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chat.id) as any;
   const participants = db.prepare(
     'SELECT * FROM chat_participants WHERE chat_id = ? ORDER BY created_at ASC'
@@ -246,32 +229,23 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     return;
   }
 
-  // Get character info
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
   if (!character) {
     res.status(400).json({ error: 'Character not found' });
     return;
   }
 
-  // Get persona
   const persona = persona_id ? db.prepare('SELECT * FROM personas WHERE id = ?').get(persona_id) as any : null;
 
-  // Get messages
   const messages = db.prepare(
     'SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
   ).all(req.params.id) as any[];
 
-  // Get participants for context
   const participants = db.prepare(
     'SELECT cp.*, c.name as char_name, c.description as char_desc, c.personality as char_personality FROM chat_participants cp JOIN characters c ON cp.character_id = c.id WHERE cp.chat_id = ? AND cp.is_active = 1'
   ).all(req.params.id) as any[];
 
-  // Build character info with all participants
-  const participantInfo = participants.map(p =>
-    `${p.char_name}: ${p.char_desc || ''} ${p.char_personality || ''}`
-  ).join('\n');
-
-  // Get lorebook entries (پشتیبانی از چند لور بوک)
+  // Lorebook entries
   const lorebookIdsToLoad: string[] = [];
   if (lorebook_id) {
     lorebookIdsToLoad.push(lorebook_id);
@@ -303,7 +277,6 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       lorebookEntries.push(...activateWorldInfo(messages, { ...lorebook, entries }));
     }
   }
-  // حذف duplicate entries
   const seenIds = new Set<string>();
   lorebookEntries = lorebookEntries.filter((e: any) => {
     if (seenIds.has(e.id)) return false;
@@ -311,21 +284,17 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     return true;
   });
 
-  // Get API settings
   const settings = db.prepare("SELECT * FROM api_settings ORDER BY ROWID DESC LIMIT 1").get() as any;
   if (!settings) {
     res.status(400).json({ error: 'API settings not found' });
     return;
   }
 
-  // Build prompt parts
   const { buildPrompt } = await import('../utils/prompt-builder.js');
-  const { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunk, parseNonStreamingResponse } = await import('../utils/providers.js');
+  const { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } = await import('../utils/providers.js');
 
-  // Build system prompt with all participants context
   const systemPrompt = settings.system_prompt || '';
 
-  // فیلتر کردن پیام‌ها برای regenerate: حذف محتوای قدیمی پیام هدف
   let filteredMessages = messages;
   if (update_message_id && !req.body.continue_mode) {
     filteredMessages = messages.map(m =>
@@ -334,7 +303,7 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
   }
 
   const promptParts = buildPrompt(
-    { ...character, description: `${character.description}\n\nGroup Members:\n${participantInfo}` },
+    character,
     persona,
     filteredMessages,
     lorebookEntries,
@@ -342,20 +311,42 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     {
       impersonate: false,
       continueMode: !!req.body.continue_mode,
+      isGroupChat: true,
+      participants,
+      respondingCharacterName: character.name,
     }
   );
 
-  // Add instruction for group chat
+  // Identity enforcement for group chat
+  const otherParticipants = participants.filter(p => p.character_id !== character_id);
+  const otherCharsInfo = otherParticipants.length > 0
+    ? `\n\n[Other Characters Present]\n${otherParticipants.map(p =>
+        `- ${p.char_name}`
+      ).join('\n')}\n\nNote: You do NOT know other characters' inner thoughts or feelings unless they tell you.`
+    : '';
+
   promptParts.push({
     role: 'system',
-    content: `[Group Chat] You are responding as "${character.name}". Write only ONE message as this character. Do not write messages for other characters. Stay in character.`,
+    content: `[Group Chat — Character Identity Rules]
+
+You are responding as "${character.name}" ONLY.
+- Write ONLY one message as ${character.name}
+- NEVER write messages for other characters
+- NEVER describe other characters' actions or thoughts
+- Use ${character.name}'s established personality, speech patterns, and knowledge
+- If you need another character to speak, STOP and let the system handle it${otherCharsInfo}`,
   });
 
-  // Build request
   const { v4: uuid } = await import('uuid');
   const endpoint = buildEndpoint(settings.base_url);
   const headers = buildHeaders(settings.api_key);
-  const requestBody = buildRequestBody(promptParts, {
+
+  const editedMessages = (req.body as any)?.edited_messages;
+  const effectiveParts = editedMessages && Array.isArray(editedMessages) && editedMessages.length > 0
+    ? editedMessages.map((m: any) => ({ role: m.role, content: m.content }))
+    : promptParts;
+
+  const requestBody = buildRequestBody(effectiveParts, {
     model: settings.model,
     temperature: settings.temperature,
     max_tokens: settings.max_tokens,
@@ -364,9 +355,27 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     presence_penalty: settings.presence_penalty,
     stream: !!settings.stream,
     stop: JSON.parse(settings.stop || '[]'),
+    reasoning_effort: settings.reasoning_effort || undefined,
   });
 
-  // Handle update_message_id for regeneration
+  // Prompt Inspector dry-run
+  if ((req.body as any)?.inspect) {
+    const parsed = JSON.parse(requestBody);
+    const { model, messages, ...params } = parsed;
+    res.json({
+      inspect: true,
+      source: 'chat',
+      mode: update_message_id ? 'regenerate' : 'send',
+      endpoint,
+      model,
+      params,
+      messages,
+      character_name: character.name,
+      character_avatar: character.avatar,
+    });
+    return;
+  }
+
   let msgId: string;
   const now = new Date().toISOString();
 
@@ -394,7 +403,6 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       const response = await fetch(endpoint, { method: 'POST', headers, body: requestBody });
       if (!response.ok) {
         const errorText = await response.text();
-        // Headers already sent — write error as SSE data, not JSON response
         res.write(`data: ${JSON.stringify({ error: `API error: ${response.status}: ${errorText}` })}\n\n`);
         res.end();
         return;
@@ -409,6 +417,26 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
         try {
           const lineBuffer = createLineBuffer();
           let done = false;
+          let inThinking = false;
+
+          // ارسال token به client با مدیریت تگ‌های thinking
+          const sendToken = (token: string, isReasoning: boolean) => {
+            if (isReasoning) {
+              if (!inThinking) {
+                inThinking = true;
+                fullContent += '<think>';
+                res.write(`data: ${JSON.stringify({ token: '<think>' })}\n\n`);
+              }
+            } else {
+              if (inThinking) {
+                inThinking = false;
+                fullContent += '</think>';
+                res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
+              }
+            }
+            fullContent += token;
+            res.write(`data: ${JSON.stringify({ token })}\n\n`);
+          };
 
           while (!done) {
             const { done: streamDone, value } = await reader.read();
@@ -425,29 +453,26 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
                   done = true;
                   break;
                 }
-                const token = parseStreamChunk(data);
-                if (token) {
-                  fullContent += token;
-                  res.write(`data: ${JSON.stringify({ token })}\n\n`);
-                }
+                const parsed = parseStreamChunkFull(data);
+                if (parsed) sendToken(parsed.token, parsed.isReasoning);
               }
             }
           }
 
-          // پردازش باقیمانده buffer
           const remaining = lineBuffer.flush();
           for (const line of remaining) {
             const trimmed = line.trim();
             if (trimmed.startsWith('data: ')) {
               const data = trimmed.slice(6);
               if (data !== '[DONE]') {
-                const token = parseStreamChunk(data);
-                if (token) {
-                  fullContent += token;
-                  res.write(`data: ${JSON.stringify({ token })}\n\n`);
-                }
+                const parsed = parseStreamChunkFull(data);
+                if (parsed) sendToken(parsed.token, parsed.isReasoning);
               }
             }
+          }
+          if (inThinking) {
+            fullContent += '</think>';
+            res.write(`data: ${JSON.stringify({ token: '</think>' })}\n\n`);
           }
         } catch (streamError: any) {
           if (streamError?.name === 'AbortError') {
@@ -460,7 +485,6 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
 
       fullContent = stripToolCallsFromContent(fullContent);
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
-      // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
       if (update_message_id && fullContent) {
         const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
         if (msg) {
@@ -498,7 +522,6 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       const content = parseNonStreamingResponse(data);
 
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, msgId);
-      // اگر ریجنریت بود، محتوای جدید رو به swipes اضافه کن و swipe_id رو درست کن
       if (update_message_id && content) {
         const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
         if (msg) {
@@ -516,6 +539,60 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       res.status(500).json({ error: error.message || 'Error generating response' });
     }
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Group Chat Settings (simplified)
+// ═══════════════════════════════════════════════════════════
+
+// ─── Get Group Chat Settings ───
+router.get('/:id/settings', (req: Request, res: Response) => {
+  const db = getDb();
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
+  if (!chat || !chat.is_group_chat) {
+    res.status(404).json({ error: 'Group chat not found' });
+    return;
+  }
+
+  let settings = db.prepare('SELECT * FROM group_chat_settings WHERE chat_id = ?').get(req.params.id);
+  if (!settings) {
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO group_chat_settings (id, chat_id, auto_respond_character_id)
+      VALUES (?, ?, NULL)
+    `).run(id, req.params.id);
+    settings = db.prepare('SELECT * FROM group_chat_settings WHERE chat_id = ?').get(req.params.id);
+  }
+  res.json(settings);
+});
+
+// ─── Update Group Chat Settings ───
+router.put('/:id/settings', (req: Request, res: Response) => {
+  const db = getDb();
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
+  if (!chat || !chat.is_group_chat) {
+    res.status(404).json({ error: 'Group chat not found' });
+    return;
+  }
+
+  // Ensure settings exist
+  let settings = db.prepare('SELECT * FROM group_chat_settings WHERE chat_id = ?').get(req.params.id) as any;
+  if (!settings) {
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO group_chat_settings (id, chat_id, auto_respond_character_id)
+      VALUES (?, ?, NULL)
+    `).run(id, req.params.id);
+    settings = db.prepare('SELECT * FROM group_chat_settings WHERE chat_id = ?').get(req.params.id) as any;
+  }
+
+  if (req.body.auto_respond_character_id !== undefined) {
+    db.prepare('UPDATE group_chat_settings SET auto_respond_character_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run(req.body.auto_respond_character_id, settings.id);
+  }
+
+  const updated = db.prepare('SELECT * FROM group_chat_settings WHERE id = ?').get(settings.id);
+  res.json(updated);
 });
 
 export default router;

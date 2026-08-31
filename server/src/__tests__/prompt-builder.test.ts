@@ -113,6 +113,60 @@ describe('Prompt Builder', () => {
         expect(notePart?.content).not.toContain('{{user}}');
       });
     });
+
+    describe('Group Chat', () => {
+      it('باید پیام‌ها رو با نام فرستنده پیشوند کنه در حالت گروپ چت', () => {
+        const groupChatHistory = [
+          { role: 'user', content: 'سلام', sender_name: 'محمد' },
+          { role: 'assistant', content: 'سلام محمد!', sender_name: 'الیسا' },
+          { role: 'user', content: 'حالت چطوره؟', sender_name: 'محمد' },
+          { role: 'assistant', content: 'خوبم ممنون!', sender_name: 'زهرا' },
+        ];
+
+        const result = buildPrompt(character, persona, groupChatHistory, [], '', {
+          isGroupChat: true,
+        });
+
+        // Find history parts
+        const historyParts = result.filter(p => p.role === 'user' || p.role === 'assistant');
+
+        // Check that messages are prefixed with sender names
+        expect(historyParts[0].content).toContain('محمد:\nسلام');
+        expect(historyParts[1].content).toContain('الیسا:\nسلام محمد!');
+        expect(historyParts[2].content).toContain('محمد:\nحالت چطوره؟');
+        expect(historyParts[3].content).toContain('زهرا:\nخوبم ممنون!');
+      });
+
+      it('باید پیام‌های سیستم رو بدون پیشوند نگه داره', () => {
+        const groupChatHistory = [
+          { role: 'system', content: 'الیسا وارد چت شد.' },
+          { role: 'user', content: 'سلام', sender_name: 'محمد' },
+        ];
+
+        const result = buildPrompt(character, persona, groupChatHistory, [], '', {
+          isGroupChat: true,
+        });
+
+        const systemPart = result.find(p => p.role === 'system' && p.content.includes('الیسا وارد چت شد'));
+        expect(systemPart).toBeDefined();
+        expect(systemPart?.content).not.toContain('محمد:');
+      });
+
+      it('در حالت عادی پیشوندی اضافه نکنه', () => {
+        const normalChatHistory = [
+          { role: 'user', content: 'سلام', sender_name: 'محمد' },
+          { role: 'assistant', content: 'سلام!', sender_name: 'الیسا' },
+        ];
+
+        const result = buildPrompt(character, persona, normalChatHistory, [], '', {
+          isGroupChat: false,
+        });
+
+        const historyParts = result.filter(p => p.role === 'user' || p.role === 'assistant');
+        expect(historyParts[0].content).toBe('سلام');
+        expect(historyParts[1].content).toBe('سلام!');
+      });
+    });
   });
 
   describe('activateWorldInfo', () => {

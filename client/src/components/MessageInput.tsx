@@ -1,7 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/state';
-import type { QuickReplySettings } from '../types';
-import CharacterAvatar from './CharacterAvatar';
 
 interface SlashCommand {
   name: string;
@@ -19,10 +17,8 @@ export default function MessageInput() {
   const [showCommandPopup, setShowCommandPopup] = useState(false);
   const [selectedCommandIdx, setSelectedCommandIdx] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
-  const [showGroupCharPicker, setShowGroupCharPicker] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const groupPickerRef = useRef<HTMLDivElement>(null);
-  // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
+
   const sendMessage = useStore(s => s.sendMessage);
   const stopGeneration = useStore(s => s.stopGeneration);
   const isGenerating = useStore(s => s.isGenerating);
@@ -41,8 +37,8 @@ export default function MessageInput() {
   const groupChatParticipants = useStore(s => s.groupChatParticipants);
   const characters = useStore(s => s.characters);
   const generateGroupResponse = useStore(s => s.generateGroupResponse);
-  const selectedCharacterForResponse = useStore(s => s.selectedCharacterForResponse);
-  const setSelectedCharacterForResponse = useStore(s => s.setSelectedCharacterForResponse);
+  const autoRespondCharacterId = useStore(s => s.autoRespondCharacterId);
+  const setAutoRespondCharacter = useStore(s => s.setAutoRespondCharacter);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -52,7 +48,6 @@ export default function MessageInput() {
     }
   }, [content]);
 
-  // Show command popup when user types /
   useEffect(() => {
     if (content.startsWith('/') && !content.includes(' ')) {
       setShowCommandPopup(true);
@@ -62,7 +57,6 @@ export default function MessageInput() {
     }
   }, [content]);
 
-  // Close menu when clicking outside
   useEffect(() => {
     if (!showMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -74,23 +68,9 @@ export default function MessageInput() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showMenu]);
 
-  // Close group char picker when clicking outside
-  useEffect(() => {
-    if (!showGroupCharPicker) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (groupPickerRef.current && !groupPickerRef.current.contains(e.target as Node)) {
-        setShowGroupCharPicker(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showGroupCharPicker]);
-
-  // Check if current chat is a group chat
   const isGroupChat = !!currentChat?.is_group_chat;
   const activeParticipants = groupChatParticipants.filter(p => p.is_active);
 
-  // Filter commands based on input
   const filteredCommands = COMMANDS.filter(cmd => {
     const query = content.toLowerCase();
     return cmd.name.startsWith(query) || cmd.aliases.some(a => a.startsWith(query));
@@ -100,23 +80,17 @@ export default function MessageInput() {
     const [command, ...args] = input.split(' ');
     const cmd = command.toLowerCase();
 
-    // Check /regenerate or /regen
     if (cmd === '/regenerate' || cmd === '/regen') {
       const messages = currentChat?.messages || [];
       if (messages.length === 0) {
         addToast('No messages to regenerate', 'error');
         return;
       }
-
       const lastMsg = messages[messages.length - 1];
-
-      // Case 1: Last message is assistant → regenerate it
       if (lastMsg.role === 'assistant') {
         regenerateMessage();
         return;
       }
-
-      // Case 2: Last message is user (no response received) → delete and resend
       if (lastMsg.role === 'user') {
         deleteMessage(lastMsg.id);
         setTimeout(() => {
@@ -126,7 +100,6 @@ export default function MessageInput() {
       }
     }
 
-    // Toggle prompt inspector
     if (cmd === '/inspect' || cmd === '/debug') {
       togglePromptInspect();
       const next = useStore.getState().promptInspectEnabled;
@@ -138,9 +111,8 @@ export default function MessageInput() {
   };
 
   const handleSubmit = () => {
-    if (!content.trim() || isGenerating) return;
+    if (isGenerating) return;
 
-    // Slash command detection
     if (content.trim().startsWith('/')) {
       handleSlashCommand(content.trim());
       setContent('');
@@ -151,6 +123,26 @@ export default function MessageInput() {
       return;
     }
 
+    // Group chat: send message, then auto-respond if enabled
+    if (isGroupChat) {
+      const msg = content.trim();
+      setContent('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      if (msg) {
+        sendMessage(msg, true);
+        // Auto-respond after user message if a character is selected
+        if (autoRespondCharacterId) {
+          setTimeout(() => {
+            generateGroupResponse(currentChat!.id, autoRespondCharacterId);
+          }, 200);
+        }
+      }
+      return;
+    }
+
+    if (!content.trim()) return;
     sendMessage(content.trim());
     setContent('');
     if (textareaRef.current) {
@@ -165,7 +157,6 @@ export default function MessageInput() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Command popup keyboard navigation
     if (showCommandPopup && filteredCommands.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -193,7 +184,6 @@ export default function MessageInput() {
       e.preventDefault();
       handleSubmit();
     }
-    // Alt+Enter: ادامه تولید
     if (e.key === 'Enter' && e.altKey) {
       e.preventDefault();
       if (!isGenerating && currentChat) {
@@ -205,12 +195,6 @@ export default function MessageInput() {
   const lastAssistantMsg = currentChat?.messages ? [...currentChat.messages].reverse().find(m => m.role === 'assistant') : null;
   const hasSwipes = lastAssistantMsg && lastAssistantMsg.swipes && lastAssistantMsg.swipes.length > 0;
   const canContinue = !isGenerating && currentChat && lastAssistantMsg && currentChat.messages.length > 0;
-
-  // Group chat selected character for response
-  const handleGroupGenerate = () => {
-    if (!currentChat || !selectedCharacterForResponse) return;
-    generateGroupResponse(currentChat.id, selectedCharacterForResponse);
-  };
 
   return (
     <div className="border-t border-tavern-border bg-tavern-surface flex-shrink-0 relative z-10">
@@ -230,6 +214,31 @@ export default function MessageInput() {
           </div>
         </div>
       )}
+
+      {/* Auto-Respond Dropdown — Group Chat Only */}
+      {isGroupChat && activeParticipants.length > 0 && (
+        <div className="border-b border-tavern-border/50 px-4 py-1.5">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-tavern-dim select-none">Auto-respond:</label>
+            <select
+              value={autoRespondCharacterId || ''}
+              onChange={(e) => setAutoRespondCharacter(e.target.value || null)}
+              className="bg-tavern-input border border-tavern-border rounded px-1.5 py-0.5 text-[10px] text-tavern-text focus:outline-none focus:border-tavern-accent"
+            >
+              <option value="">Off</option>
+              {activeParticipants.map(p => {
+                const char = characters.find(c => c.id === p.character_id);
+                return (
+                  <option key={p.character_id} value={p.character_id}>
+                    {char?.name || p.display_name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[50vw] mx-auto">
       {/* Slash Command Popup */}
       {showCommandPopup && filteredCommands.length > 0 && (
@@ -274,7 +283,6 @@ export default function MessageInput() {
             </svg>
           </button>
 
-          {/* Command menu popover */}
           {showMenu && (
             <div className="absolute bottom-full left-0 mb-2 min-w-[180px]">
               <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 overflow-hidden animate-pop-up origin-bottom-left">
@@ -329,7 +337,7 @@ export default function MessageInput() {
         <div className="flex items-center flex-shrink-0 pb-0.5">
           <button
             onClick={handleSubmit}
-            disabled={!content.trim() || isGenerating}
+            disabled={isGenerating || !content.trim()}
             className="w-8 h-8 flex items-center justify-center rounded-md text-tavern-accent hover:text-tavern-accent-hover hover:bg-tavern-accent/10 transition-all active:scale-90 disabled:opacity-30"
             title="Send"
           >
@@ -342,77 +350,7 @@ export default function MessageInput() {
 
       {/* Bottom row: swipe controls + Generate button */}
       <div className="flex items-center justify-between px-4 pb-2">
-        {/* Left: swipe arrows + continue + impersonate + group chat char picker */}
         <div className="flex items-center gap-1">
-          {/* Group Chat Character Picker */}
-          {isGroupChat && activeParticipants.length > 0 && (
-            <div className="relative" ref={groupPickerRef}>
-              <button
-                onClick={() => setShowGroupCharPicker(!showGroupCharPicker)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-tavern-input border border-tavern-border hover:border-tavern-accent/50 transition-colors"
-                title="Select character to respond"
-              >
-                {selectedCharacterForResponse ? (
-                  (() => {
-                    const char = characters.find(c => c.id === selectedCharacterForResponse);
-                    const participant = groupChatParticipants.find(p => p.character_id === selectedCharacterForResponse);
-                    return (
-                      <>
-                        <CharacterAvatar
-                          name={char?.name || participant?.display_name || '?'}
-                          avatar={char?.avatar || participant?.display_avatar}
-                          size="sm"
-                        />
-                        <span className="text-xs text-tavern-text truncate max-w-[60px]">
-                          {char?.name || participant?.display_name}
-                        </span>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <span className="text-xs text-tavern-dim">Select char...</span>
-                )}
-                <svg className="w-3 h-3 text-tavern-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {showGroupCharPicker && (
-                <div className="absolute bottom-full left-0 mb-2 min-w-[160px]">
-                  <div className="bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 overflow-hidden animate-pop-up origin-bottom-left">
-                    <div className="px-3 py-1.5 text-[10px] text-tavern-dim border-b border-tavern-border/50">
-                      Respond as...
-                    </div>
-                    {activeParticipants.map(p => {
-                      const char = characters.find(c => c.id === p.character_id);
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setSelectedCharacterForResponse(p.character_id);
-                            setShowGroupCharPicker(false);
-                          }}
-                          className={`w-full px-3 py-2 text-left flex items-center gap-2 transition-colors ${
-                            selectedCharacterForResponse === p.character_id
-                              ? 'bg-tavern-accent/15 text-tavern-accent'
-                              : 'hover:bg-tavern-hover text-tavern-text'
-                          }`}
-                        >
-                          <CharacterAvatar
-                            name={char?.name || p.display_name}
-                            avatar={char?.avatar || p.display_avatar}
-                            size="sm"
-                          />
-                          <span className="text-sm truncate">{char?.name || p.display_name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {hasSwipes && lastAssistantMsg && (
             <>
               <button
@@ -438,7 +376,6 @@ export default function MessageInput() {
               </button>
             </>
           )}
-          {/* Continue button */}
           {canContinue && !isGroupChat && (
             <button
               onClick={continueGeneration}
@@ -450,7 +387,6 @@ export default function MessageInput() {
               </svg>
             </button>
           )}
-          {/* Impersonate button */}
           {canContinue && !isGroupChat && (
             <button
               onClick={impersonateMessage}
@@ -464,7 +400,6 @@ export default function MessageInput() {
           )}
         </div>
 
-        {/* Right: Generate / Stop button */}
         {isGenerating ? (
           <button
             onClick={stopGeneration}
@@ -478,17 +413,7 @@ export default function MessageInput() {
               Stop
             </span>
           </button>
-        ) : isGroupChat ? (
-          <button
-            onClick={handleGroupGenerate}
-            disabled={!selectedCharacterForResponse || isGenerating}
-            className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-all shadow-lg active:scale-[0.97] ${
-              'bg-tavern-cta hover:bg-tavern-cta-hover text-white shadow-tavern-cta/20 hover:shadow-tavern-cta/40 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none'
-            }`}
-          >
-            Generate as Character
-          </button>
-        ) : (
+        ) : !isGroupChat && (
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || isGenerating}

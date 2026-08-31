@@ -350,6 +350,60 @@ router.delete('/conversations/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// ─── GET /api/character-wizard/chat-history/:chatId — Get chat messages for wizard context ───
+
+router.get('/chat-history/:chatId', (req: Request, res: Response) => {
+  const db = getDb();
+
+  const messages = db.prepare(
+    'SELECT id, role, content, sender_name, sender_character_id, send_date FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
+  ).all(req.params.chatId) as any[];
+
+  // Get chat info
+  const chat = db.prepare('SELECT id, name, is_group_chat, group_chat_name FROM chats WHERE id = ?').get(req.params.chatId) as any;
+  if (!chat) {
+    res.status(404).json({ error: 'Chat not found' });
+    return;
+  }
+
+  // Get participants info if group chat
+  let participants: any[] = [];
+  if (chat.is_group_chat) {
+    participants = db.prepare(
+      `SELECT cp.character_id, cp.display_name, c.name as char_name, c.description as char_desc, c.personality as char_personality
+       FROM chat_participants cp
+       JOIN characters c ON cp.character_id = c.id
+       WHERE cp.chat_id = ? AND cp.is_active = 1`
+    ).all(req.params.chatId) as any[];
+  } else {
+    // Get the main character
+    const mainChar = db.prepare(
+      `SELECT c.id as character_id, c.name as char_name, c.description as char_desc, c.personality as char_personality
+       FROM chats ch
+       JOIN characters c ON ch.character_id = c.id
+       WHERE ch.id = ?`
+    ).get(req.params.chatId) as any;
+    if (mainChar) participants = [mainChar];
+  }
+
+  // Format messages for context
+  const formattedMessages = messages.map((m: any) => {
+    const sender = m.sender_name || (m.role === 'user' ? 'User' : m.role === 'system' ? 'System' : 'Assistant');
+    return `[${sender}]: ${m.content}`;
+  });
+
+  res.json({
+    chat: {
+      id: chat.id,
+      name: chat.name || chat.group_chat_name,
+      is_group_chat: !!chat.is_group_chat,
+    },
+    participants,
+    messages: formattedMessages,
+    total_messages: messages.length,
+  });
+});
+
 // ─── POST /api/character-wizard/chat — Send message (streaming) ───
 
 router.post('/chat', async (req: Request, res: Response) => {
@@ -361,7 +415,7 @@ router.post('/chat', async (req: Request, res: Response) => {
     return;
   }
 
-  const { messages, conversation_id, edit_character_id } = req.body;
+  const { messages, conversation_id, edit_character_id, chat_history_context } = req.body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: 'messages array is required' });
@@ -370,6 +424,52 @@ router.post('/chat', async (req: Request, res: Response) => {
 
   // Build system prompt — if editing, add context
   let systemPrompt = WIZARD_SYSTEM_PROMPT;
+
+  // Add chat history context if provided
+  if (chat_history_context) {
+    const { chat, participants, messages: chatMessages, total_messages } = chat_history_context;
+    const participantInfo = participants.map((p: any) => {
+      const name = p.char_name || p.display_name;
+      const desc = p.char_desc ? `\n  Description: ${p.char_desc}` : '';
+      const personality = p.char_personality ? `\n  Personality: ${p.char_personality}` : '';
+      return `- ${name}:${desc}${personality}`;
+    }).join('\n');
+
+    // Get last N messages for context (limit to avoid token overflow)
+    const recentMessages = chatMessages.slice(-50).join('\n');
+
+    systemPrompt += `\n\n## EXISTING CHAT CONTEXT
+
+The user wants to create a new character based on an existing chat/story. Here is the context:
+
+### Chat: "${chat.name}" (${chat.is_group_chat ? 'Group Chat' : 'Normal Chat'})
+### Total messages in chat: ${total_messages}
+
+### Current Characters in this Chat:
+${participantInfo}
+
+### Recent Chat History (last ${Math.min(50, total_messages)} messages):
+\`\`\`
+${recentMessages}
+\`\`\`
+
+### Instructions for Creating Character from Chat Context:
+When the user describes a new character they want to create based on this chat/story:
+1. **Maintain consistency** with the existing story, characters, and their relationships
+2. **Reference existing events** from the chat history in the new character's backstory
+3. **Create natural connections** between the new character and existing characters (friends, rivals, family, etc.)
+4. **Match the tone and genre** of the existing story
+5. **Use the same {{user}} and {{char}} variables** as other characters
+6. **Ensure the character could plausibly exist** in this story world
+
+The user will tell you what kind of character they want and how it relates to the existing story/characters. Ask clarifying questions to understand:
+- What is the relationship between the new character and existing characters?
+- What role should this character play in the story?
+- Any specific events or backstory elements they should be connected to?
+
+When generating the character card, include references to the existing story in the description, personality, and scenario fields.`;
+  }
+
   if (edit_character_id) {
     const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(edit_character_id) as any;
     if (char) {

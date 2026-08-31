@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/state';
 import { PromptInspection, PromptPart } from '../types';
 import { estimateTokens, formatTokenCount } from '../utils/tokenEstimate';
+import CharacterAvatar from './CharacterAvatar';
 
 // ─── Role chip رنگ‌بندی نقش پیام ───
 const ROLE_STYLES: Record<string, string> = {
@@ -143,6 +144,13 @@ export default function PromptInspectorModal() {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-tavern-surface2 border border-tavern-border text-tavern-dim font-mono" dir="ltr">
                   {view.mode}
                 </span>
+              )}
+              {view.character_name && (
+                <>
+                  <div className="w-px h-4 bg-tavern-border mx-0.5" />
+                  <CharacterAvatar name={view.character_name} avatar={view.character_avatar} size="xs" />
+                  <span className="text-xs text-tavern-text font-medium">as {view.character_name}</span>
+                </>
               )}
               <span className="text-sm font-bold truncate" dir="ltr">{view.model}</span>
               {!isLive && (

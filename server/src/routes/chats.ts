@@ -339,7 +339,7 @@ router.delete('/:chatId/lorebooks/:id', (req: Request, res: Response) => {
 
 // ─── Export/Import چت ───
 
-// خروجی چت به JSON — پیام‌ها با index ارجاع می‌شوند تا قابل حمل باشد
+// خروجی چت به JSON — شامل تنظیمات کامل، پیام‌ها، فصل‌ها، لوربوک‌ها، story state و ...
 router.get('/:id/export', (req: Request, res: Response) => {
   const db = getDb();
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
@@ -349,7 +349,7 @@ router.get('/:id/export', (req: Request, res: Response) => {
   }
 
   const messages = db.prepare(
-    'SELECT role, content, swipes, swipe_id, is_edited, is_system, send_date FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
+    'SELECT role, content, swipes, swipe_id, is_edited, is_system, send_date, sender_name, sender_avatar, sender_character_id FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
   ).all(req.params.id) as any[];
 
   // نگاشت message id → index برای فصل‌ها
@@ -361,18 +361,84 @@ router.get('/:id/export', (req: Request, res: Response) => {
     'SELECT start_message_id, end_message_id, title, summary FROM chapters WHERE chat_id = ? ORDER BY created_at ASC'
   ).all(req.params.id) as any[];
 
+  // ─── Story State ───
+  const storyStateRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+  let storyState = null;
+  if (storyStateRow) {
+    try { storyState = JSON.parse(storyStateRow.state_json); } catch {}
+  }
+
+  // ─── Chat Lorebooks (لوربوک‌های متصل + entryها) ───
+  const chatLorebookLinks = db.prepare(`
+    SELECT cl.lorebook_id, cl.is_active, cl.insertion_order,
+           l.name, l.scan_depth, l.token_budget
+    FROM chat_lorebooks cl
+    JOIN lorebooks l ON cl.lorebook_id = l.id
+    WHERE cl.chat_id = ?
+    ORDER BY cl.insertion_order ASC
+  `).all(req.params.id) as any[];
+
+  const lorebooks: any[] = [];
+  for (const link of chatLorebookLinks) {
+    const entries = db.prepare('SELECT * FROM lorebook_entries WHERE lorebook_id = ?').all(link.lorebook_id) as any[];
+    lorebooks.push({
+      name: link.name,
+      scan_depth: link.scan_depth,
+      token_budget: link.token_budget,
+      is_active: !!link.is_active,
+      insertion_order: link.insertion_order,
+      entries: entries.map((e) => ({
+        keys: JSON.parse(e.keys || '[]'),
+        keys_secondary: JSON.parse(e.keys_secondary || '[]'),
+        content: e.content,
+        constant: !!e.constant,
+        selective: !!e.selective,
+        insertion_order: e.insertion_order,
+        position: e.position,
+        disable: !!e.disable,
+        comment: e.comment,
+        case_sensitive: !!e.case_sensitive,
+        use_regex: !!e.use_regex,
+        probability: e.probability ?? 100,
+      })),
+    });
+  }
+
+  // ─── Group Chat Participants ───
+  let participants: any[] | undefined;
+  if (chat.is_group_chat) {
+    participants = db.prepare(`
+      SELECT cp.character_id, cp.display_name, cp.is_active
+      FROM chat_participants cp
+      WHERE cp.chat_id = ?
+      ORDER BY cp.created_at ASC
+    `).all(req.params.id) as any[];
+    participants = participants.map((p) => {
+      const char = db.prepare('SELECT name FROM characters WHERE id = ?').get(p.character_id) as any;
+      return { ...p, character_name: char?.name || p.display_name || '' };
+    });
+  }
+
+  // ─── Character Info (برای قابلیت حمل) ───
+  const character = db.prepare(
+    'SELECT name, description, personality, scenario, first_mes, mes_example, creator_notes, system_prompt, post_history_instructions, alternate_greetings, tags, creator, character_version, nickname FROM characters WHERE id = ?'
+  ).get(chat.character_id) as any;
+
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="chat-${encodeURIComponent(chat.name || req.params.id)}.json"`);
   res.json({
     format: 'cozytavern-chat',
-    version: 1,
+    version: 2,
     exported_at: new Date().toISOString(),
+    character: character || null,
     chat: {
       name: chat.name,
       folder: chat.folder || '',
       authors_note: chat.authors_note || '',
       authors_note_depth: chat.authors_note_depth ?? 4,
       authors_note_position: chat.authors_note_position || 'in_chat',
+      is_group_chat: !!chat.is_group_chat,
+      group_chat_name: chat.group_chat_name || '',
       created_at: chat.created_at,
     },
     messages: messages.map((m) => ({
@@ -387,10 +453,13 @@ router.get('/:id/export', (req: Request, res: Response) => {
         summary: c.summary,
       }))
       .filter((c) => c.start_index !== undefined && c.end_index !== undefined),
+    story_state: storyState,
+    lorebooks,
+    ...(participants && participants.length > 0 ? { participants } : {}),
   });
 });
 
-// ورودی چت — بدنه: { character_id, data } که data خروجی export است
+// ورودی چت — بدنه: { character_id, data } که data خروجی export است (version 1 و 2)
 router.post('/import', (req: Request, res: Response) => {
   const db = getDb();
   const { character_id, data } = req.body ?? {};
@@ -413,9 +482,10 @@ router.post('/import', (req: Request, res: Response) => {
   const chatId = uuidv4();
   const srcChat = data.chat || {};
 
+  // ─── ایجاد چت ───
   db.prepare(`
-    INSERT INTO chats (id, character_id, name, branch_from, lorebook_id, folder, authors_note, authors_note_depth, authors_note_position, created_at, updated_at)
-    VALUES (?, ?, ?, NULL, '', ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, character_id, name, branch_from, lorebook_id, folder, authors_note, authors_note_depth, authors_note_position, is_group_chat, group_chat_name, created_at, updated_at)
+    VALUES (?, ?, ?, NULL, '', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     chatId, character_id,
     String(srcChat.name || 'Imported Chat'),
@@ -423,12 +493,15 @@ router.post('/import', (req: Request, res: Response) => {
     String(srcChat.authors_note || ''),
     typeof srcChat.authors_note_depth === 'number' ? srcChat.authors_note_depth : 4,
     srcChat.authors_note_position === 'after_char' ? 'after_char' : 'in_chat',
+    srcChat.is_group_chat ? 1 : 0,
+    String(srcChat.group_chat_name || ''),
     now, now,
   );
 
+  // ─── درج پیام‌ها ───
   const insertMsg = db.prepare(`
-    INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date, sender_name, sender_avatar, sender_character_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // نگاشت index → id جدید برای بازسازی فصل‌ها
@@ -445,12 +518,15 @@ router.post('/import', (req: Request, res: Response) => {
       m.is_edited ? 1 : 0,
       m.is_system ? 1 : 0,
       String(m.send_date || now),
+      String(m.sender_name || ''),
+      String(m.sender_avatar || ''),
+      String(m.sender_character_id || ''),
     );
     indexToId.set(count, msgId);
     count++;
   }
 
-  // بازسازی فصل‌ها با نگاشت اندیس‌ها (اگر معتبر باشند)
+  // ─── بازسازی فصل‌ها ───
   if (Array.isArray(data.chapters)) {
     const insertChapter = db.prepare(`
       INSERT INTO chapters (id, chat_id, start_message_id, end_message_id, title, summary, created_at, updated_at)
@@ -465,8 +541,170 @@ router.post('/import', (req: Request, res: Response) => {
     }
   }
 
+  // ─── بازسازی Story State ───
+  if (data.story_state && typeof data.story_state === 'object') {
+    db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+      .run(uuidv4(), chatId, JSON.stringify(data.story_state), now);
+  }
+
+  // ─── بازسازی Chat Lorebooks ───
+  if (Array.isArray(data.lorebooks) && data.lorebooks.length > 0) {
+    const insertLorebook = db.prepare(`
+      INSERT INTO lorebooks (id, name, scan_depth, token_budget, created_at) VALUES (?, ?, ?, ?, ?)
+    `);
+    const insertEntry = db.prepare(`
+      INSERT INTO lorebook_entries (id, lorebook_id, keys, keys_secondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertChatLorebook = db.prepare(`
+      INSERT INTO chat_lorebooks (id, chat_id, lorebook_id, is_active, insertion_order, created_at) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const lb of data.lorebooks) {
+      const lbId = uuidv4();
+      insertLorebook.run(lbId, String(lb.name || 'Imported Lorebook'), lb.scan_depth || 50, lb.token_budget || 500, now);
+
+      // درج entryها
+      if (Array.isArray(lb.entries)) {
+        for (const entry of lb.entries) {
+          insertEntry.run(
+            uuidv4(), lbId,
+            JSON.stringify(Array.isArray(entry.keys) ? entry.keys : []),
+            JSON.stringify(Array.isArray(entry.keys_secondary) ? entry.keys_secondary : []),
+            String(entry.content || ''),
+            entry.constant ? 1 : 0,
+            entry.selective ? 1 : 0,
+            typeof entry.insertion_order === 'number' ? entry.insertion_order : 100,
+            String(entry.position || 'before_main'),
+            entry.disable ? 1 : 0,
+            String(entry.comment || ''),
+            entry.case_sensitive ? 1 : 0,
+            entry.use_regex ? 1 : 0,
+            typeof entry.probability === 'number' ? entry.probability : 100,
+          );
+        }
+      }
+
+      // لینک به چت
+      insertChatLorebook.run(uuidv4(), chatId, lbId, lb.is_active !== false ? 1 : 0, lb.insertion_order || 100, now);
+    }
+  }
+
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId) as any;
   res.status(201).json({ ...chat, imported_messages: count });
+});
+
+// ─── Duplicate Chat ───
+router.post('/:id/duplicate', (req: Request, res: Response) => {
+  const db = getDb();
+  const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(req.params.id) as any;
+  if (!chat) {
+    res.status(404).json({ error: 'Chat not found' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const newChatId = uuidv4();
+  const newName = req.body?.name || `${chat.name} (Copy)`;
+
+  const duplicate = db.transaction(() => {
+    // ─── کپی چت ───
+    db.prepare(`
+      INSERT INTO chats (id, character_id, name, branch_from, lorebook_id, folder, authors_note, authors_note_depth, authors_note_position, is_group_chat, group_chat_name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newChatId, chat.character_id, newName, chat.branch_from, chat.lorebook_id || '',
+      chat.folder || '', chat.authors_note || '', chat.authors_note_depth ?? 4,
+      chat.authors_note_position || 'in_chat', chat.is_group_chat || 0,
+      chat.group_chat_name || '', now, now,
+    );
+
+    // ─── کپی پیام‌ها با نگاشت id قدیم → جدید ───
+    const messages = db.prepare(
+      'SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC'
+    ).all(req.params.id) as any[];
+
+    const oldToNewMsgId = new Map<string, string>();
+    const insertMsg = db.prepare(`
+      INSERT INTO messages (id, chat_id, role, content, swipes, swipe_id, is_edited, is_system, send_date, sender_name, sender_avatar, sender_character_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const m of messages) {
+      const newMsgId = uuidv4();
+      oldToNewMsgId.set(m.id, newMsgId);
+      insertMsg.run(
+        newMsgId, newChatId, m.role, m.content,
+        m.swipes || '[]', m.swipe_id || 0, m.is_edited || 0,
+        m.is_system || 0, m.send_date, m.sender_name || '',
+        m.sender_avatar || '', m.sender_character_id || '',
+      );
+    }
+
+    // ─── کپی فصل‌ها ───
+    const chapters = db.prepare(
+      'SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC'
+    ).all(req.params.id) as any[];
+
+    const insertChapter = db.prepare(`
+      INSERT INTO chapters (id, chat_id, start_message_id, end_message_id, title, summary, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const c of chapters) {
+      const newStartId = oldToNewMsgId.get(c.start_message_id);
+      const newEndId = oldToNewMsgId.get(c.end_message_id);
+      if (newStartId && newEndId) {
+        insertChapter.run(uuidv4(), newChatId, newStartId, newEndId, c.title || '', c.summary || '', now, now);
+      }
+    }
+
+    // ─── کپی Story State ───
+    const storyState = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+    if (storyState) {
+      db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+        .run(uuidv4(), newChatId, storyState.state_json, now);
+    }
+
+    // ─── کپی Chat Lorebooks ───
+    const chatLorebooks = db.prepare(
+      'SELECT * FROM chat_lorebooks WHERE chat_id = ?'
+    ).all(req.params.id) as any[];
+
+    const insertChatLorebook = db.prepare(`
+      INSERT INTO chat_lorebooks (id, chat_id, lorebook_id, is_active, insertion_order, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const cl of chatLorebooks) {
+      insertChatLorebook.run(uuidv4(), newChatId, cl.lorebook_id, cl.is_active, cl.insertion_order, now);
+    }
+
+    // ─── کپی Group Chat Participants ───
+    if (chat.is_group_chat) {
+      const participants = db.prepare(
+        'SELECT * FROM chat_participants WHERE chat_id = ?'
+      ).all(req.params.id) as any[];
+
+      const insertParticipant = db.prepare(`
+        INSERT INTO chat_participants (id, chat_id, character_id, display_name, display_avatar, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const p of participants) {
+        insertParticipant.run(uuidv4(), newChatId, p.character_id, p.display_name || '', p.display_avatar || '', p.is_active, now);
+      }
+    }
+  });
+
+  try {
+    duplicate();
+    const newChat = db.prepare('SELECT * FROM chats WHERE id = ?').get(newChatId);
+    res.status(201).json(newChat);
+  } catch (err: any) {
+    console.error('Chat duplicate failed:', err);
+    res.status(500).json({ error: `Duplicate failed: ${err.message}` });
+  }
 });
 
 // بروزرسانی چت

@@ -15,11 +15,9 @@ export default function GroupChatManager({ onClose }: Props) {
   const removeParticipant = useStore(s => s.removeParticipant);
   const toggleParticipant = useStore(s => s.toggleParticipant);
   const addCharacterToChat = useStore(s => s.addCharacterToChat);
-  const generateGroupResponse = useStore(s => s.generateGroupResponse);
-  const selectedCharacterForResponse = useStore(s => s.selectedCharacterForResponse);
-  const setSelectedCharacterForResponse = useStore(s => s.setSelectedCharacterForResponse);
   const isGenerating = useStore(s => s.isGenerating);
-  const groupChatGenerating = useStore(s => s.groupChatGenerating);
+  const setCharacterWizardOpen = useStore(s => s.setCharacterWizardOpen);
+  const generateGroupResponse = useStore(s => s.generateGroupResponse);
 
   const [showAddCharacter, setShowAddCharacter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,6 +89,29 @@ export default function GroupChatManager({ onClose }: Props) {
         </p>
       )}
 
+      {/* Create from Story button */}
+      {isGroupChat && !showAddCharacter && (
+        <button
+          onClick={() => {
+            setCharacterWizardOpen(true);
+            // Store current chat ID in localStorage so wizard can load it
+            try {
+              localStorage.setItem('cozytavern.wizardChatContext', currentChat.id);
+            } catch {}
+            onClose();
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-2"
+          style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(34,197,94,0.25)'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(34,197,94,0.15)'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          Create New Character from This Story
+        </button>
+      )}
+
       {/* Add Character Search */}
       {showAddCharacter && (
         <div className="mb-3 p-2 bg-tavern-input rounded-lg border border-tavern-border">
@@ -125,6 +146,7 @@ export default function GroupChatManager({ onClose }: Props) {
         <div className="flex flex-wrap gap-2">
           {activeParticipants.map(p => {
             const char = characters.find(c => c.id === p.character_id);
+            const canGenerate = !isGenerating;
             return (
               <div
                 key={p.id}
@@ -135,19 +157,18 @@ export default function GroupChatManager({ onClose }: Props) {
                   avatar={char?.avatar || p.display_avatar}
                   size="sm"
                 />
-                <span className="text-xs font-medium text-tavern-text truncate max-w-[80px]">
-                  {char?.name || p.display_name}
-                </span>
-                {/* Generate button */}
+                {/* Clickable name - generates response when clicked */}
                 <button
-                  onClick={() => generateGroupResponse(currentChat.id, p.character_id)}
-                  disabled={isGenerating}
-                  className="text-tavern-accent hover:text-tavern-accent-hover disabled:opacity-30 p-0.5 rounded transition-colors"
-                  title={`Generate response as ${char?.name}`}
+                  onClick={() => {
+                    if (canGenerate && currentChat) {
+                      generateGroupResponse(currentChat.id, p.character_id);
+                    }
+                  }}
+                  disabled={!canGenerate}
+                  className="text-xs font-medium text-tavern-text truncate max-w-[80px] hover:text-tavern-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  title={`Generate response as ${char?.name || p.display_name}`}
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
+                  {char?.name || p.display_name}
                 </button>
                 {/* Toggle active */}
                 <button
@@ -212,6 +233,7 @@ export default function GroupChatManager({ onClose }: Props) {
           })}
         </div>
       )}
+
     </div>
   );
 }

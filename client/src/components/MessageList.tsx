@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message, Character, Chat, Persona, Chapter } from '../types';
 import { useStore } from '../store/state';
@@ -27,11 +27,19 @@ export default function MessageList({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevMessagesLengthRef = useRef(messages.length);
   const chatIdRef = useRef<string | null>(null);
+  const isAtBottomRef = useRef(true);
+  const [itemsVersion, setItemsVersion] = useState(0);
   const chapterStartId = useStore(s => s.chapterStartId);
   const chapterEndId = useStore(s => s.chapterEndId);
 
   // Map end_message_id to chapter for quick lookup
   const chapterByEndId = new Map(chapters.map(c => [c.end_message_id, c]));
+
+  // Helper: scroll to the very last item in the Virtuoso list
+  const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
+    // itemsVersion is just a dependency trigger; actual items.length is read from Virtuoso's DOM
+    virtuosoRef.current?.scrollToIndex({ index: items.length - 1, align: 'end', behavior });
+  }, [itemsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // وقتی چت عوض می‌شود به پایین برو
   useEffect(() => {
@@ -39,23 +47,33 @@ export default function MessageList({
     if (chatIdRef.current !== currentChat.id) {
       chatIdRef.current = currentChat.id;
       prevMessagesLengthRef.current = messages.length;
+      // اول items باید رندر شوند بعد اسکرول کنیم
       requestAnimationFrame(() => {
-        virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'end' });
+        scrollToBottom('auto');
       });
     }
-  }, [currentChat?.id, messages.length]);
+  }, [currentChat?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // اسکرول به پایین موقع پیام جدید یا استریم
+  // اسکرول به پایین موقع پیام جدید
   useEffect(() => {
     const prevLength = prevMessagesLengthRef.current;
     prevMessagesLengthRef.current = messages.length;
     const isNewMessage = messages.length > prevLength;
-    const lastMessage = messages[messages.length - 1];
-    // پیام جدید همیشه، استریم فقط اگر کاربر پایین باشد
-    if (isNewMessage || !lastMessage?.content) {
-      virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'end' });
+    if (isNewMessage) {
+      // اول رندر شود بعد اسکرول
+      requestAnimationFrame(() => {
+        scrollToBottom('smooth');
+      });
     }
-  }, [messages]);
+  }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // استریم: فقط اگر کاربر پایین باشد اسکرول کن
+  useEffect(() => {
+    if (!isGenerating) return;
+    if (!isAtBottomRef.current) return;
+    // در حین استریم، اگر کاربر پایین است، آخرین پیام را دنبال کن
+    scrollToBottom('auto');
+  }, [messages[messages.length - 1]?.content]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute a flat list of items for Virtuoso
   type MessageItem = { type: 'message'; message: Message; isLast: boolean };
@@ -93,6 +111,11 @@ export default function MessageList({
     items.push({ type: 'streaming', message: streamingMessage });
   }
 
+  // Notify scroll helper that items changed
+  useEffect(() => {
+    setItemsVersion(v => v + 1);
+  }, [items.length]);
+
   const computeItemKey = useCallback((index: number) => {
     const item = items[index];
     if (!item) return `item-${index}`;
@@ -113,8 +136,9 @@ export default function MessageList({
             ref={virtuosoRef}
             totalCount={items.length}
             overscan={200}
-            followOutput="smooth"
+            followOutput={isGenerating ? 'smooth' : false}
             initialTopMostItemIndex={Math.max(0, items.length - 1)}
+            atBottomStateChange={(atBottom) => { isAtBottomRef.current = atBottom; }}
             itemContent={(index) => {
               const item = items[index];
               if (!item) return null;

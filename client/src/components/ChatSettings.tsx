@@ -14,6 +14,7 @@ export default function ChatSettings() {
     frequency_penalty: 0, presence_penalty: 0,
     stream: true, stop: [] as string[],
     system_prompt: '',
+    reasoning_effort: '' as string,
     authors_note: '',
     authors_note_depth: 4,
     authors_note_position: 'in_chat' as 'after_char' | 'in_chat',
@@ -229,6 +230,24 @@ export default function ChatSettings() {
               id="stream-toggle"
             />
             <label htmlFor="stream-toggle" className="text-sm font-medium">Streaming (live response)</label>
+          </div>
+
+          {/* Reasoning Effort (DeepSeek/o1 style thinking) */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Reasoning Effort <span className="text-tavern-dim text-xs">(thinking mode)</span></label>
+            <select
+              value={form.reasoning_effort}
+              onChange={(e) => setForm(f => ({ ...f, reasoning_effort: e.target.value }))}
+              className="w-full bg-tavern-bg border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
+            >
+              <option value="">Disabled (default)</option>
+              <option value="low">Low — fast, shallow thinking</option>
+              <option value="medium">Medium — balanced</option>
+              <option value="high">High — deep reasoning</option>
+            </select>
+            <p className="text-[10px] text-tavern-dim mt-0.5">
+              For models that support reasoning (DeepSeek-R1, o1, etc.). Enables thinking display in chat.
+            </p>
           </div>
         </div>
 

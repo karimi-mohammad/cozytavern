@@ -92,6 +92,7 @@ function MessageBubbleInner({
   // Use individual selectors to avoid re-rendering on every store change (e.g. streaming tokens)
   const swipeMessage = useStore(s => s.swipeMessage);
   const regenerateMessage = useStore(s => s.regenerateMessage);
+  const generateGroupResponse = useStore(s => s.generateGroupResponse);
   const markChapterBoundary = useStore(s => s.markChapterBoundary);
   const startChapterCreation = useStore(s => s.startChapterCreation);
   const chapterStartId = useStore(s => s.chapterStartId);
@@ -340,7 +341,14 @@ function MessageBubbleInner({
             {/* Regenerate - only for assistant last message */}
             {isAssistant && isLast && !isGenerating && (
               <button
-                onClick={() => regenerateMessage()}
+                onClick={() => {
+                  if (currentChat?.is_group_chat && senderCharId) {
+                    // Group chat: regenerate using the message's actual sender character
+                    generateGroupResponse(currentChat.id, senderCharId, { update_message_id: message.id });
+                  } else {
+                    regenerateMessage();
+                  }
+                }}
                 className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 title="Regenerate"
               >

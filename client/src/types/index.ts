@@ -120,6 +120,7 @@ export interface ApiSettings {
   stream: boolean;
   stop: string[];
   system_prompt: string;
+  reasoning_effort?: 'low' | 'medium' | 'high' | '';
 }
 
 export interface PromptPart {
@@ -139,6 +140,9 @@ export interface PromptInspectionPayload {
   model: string;
   params: Record<string, any>;
   messages: PromptPart[];
+  // Group chat info (optional)
+  character_name?: string;
+  character_avatar?: string;
 }
 
 // entry پنل بازرس — شامل متادیتا برای تاریخچه
@@ -152,6 +156,9 @@ export interface PromptInspection {
   params: Record<string, any>;
   messages: PromptPart[];
   created_at: string;
+  // Group chat info (optional)
+  character_name?: string;
+  character_avatar?: string;
 }
 
 export interface Chapter {

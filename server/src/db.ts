@@ -190,6 +190,11 @@ export function initDb(): void {
     database.exec("ALTER TABLE api_settings ADD COLUMN max_context INTEGER DEFAULT 0");
   }
 
+  // Migration: reasoning_effort for DeepSeek/o1 style models
+  if (!apiCols.some(c => c.name === 'reasoning_effort')) {
+    database.exec("ALTER TABLE api_settings ADD COLUMN reasoning_effort TEXT DEFAULT ''");
+  }
+
   const chatFolderCols = database.prepare("PRAGMA table_info(chats)").all() as any[];
   if (!chatFolderCols.some(c => c.name === 'folder')) {
     database.exec("ALTER TABLE chats ADD COLUMN folder TEXT DEFAULT ''");
@@ -273,6 +278,18 @@ export function initDb(): void {
     );
   `);
 
+  // ─── Group Chat Settings ───
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS group_chat_settings (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL UNIQUE,
+      auto_respond_character_id TEXT DEFAULT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+  `);
+
   // ─── Performance indexes ───
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
@@ -281,6 +298,7 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_chat_lorebooks_chat_id ON chat_lorebooks(chat_id);
     CREATE INDEX IF NOT EXISTS idx_chapters_chat_id ON chapters(chat_id);
     CREATE INDEX IF NOT EXISTS idx_chat_participants_chat_id ON chat_participants(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_settings_chat ON group_chat_settings(chat_id);
   `);
 
   // Migration: انتقال lorebook_id از chats به chat_lorebooks (پشتیبانی از چند لور بوک)

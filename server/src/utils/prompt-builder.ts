@@ -33,6 +33,10 @@ interface BuildPromptOptions {
     current_situation: string;
     rules: string[];
   };
+  isGroupChat?: boolean;
+  participants?: Array<{ char_name?: string; display_name?: string }>;
+  /** Name of the character currently responding — used to scope story state in group chats */
+  respondingCharacterName?: string;
 }
 
 // ─── Dynamic Raw Window Calculation (server-side) ───
@@ -139,47 +143,82 @@ export function buildPrompt(
 
   // 4.5 Story State (حافظه وضعیت داستان)
   const storyState = options?.storyState;
+  const respondingChar = options?.respondingCharacterName;
+  const scopedMode = options?.isGroupChat && respondingChar;
+
   if (storyState) {
     const stateParts: string[] = [];
 
-    // Characters state
+    // Characters state — in scoped mode, only show the responding character + others in same scene
     const charEntries = Object.entries(storyState.characters || {});
     if (charEntries.length > 0) {
-      const charText = charEntries.map(([name, state]) => {
-        const details = [];
-        if (state.location) details.push(`Location: ${state.location}`);
-        if (state.position) details.push(`Position: ${state.position}`);
-        if (state.clothing) details.push(`Clothing: ${state.clothing}`);
-        return `${name}: ${details.join(', ') || 'Unknown'}`;
-      }).join('\n');
-      stateParts.push(`Characters:\n${charText}`);
+      let filteredEntries = charEntries;
+      if (scopedMode) {
+        const ownState = storyState.characters?.[respondingChar!];
+        const ownLocation = ownState?.location;
+        // Show the responding character + anyone in the same scene (or all if no location set)
+        filteredEntries = charEntries.filter(([name, state]) => {
+          if (name === respondingChar) return true;
+          if (!ownLocation) return true; // no location set → show everyone
+          return (state as any)?.location === ownLocation;
+        });
+      }
+
+      if (filteredEntries.length > 0) {
+        const charText = filteredEntries.map(([name, state]) => {
+          const details = [];
+          if (state.location) details.push(`Location: ${state.location}`);
+          if (state.position) details.push(`Position: ${state.position}`);
+          if (state.clothing) details.push(`Clothing: ${state.clothing}`);
+          return `${name}: ${details.join(', ') || 'Unknown'}`;
+        }).join('\n');
+        stateParts.push(`Characters:\n${charText}`);
+      }
     }
 
-    // Relationships
+    // Relationships — in scoped mode, only show relationships involving the responding character
     const relEntries = Object.entries(storyState.relationships || {});
     if (relEntries.length > 0) {
-      const relText = relEntries.map(([pair, status]) => `- ${pair}: ${status}`).join('\n');
-      stateParts.push(`Relationships:\n${relText}`);
+      let filteredRels = relEntries;
+      if (scopedMode) {
+        filteredRels = relEntries.filter(([pair]) => {
+          const [a, b] = pair.split('-');
+          return a === respondingChar || b === respondingChar;
+        });
+      }
+      if (filteredRels.length > 0) {
+        const relText = filteredRels.map(([pair, status]) => `- ${pair}: ${status}`).join('\n');
+        stateParts.push(`Relationships:\n${relText}`);
+      }
     }
 
-    // Relationship Details (emotions)
+    // Relationship Details (emotions) — in scoped mode, only relationships involving responding character
     const relDetailEntries = Object.entries((storyState as any).relationship_details || {});
     if (relDetailEntries.length > 0) {
-      const detailText = relDetailEntries.map(([pair, detail]: [string, any]) => {
-        const emotions = [];
-        if (detail.anger !== undefined) emotions.push(`Anger: ${detail.anger}%`);
-        if (detail.love !== undefined) emotions.push(`Love: ${detail.love}%`);
-        if (detail.trust !== undefined) emotions.push(`Trust: ${detail.trust}%`);
-        if (detail.fear !== undefined) emotions.push(`Fear: ${detail.fear}%`);
-        if (detail.respect !== undefined) emotions.push(`Respect: ${detail.respect}%`);
-        if (detail.gratitude !== undefined) emotions.push(`Gratitude: ${detail.gratitude}%`);
-        if (detail.jealousy !== undefined) emotions.push(`Jealousy: ${detail.jealousy}%`);
-        if (detail.shame !== undefined) emotions.push(`Shame: ${detail.shame}%`);
-        if (detail.affection !== undefined) emotions.push(`Affection: ${detail.affection}%`);
-        if (detail.summary) emotions.push(`Summary: ${detail.summary}`);
-        return `- ${pair}: ${emotions.join(', ') || 'Neutral'}`;
-      }).join('\n');
-      stateParts.push(`Relationship Details:\n${detailText}`);
+      let filteredDetails = relDetailEntries;
+      if (scopedMode) {
+        filteredDetails = relDetailEntries.filter(([pair]) => {
+          const [a, b] = pair.split('-');
+          return a === respondingChar || b === respondingChar;
+        });
+      }
+      if (filteredDetails.length > 0) {
+        const detailText = filteredDetails.map(([pair, detail]: [string, any]) => {
+          const emotions = [];
+          if (detail.anger !== undefined) emotions.push(`Anger: ${detail.anger}%`);
+          if (detail.love !== undefined) emotions.push(`Love: ${detail.love}%`);
+          if (detail.trust !== undefined) emotions.push(`Trust: ${detail.trust}%`);
+          if (detail.fear !== undefined) emotions.push(`Fear: ${detail.fear}%`);
+          if (detail.respect !== undefined) emotions.push(`Respect: ${detail.respect}%`);
+          if (detail.gratitude !== undefined) emotions.push(`Gratitude: ${detail.gratitude}%`);
+          if (detail.jealousy !== undefined) emotions.push(`Jealousy: ${detail.jealousy}%`);
+          if (detail.shame !== undefined) emotions.push(`Shame: ${detail.shame}%`);
+          if (detail.affection !== undefined) emotions.push(`Affection: ${detail.affection}%`);
+          if (detail.summary) emotions.push(`Summary: ${detail.summary}`);
+          return `- ${pair}: ${emotions.join(', ') || 'Neutral'}`;
+        }).join('\n');
+        stateParts.push(`Relationship Details:\n${detailText}`);
+      }
     }
 
     // Current situation
@@ -219,6 +258,32 @@ export function buildPrompt(
   // 6. تاریخچه چت (با در نظر گرفتن chapter summaries + raw window دینامیک)
   const historyParts: PromptPart[] = [];
   const chapters = options?.chapters || [];
+  const isGroupChat = options?.isGroupChat || false;
+
+  // Helper: Format message content with sender name for group chats
+  const formatGroupMessage = (msg: any): string => {
+    if (!isGroupChat) return msg.content;
+
+    // System messages (scene events, etc.) stay as-is
+    if (msg.role === 'system') return msg.content;
+
+    // Determine sender name
+    let senderName = '';
+    if (msg.role === 'user') {
+      // For user messages, use persona name or fallback
+      senderName = (msg as any).sender_name || persona?.name || '{{user}}';
+    } else if (msg.role === 'assistant') {
+      // For assistant messages, use sender_name from message
+      // Fallback to character name if sender_name is not set (for backward compat)
+      senderName = (msg as any).sender_name || character?.name || '';
+    }
+
+    // Only prefix if we have a sender name and content
+    if (senderName && msg.content) {
+      return `${senderName}:\n${msg.content}`;
+    }
+    return msg.content;
+  };
 
   // Calculate effective raw window (dynamic or static)
   let effectiveRawWindow: number;
@@ -271,7 +336,7 @@ export function buildPrompt(
       const msg = chatHistory[i];
       historyParts.push({
         role: msg.role as 'user' | 'assistant',
-        content: msg.content,
+        content: formatGroupMessage(msg),
       });
     }
   } else {
@@ -279,7 +344,7 @@ export function buildPrompt(
     for (const msg of chatHistory) {
       historyParts.push({
         role: msg.role as 'user' | 'assistant',
-        content: msg.content,
+        content: formatGroupMessage(msg),
       });
     }
   }

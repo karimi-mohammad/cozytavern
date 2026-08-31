@@ -46,6 +46,7 @@ export function buildRequestBody(
     stop?: string[];
     tools?: any[];
     tool_choice?: string | { type: string; function: { name: string } };
+    reasoning_effort?: 'low' | 'medium' | 'high';
   }
 ): string {
   const body: any = {
@@ -62,6 +63,8 @@ export function buildRequestBody(
   if (settings.stop && settings.stop.length > 0) body.stop = settings.stop;
   if (settings.tools && settings.tools.length > 0) body.tools = settings.tools;
   if (settings.tool_choice) body.tool_choice = settings.tool_choice;
+  // DeepSeek/o1 style reasoning effort — enables reasoning_content in stream
+  if (settings.reasoning_effort) body.reasoning_effort = settings.reasoning_effort;
 
   return JSON.stringify(body);
 }
@@ -97,16 +100,17 @@ export function parseStreamChunkFull(data: string): ParsedStreamChunk | null {
   try {
     const parsed = JSON.parse(data);
     const delta = parsed.choices?.[0]?.delta;
-    // OpenAI-compatible streaming: content tokens
-    if (delta?.content) {
-      return { token: delta.content, isReasoning: false };
-    }
-    // DeepSeek/mimo style: reasoning tokens in stream
+    // DeepSeek/mimo style: reasoning tokens in stream — check FIRST since some
+    // providers may include both `content` (empty/null) and `reasoning_content`
     if (delta?.reasoning_content) {
       return { token: delta.reasoning_content, isReasoning: true };
     }
     if (delta?.reasoning) {
       return { token: delta.reasoning, isReasoning: true };
+    }
+    // OpenAI-compatible streaming: content tokens
+    if (delta?.content) {
+      return { token: delta.content, isReasoning: false };
     }
     //有些 API ها direct content برمیگردونن
     if (parsed.choices?.[0]?.text) {

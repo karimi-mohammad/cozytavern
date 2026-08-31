@@ -35,6 +35,22 @@ interface GeneratedCharacter {
   character_version: string;
 }
 
+interface ChatHistoryContext {
+  chat: {
+    id: string;
+    name: string;
+    is_group_chat: boolean;
+  };
+  participants: Array<{
+    char_name: string;
+    char_desc?: string;
+    char_personality?: string;
+    display_name?: string;
+  }>;
+  messages: string[];
+  total_messages: number;
+}
+
 // Parse the WIZARD_READY marker + JSON from assistant response
 function extractCharacterFromResponse(text: string): GeneratedCharacter | null {
   const marker = 'WIZARD_READY';
@@ -119,6 +135,7 @@ async function streamChat(
   editCharacterId: string | null,
   onToken: (token: string) => void,
   onDone: (fullContent: string) => void,
+  chatHistoryContext?: ChatHistoryContext | null,
 ): Promise<void> {
   const res = await fetch('/api/character-wizard/chat', {
     method: 'POST',
@@ -127,6 +144,7 @@ async function streamChat(
       messages,
       conversation_id: conversationId,
       edit_character_id: editCharacterId,
+      chat_history_context: chatHistoryContext || null,
     }),
   });
 
@@ -167,7 +185,7 @@ async function streamChat(
 export default function CharacterWizard() {
   const {
     characterWizardOpen, setCharacterWizardOpen, addToast,
-    createCharacter, setCharacterEditorOpen, characters,
+    createCharacter, setCharacterEditorOpen, characters, chats,
   } = useStore();
 
   const [conversations, setConversations] = useState<WizardConversation[]>([]);
@@ -182,22 +200,11 @@ export default function CharacterWizard() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, generatedCharacter]);
-
-  // Focus input when opened
-  useEffect(() => {
-    if (characterWizardOpen && inputRef.current) inputRef.current.focus();
-  }, [characterWizardOpen]);
-
-  // Load conversations list when opened
-  useEffect(() => {
-    if (characterWizardOpen) {
-      wizardApi.listConversations().then(setConversations).catch(() => {});
-    }
-  }, [characterWizardOpen]);
+  // Chat history context for "From Chat" mode
+  const [chatHistoryContext, setChatHistoryContext] = useState<ChatHistoryContext | null>(null);
+  const [showChatSelector, setShowChatSelector] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [isLoadingChatHistory, setIsLoadingChatHistory] = useState(false);
 
   // Update messages in last assistant slot
   const updateLastAssistant = useCallback((fullContent: string) => {
@@ -222,6 +229,68 @@ export default function CharacterWizard() {
     }
   }, [addToast]);
 
+  // Load chat history for "From Chat" mode
+  const loadChatHistory = async (chatId: string) => {
+    setIsLoadingChatHistory(true);
+    try {
+      const res = await fetch(`/api/character-wizard/chat-history/${chatId}`);
+      if (!res.ok) throw new Error('Failed to load chat history');
+      const data = await res.json();
+      setChatHistoryContext(data);
+      setShowChatSelector(false);
+      setChatSearchQuery('');
+
+      // Start conversation with context
+      await startNewConversationWithContext(data);
+    } catch (error) {
+      addToast('Failed to load chat history', 'error');
+    } finally {
+      setIsLoadingChatHistory(false);
+    }
+  };
+
+  // Start new conversation with chat history context
+  const startNewConversationWithContext = async (context: ChatHistoryContext) => {
+    try {
+      const conv = await wizardApi.createConversation();
+      setMessages([]);
+      setGeneratedCharacter(null);
+      setActiveConvId(conv.id);
+      setEditCharId(null);
+      setShowHistory(false);
+
+      const participantNames = context.participants.map(p => p.char_name).join(', ');
+      const userMsg: WizardMessage = {
+        role: 'user',
+        content: `I want to create a new character for this chat/story. The existing characters are: ${participantNames}. Based on the chat history, I'd like to add a new character that fits naturally into this story.`
+      };
+      setMessages([userMsg, { role: 'assistant', content: '' }]);
+      setIsGenerating(true);
+      setGeneratingPhase('thinking');
+
+      try {
+        await streamChat([userMsg], conv.id, null, (token) => {
+          setGeneratingPhase('writing');
+          updateLastAssistant(token);
+        }, (fullContent) => {
+          const char = extractCharacterFromResponse(fullContent);
+          if (char) {
+            setGeneratedCharacter(char);
+          } else if (fullContent.includes('WIZARD_READY')) {
+            addToast('Character generated but JSON is incomplete. Try again or describe more details.', 'error');
+          }
+        }, context);
+      } catch {}
+
+      setIsGenerating(false);
+      setGeneratingPhase('idle');
+      wizardApi.listConversations().then(setConversations).catch(() => {});
+    } catch {
+      addToast('Failed to start conversation', 'error');
+      setIsGenerating(false);
+    }
+  };
+
   // Start new conversation
   const startNewConversation = async () => {
     try {
@@ -231,6 +300,7 @@ export default function CharacterWizard() {
       setActiveConvId(conv.id);
       setEditCharId(null);
       setShowHistory(false);
+      setChatHistoryContext(null);
 
       const userMsg: WizardMessage = { role: 'user', content: 'Hi! I want to create a new character.' };
       setMessages([userMsg, { role: 'assistant', content: '' }]);
@@ -301,6 +371,31 @@ export default function CharacterWizard() {
     }
   };
 
+  // Auto-scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, generatedCharacter]);
+
+  // Focus input when opened
+  useEffect(() => {
+    if (characterWizardOpen && inputRef.current) inputRef.current.focus();
+  }, [characterWizardOpen]);
+
+  // Load conversations list when opened
+  useEffect(() => {
+    if (characterWizardOpen) {
+      wizardApi.listConversations().then(setConversations).catch(() => {});
+
+      // Check if there's a chat context from GroupChatManager
+      const pendingChatId = localStorage.getItem('cozytavern.wizardChatContext');
+      if (pendingChatId) {
+        localStorage.removeItem('cozytavern.wizardChatContext');
+        // Auto-load this chat's history
+        loadChatHistory(pendingChatId);
+      }
+    }
+  }, [characterWizardOpen]);
+
   // Send message
   const sendMessage = async () => {
     if (!inputValue.trim() || isGenerating) return;
@@ -323,7 +418,7 @@ export default function CharacterWizard() {
         } else if (fullContent.includes('WIZARD_READY')) {
           addToast('Character generated but JSON is incomplete. Try again or describe more details.', 'error');
         }
-      });
+      }, chatHistoryContext);
     } catch {
       setMessages(prev => {
         const updated = [...prev];
@@ -376,6 +471,9 @@ export default function CharacterWizard() {
     setGeneratingPhase('idle');
     setActiveConvId(null);
     setEditCharId(null);
+    setChatHistoryContext(null);
+    setShowChatSelector(false);
+    setChatSearchQuery('');
   };
 
   const handleClose = () => {
@@ -416,8 +514,17 @@ export default function CharacterWizard() {
             <span className="text-xl">✨</span>
             <h2 className="text-lg font-semibold" style={{ color: '#e2e8f0' }}>Character Wizard</h2>
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: '#94a3b8', backgroundColor: '#15171f' }}>AI-Powered</span>
+            {chatHistoryContext && (
+              <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: '#22c55e', backgroundColor: 'rgba(34,197,94,0.15)' }}>
+                📖 From: {chatHistoryContext.chat.name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
+            <button onClick={() => setShowChatSelector(!showChatSelector)} className="p-1.5 rounded-lg transition-colors" style={{ color: showChatSelector ? '#22c55e' : '#94a3b8' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#252836'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'} title="Create from Chat History">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            </button>
             <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 rounded-lg transition-colors" style={{ color: '#94a3b8' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#252836'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'} title="Chat History">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -481,17 +588,92 @@ export default function CharacterWizard() {
           </div>
         )}
 
+        {/* Chat Selector Panel for "From Chat" mode */}
+        {showChatSelector && (
+          <div className="border-b overflow-y-auto" style={{ borderColor: '#2a2d3e', maxHeight: '300px', backgroundColor: '#15171f' }}>
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium" style={{ color: '#e2e8f0' }}>📖 Select Chat for Context</p>
+                <button onClick={() => { setShowChatSelector(false); setChatSearchQuery(''); }}
+                  className="text-xs px-2 py-1 rounded transition-colors"
+                  style={{ color: '#94a3b8', backgroundColor: '#252836' }}>
+                  Cancel
+                </button>
+              </div>
+              <p className="text-xs mb-3" style={{ color: '#64748b' }}>
+                Choose a chat to use its history as context for creating a new character that fits naturally into the story.
+              </p>
+
+              {/* Search */}
+              <input
+                value={chatSearchQuery}
+                onChange={(e) => setChatSearchQuery(e.target.value)}
+                placeholder="Search chats..."
+                className="w-full rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none"
+                style={{ backgroundColor: '#1a1d2e', border: '1px solid #2a2d3e', color: '#e2e8f0' }}
+                onFocus={(e) => e.currentTarget.style.borderColor = '#6366f1'}
+                onBlur={(e) => e.currentTarget.style.borderColor = '#2a2d3e'}
+                autoFocus
+              />
+
+              {/* Chat List */}
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {chats.filter(chat =>
+                  chat.name.toLowerCase().includes(chatSearchQuery.toLowerCase())
+                ).length === 0 ? (
+                  <p className="text-center py-4 text-sm" style={{ color: '#64748b' }}>
+                    {chats.length === 0 ? 'No chats available' : 'No chats match search'}
+                  </p>
+                ) : (
+                  chats
+                    .filter(chat => chat.name.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+                    .map(chat => (
+                      <button
+                        key={chat.id}
+                        onClick={() => loadChatHistory(chat.id)}
+                        disabled={isLoadingChatHistory}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: '#1a1d2e', border: '1px solid #2a2d3e' }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#6366f1'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#2a2d3e'}
+                      >
+                        <span className="text-lg">{chat.is_group_chat ? '👥' : '💬'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate" style={{ color: '#e2e8f0' }}>{chat.name}</p>
+                          <p className="text-xs" style={{ color: '#64748b' }}>
+                            {chat.is_group_chat ? 'Group Chat' : 'Chat'}
+                          </p>
+                        </div>
+                        {isLoadingChatHistory && (
+                          <div className="w-4 h-4 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+                        )}
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {messages.length === 0 && !showHistory && (
+          {messages.length === 0 && !showHistory && !showChatSelector && (
             <div className="flex flex-col items-center justify-center h-full text-center" style={{ color: '#64748b' }}>
               <span className="text-4xl mb-3">✨</span>
               <p className="text-lg font-medium mb-1" style={{ color: '#94a3b8' }}>Character Creation Wizard</p>
               <p className="text-sm mb-4" style={{ color: '#64748b' }}>I'll help you create an amazing character for roleplay, storytelling, or D&D.</p>
-              <button onClick={startNewConversation} className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity"
-                style={{ backgroundColor: '#6366f1' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'} onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}>
-                Start Creating
-              </button>
+              <div className="flex flex-col gap-2">
+                <button onClick={startNewConversation} className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity"
+                  style={{ backgroundColor: '#6366f1' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'} onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}>
+                  ✨ Start Creating
+                </button>
+                <button onClick={() => setShowChatSelector(true)} className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ backgroundColor: '#252836', color: '#cbd5e1', border: '1px solid #2a2d3e' }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = '#22c55e'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#2a2d3e'}>
+                  📖 Create from Chat History
+                </button>
+              </div>
             </div>
           )}
 

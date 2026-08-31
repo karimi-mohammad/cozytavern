@@ -72,12 +72,12 @@ interface AppState {
   // Group Chat
   groupChatParticipants: ChatParticipant[];
   groupChatGenerating: boolean;
-  selectedCharacterForResponse: string | null;
-  setSelectedCharacterForResponse: (charId: string | null) => void;
+  autoRespondCharacterId: string | null;
+  setAutoRespondCharacter: (charId: string | null) => void;
   addParticipant: (chatId: string, characterId: string) => Promise<void>;
   removeParticipant: (chatId: string, participantId: string) => Promise<void>;
   toggleParticipant: (chatId: string, participantId: string, isActive: boolean) => Promise<void>;
-  generateGroupResponse: (chatId: string, characterId: string) => Promise<void>;
+  generateGroupResponse: (chatId: string, characterId: string, options?: { update_message_id?: string }) => Promise<void>;
   createGroupChat: (data: { name?: string; character_ids: string[]; lorebook_id?: string }) => Promise<Chat>;
   addCharacterToChat: (chatId: string, characterId: string) => Promise<void>;
 
@@ -163,8 +163,9 @@ interface AppState {
   deleteChat: (id: string) => Promise<void>;
   renameChat: (id: string, name: string) => Promise<void>;
   moveChatToFolder: (id: string, folder: string) => Promise<void>;
+  duplicateChat: (chatId: string, name?: string) => Promise<void>;
 
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, skipGenerate?: boolean) => Promise<void>;
   stopGeneration: () => Promise<void>;
   editMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
@@ -243,7 +244,7 @@ function promoteNextInspection() {
 }
 
 // تبدیل payload سرور به entry پنل (label بر اساس source)
-export function inspectionEntryFromPayload(payload: PromptInspectionPayload): Omit<PromptInspection, 'id' | 'created_at'> {
+export function inspectionEntryFromPayload(payload: PromptInspectionPayload & { character_name?: string; character_avatar?: string }): Omit<PromptInspection, 'id' | 'created_at'> {
   const labels: Record<string, string> = { chat: 'Chat', title: 'Chat Title', chapter: 'Chapter Summary' };
   return {
     source: payload.source,
@@ -253,6 +254,8 @@ export function inspectionEntryFromPayload(payload: PromptInspectionPayload): Om
     model: payload.model,
     params: payload.params,
     messages: payload.messages,
+    ...(payload.character_name && { character_name: payload.character_name }),
+    ...(payload.character_avatar && { character_avatar: payload.character_avatar }),
   };
 }
 
@@ -332,8 +335,6 @@ export const useStore = create<AppState>((set, get) => ({
   // Group Chat state
   groupChatParticipants: [],
   groupChatGenerating: false,
-  selectedCharacterForResponse: null,
-  setSelectedCharacterForResponse: (charId) => set({ selectedCharacterForResponse: charId }),
   addParticipant: async (chatId, characterId) => {
     try {
       const participant = await api.addParticipant(chatId, characterId);
@@ -414,57 +415,100 @@ export const useStore = create<AppState>((set, get) => ({
       get().addToast(`Error: ${error.message}`, 'error');
     }
   },
-  generateGroupResponse: async (chatId, characterId) => {
+  generateGroupResponse: async (chatId, characterId, options) => {
+    console.log(`[Store] generateGroupResponse called: chatId=${chatId}, characterId=${characterId}, options=`, options);
     const { activePersona, isGenerating } = get();
     if (isGenerating) return;
 
     set({ isGenerating: true, groupChatGenerating: true });
+
+    // ─── Prompt Inspector gate ───
+    let editedMessages: PromptPart[] | undefined;
+    if (get().promptInspectEnabled) {
+      let approved: boolean | PromptPart[] = false;
+      try {
+        const payload = await api.inspectGroupChat(chatId, {
+          character_id: characterId,
+          persona_id: activePersona?.id,
+          ...(options?.update_message_id && { update_message_id: options.update_message_id }),
+        });
+        approved = await get().requestInspection(inspectionEntryFromPayload(payload));
+      } catch (e: any) {
+        get().addToast(`Error previewing prompt: ${e.message}`, 'error');
+      }
+      if (!approved) {
+        set({ isGenerating: false, groupChatGenerating: false });
+        return;
+      }
+      if (Array.isArray(approved)) editedMessages = approved;
+    }
 
     const controller = new AbortController();
     currentAbortController = controller;
 
     try {
       let fullContent = '';
+      const isRegen = !!options?.update_message_id;
+
       await api.generateGroupChatResponseStream(
         chatId,
         {
           character_id: characterId,
           persona_id: activePersona?.id,
-
+          ...(options?.update_message_id && { update_message_id: options.update_message_id }),
+          ...(editedMessages && { edited_messages: editedMessages }),
         },
         (messageId) => {
-          // Get the character info for the sender
-          const participant = get().groupChatParticipants.find(p => p.character_id === characterId);
-          const char = get().characters.find(c => c.id === characterId);
-          const assistantMsg = {
-            id: messageId,
-            chat_id: chatId,
-            role: 'assistant' as const,
-            content: '',
-            swipes: [],
-            swipe_id: 0,
-            is_edited: false,
-            is_system: false,
-            send_date: new Date().toISOString(),
-            sender_name: char?.name || participant?.display_name || '',
-            sender_avatar: char?.avatar || participant?.display_avatar || '',
-            sender_character_id: characterId,
-          };
-          set(s => ({
-            currentChat: s.currentChat ? {
-              ...s.currentChat,
-              messages: [...s.currentChat.messages, assistantMsg],
-            } : null,
-          }));
+          if (isRegen && options?.update_message_id) {
+            // Regeneration: clear the existing message content for streaming
+            set(s => {
+              if (!s.currentChat) return s;
+              const msgs = s.currentChat.messages.map(m =>
+                m.id === options.update_message_id ? { ...m, content: '' } : m
+              );
+              return { currentChat: { ...s.currentChat, messages: msgs } };
+            });
+          } else {
+            // New message: add to chat
+            const participant = get().groupChatParticipants.find(p => p.character_id === characterId);
+            const char = get().characters.find(c => c.id === characterId);
+            const assistantMsg = {
+              id: messageId,
+              chat_id: chatId,
+              role: 'assistant' as const,
+              content: '',
+              swipes: [],
+              swipe_id: 0,
+              is_edited: false,
+              is_system: false,
+              send_date: new Date().toISOString(),
+              sender_name: char?.name || participant?.display_name || '',
+              sender_avatar: char?.avatar || participant?.display_avatar || '',
+              sender_character_id: characterId,
+            };
+            set(s => ({
+              currentChat: s.currentChat ? {
+                ...s.currentChat,
+                messages: [...s.currentChat.messages, assistantMsg],
+              } : null,
+            }));
+          }
         },
         (token) => {
           fullContent += token;
           set(s => {
             if (!s.currentChat) return s;
             const msgs = [...s.currentChat.messages];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.sender_character_id === characterId) {
-              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+            if (isRegen && options?.update_message_id) {
+              // Update the specific message by id
+              const idx = msgs.findIndex(m => m.id === options.update_message_id);
+              if (idx !== -1) msgs[idx] = { ...msgs[idx], content: fullContent };
+            } else {
+              // Update the last assistant message
+              const lastMsg = msgs[msgs.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.sender_character_id === characterId) {
+                msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
+              }
             }
             return { currentChat: { ...s.currentChat, messages: msgs } };
           });
@@ -472,6 +516,12 @@ export const useStore = create<AppState>((set, get) => ({
         () => {
           set({ isGenerating: false, groupChatGenerating: false });
           get().updateContextUsage();
+          // Reload chat after regeneration to sync swipes from server
+          if (isRegen) {
+            api.getChat(chatId).then(refreshed => {
+              set({ currentChat: refreshed });
+            }).catch(() => {});
+          }
         },
         controller.signal
       );
@@ -498,7 +548,20 @@ export const useStore = create<AppState>((set, get) => ({
     return chat;
   },
 
-  // Loading states (از true شروع می‌شه چون لود اولیه دیتا در mount انجام می‌شه)
+  // Group Chat Settings
+  groupChatSettings: null,
+  // Auto-respond character (for auto-trigger after user message)
+  autoRespondCharacterId: null,
+  setAutoRespondCharacter: (charId) => {
+    set({ autoRespondCharacterId: charId });
+    // Persist to server settings
+    const chat = get().currentChat;
+    if (chat?.is_group_chat) {
+      api.updateGroupChatSettings(chat.id, { auto_respond_character_id: charId }).catch(() => {});
+    }
+  },
+
+  // Loading states
   loadingCharacters: true,
   loadingChats: false,
   loadingMessages: false,
@@ -732,7 +795,7 @@ export const useStore = create<AppState>((set, get) => ({
       get().loadStoryState(chatId);
       // لود لوربوک‌های چت
       get().loadChatLorebooks(chatId);
-      // لود participant های گروه چت
+      // لود participant های گروه چت + settings
       if (chat.is_group_chat) {
         try {
           const groupChat = await api.getGroupChat(chatId);
@@ -740,8 +803,15 @@ export const useStore = create<AppState>((set, get) => ({
         } catch {
           set({ groupChatParticipants: [] });
         }
+        // Load group chat settings (auto-respond character)
+        try {
+          const settings = await api.getGroupChatSettings(chatId);
+          set({ autoRespondCharacterId: settings.auto_respond_character_id || null });
+        } catch {
+          set({ autoRespondCharacterId: null });
+        }
       } else {
-        set({ groupChatParticipants: [] });
+        set({ groupChatParticipants: [], autoRespondCharacterId: null });
       }
       // محاسبه context usage بعد از لود چت
       setTimeout(() => get().updateContextUsage(), 0);
@@ -803,7 +873,20 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
 
-  sendMessage: async (content) => {
+  duplicateChat: async (chatId, name) => {
+    try {
+      const newChat = await api.duplicateChat(chatId, name) as any;
+      get().addToast(`Chat duplicated as "${newChat.name}"`, 'success');
+      const char = get().currentCharacter;
+      if (char) {
+        await get().loadChats(char.id);
+      }
+    } catch (error: any) {
+      get().addToast(`Duplicate error: ${error.message}`, 'error');
+    }
+  },
+
+  sendMessage: async (content, skipGenerate?: boolean) => {
     // صبر برای پایان ادیت در حال انجام (تا نسخه‌های قدیمی روی پیام‌ها ننویسد)
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
@@ -824,8 +907,11 @@ export const useStore = create<AppState>((set, get) => ({
         ...s.currentChat,
         messages: [...s.currentChat.messages, userMsg],
       } : null,
-      isGenerating: true,
+      isGenerating: skipGenerate ? false : true,
     }));
+
+    // Group chat: only save user message, skip AI generation
+    if (skipGenerate) return;
 
     const controller = new AbortController();
     currentAbortController = controller;
@@ -859,7 +945,7 @@ export const useStore = create<AppState>((set, get) => ({
           chat_id: currentChat.id,
           character_id: currentCharacter.id,
           persona_id: activePersona?.id,
-          ...(editedMessages && { edited_messages: editedMessages }),
+          ...(editedMessages && editedMessages.length > 0 && { edited_messages: editedMessages }),
         },
         (messageId) => {
           const assistantMsg = {
@@ -1058,6 +1144,9 @@ export const useStore = create<AppState>((set, get) => ({
       if (Array.isArray(approved)) editedMessages2 = approved;
     }
 
+    const controller = new AbortController();
+    currentAbortController = controller;
+
     try {
       // سرور محتوای فعلی رو به swipes اضافه می‌کنه و پیام آپدیت شده رو برمی‌گردونه
       await api.regenerateMessage(currentChat.id);
@@ -1097,11 +1186,20 @@ export const useStore = create<AppState>((set, get) => ({
         },
         () => {
           set({ isGenerating: false });
+          if (currentAbortController === controller) currentAbortController = null;
           get().updateContextUsage();
-        }
+        },
+        controller.signal
       );
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        set({ isGenerating: false });
+        return;
+      }
+      get().addToast(`Error: ${error.message}`, 'error');
       set({ isGenerating: false });
+    } finally {
+      if (currentAbortController === controller) currentAbortController = null;
     }
   },
 

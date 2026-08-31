@@ -35,6 +35,8 @@ function App() {
   const setActiveLorebook = useStore(s => s.setActiveLorebook);
   const theme = useStore(s => s.theme);
   const _initStoryStateListener = useStore(s => s._initStoryStateListener);
+  const currentChat = useStore(s => s.currentChat);
+  const rightPanelOpen = useStore(s => s.rightPanelOpen);
 
   // اعمال تم ذخیره‌شده در اولین رندر
   useEffect(() => {

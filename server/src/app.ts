@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import path from 'path';
@@ -134,7 +134,16 @@ initDb();
 
 // Middleware
 app.use(cors());
-app.use(compression()); // فشرده‌سازی gzip برای کاهش حجم response
+// فشرده‌سازی gzip — اما SSE (text/event-stream) را مستثنا کن تا استریم توکن‌به‌توکن کار کند
+app.use(compression({
+  filter: (req: Request, res: Response) => {
+    const contentType = res.getHeader('Content-Type');
+    if (contentType && typeof contentType === 'string' && contentType.includes('text/event-stream')) {
+      return false; // SSE responses should NOT be compressed — compression buffers the stream
+    }
+    return compression.filter(req, res);
+  },
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // API Routes
@@ -165,10 +174,10 @@ if (fs.existsSync(clientDistPath)) {
 
 // Chat API endpoint (ارسال پیام به AI با streaming)
 app.post('/api/chat', async (req, res) => {
-  const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate, edited_messages } = req.body;
+  const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate, edited_messages, skip_generate } = req.body;
 
   const db = getDb();
-  const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
+  let character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
   const persona = persona_id ? db.prepare('SELECT * FROM personas WHERE id = ?').get(persona_id) as any : null;
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chat_id) as any;
   const messages = db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC').all(chat_id) as any[];
@@ -294,6 +303,15 @@ app.post('/api/chat', async (req, res) => {
     }
   }
 
+  // Check if this is a group chat and get participants if so
+  const isGroupChat = !!chat?.is_group_chat;
+  let participants: Array<{ char_name?: string; display_name?: string }> = [];
+  if (isGroupChat) {
+    participants = db.prepare(
+      'SELECT cp.*, c.name as char_name, c.description as char_desc, c.personality as char_personality FROM chat_participants cp JOIN characters c ON cp.character_id = c.id WHERE cp.chat_id = ? AND cp.is_active = 1'
+    ).all(chat_id) as any[];
+  }
+
   const promptParts = buildPrompt(character, persona, filteredMessages, lorebookEntries, settings.system_prompt || '', {
     impersonate: !!impersonate,
     continueMode: !!continue_mode,
@@ -314,7 +332,33 @@ app.post('/api/chat', async (req, res) => {
         position: chat.authors_note_position === 'after_char' ? 'after_char' as const : 'in_chat' as const,
       },
     }),
+    // Group chat support
+    isGroupChat,
+    participants,
+    respondingCharacterName: character.name,
   });
+
+  // Add enhanced identity enforcement for group chat
+  if (isGroupChat) {
+    const otherParticipants = (participants as any[]).filter(p => p.char_name !== character.name);
+    const otherCharsInfo = otherParticipants.length > 0
+      ? `\n\n[Other Characters Present]\n${otherParticipants.map(p =>
+          `- ${p.char_name}`
+        ).join('\n')}\n\nNote: You do NOT know other characters' inner thoughts or feelings unless they tell you.`
+      : '';
+
+    promptParts.push({
+      role: 'system',
+      content: `[Group Chat — Character Identity Rules]
+
+You are responding as "${character.name}" ONLY.
+- Write ONLY one message as ${character.name}
+- NEVER write messages for other characters
+- NEVER describe other characters' actions or thoughts
+- Use ${character.name}'s established personality, speech patterns, and knowledge
+- If you need another character to speak, STOP and let the system handle it${otherCharsInfo}`,
+    });
+  }
 
   try {
     const endpoint = buildEndpoint(settings.base_url);
@@ -351,6 +395,7 @@ app.post('/api/chat', async (req, res) => {
       stop: JSON.parse(settings.stop || '[]'),
       tools: [storyStateTool],
       tool_choice: 'auto',
+      reasoning_effort: settings.reasoning_effort || undefined,
     });
 
     // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
@@ -370,28 +415,44 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
+    // حالت skip_generate: فقط ذخیره پیام user بدون تولید پاسخ (برای group chat)
+    if (skip_generate) {
+      return res.json({ skip_generate: true });
+    }
+
     const controller = new AbortController();
+
+    // ─── Streaming: set SSE headers BEFORE fetch so errors can be sent as SSE events ───
+    if (settings.stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+    }
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: requestBody,
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`LLM API error ${response.status}:`, errorText.slice(0, 200));
-      res.status(response.status).json({ error: `API error: ${errorText}` });
+      if (settings.stream && res.headersSent) {
+        // Headers already sent as SSE — send error as SSE event
+        res.write(`data: ${JSON.stringify({ error: `API error: ${response.status}: ${errorText}` })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } else {
+        res.status(response.status).json({ error: `API error: ${errorText}` });
+      }
       return;
     }
 
     if (settings.stream) {
-      // Streaming response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      // ایجاد یا بروزرسانی پیام
+      // ─── Streaming response ───
+      // ایجاد یا بروزرسانی پیام — AFTER successful fetch
       let msgId: string;
       const now = new Date().toISOString();
       const msgRole = impersonate ? 'user' : 'assistant';

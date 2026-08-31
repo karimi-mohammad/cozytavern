@@ -25,39 +25,39 @@ router.get('/', (_req: Request, res: Response) => {
     });
     return;
   }
-  res.json({ ...setting, stream: !!setting.stream, stop: JSON.parse(setting.stop || '[]'), system_prompt: setting.system_prompt || '' });
+  res.json({ ...setting, stream: !!setting.stream, stop: JSON.parse(setting.stop || '[]'), system_prompt: setting.system_prompt || '', reasoning_effort: setting.reasoning_effort || '' });
 });
 
 // ذخیره تنظیمات
 router.post('/', (req: Request, res: Response) => {
   const db = getDb();
-  const { base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt } = req.body;
+  const { base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort } = req.body;
 
   const existing = db.prepare('SELECT id FROM api_settings LIMIT 1').get() as any;
 
   if (existing) {
     db.prepare(`
-      UPDATE api_settings SET base_url=?, api_key=?, model=?, temperature=?, max_tokens=?, max_context=?, top_p=?, frequency_penalty=?, presence_penalty=?, stream=?, stop=?, system_prompt=?
+      UPDATE api_settings SET base_url=?, api_key=?, model=?, temperature=?, max_tokens=?, max_context=?, top_p=?, frequency_penalty=?, presence_penalty=?, stream=?, stop=?, system_prompt=?, reasoning_effort=?
       WHERE id=?
     `).run(
       base_url || '', api_key || '', model || '',
       temperature ?? 0.7, max_tokens ?? 2048, max_context ?? 0, top_p ?? 1,
       frequency_penalty ?? 0, presence_penalty ?? 0,
       stream ? 1 : 0, JSON.stringify(stop || []),
-      system_prompt || '',
+      system_prompt || '', reasoning_effort || '',
       existing.id
     );
   } else {
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO api_settings (id, provider, base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt)
-      VALUES (?, 'openai', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_settings (id, provider, base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort)
+      VALUES (?, 'openai', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, base_url || '', api_key || '', model || '',
       temperature ?? 0.7, max_tokens ?? 2048, max_context ?? 0, top_p ?? 1,
       frequency_penalty ?? 0, presence_penalty ?? 0,
       stream ? 1 : 0, JSON.stringify(stop || []),
-      system_prompt || ''
+      system_prompt || '', reasoning_effort || ''
     );
   }
 
