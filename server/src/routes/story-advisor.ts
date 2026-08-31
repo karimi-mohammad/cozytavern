@@ -30,15 +30,37 @@ function buildAdvisorContext(mainChatId: string, db: any): string {
   // 1. Character info
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(mainChatId) as any;
   if (chat) {
-    const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(chat.character_id) as any;
-    if (character) {
-      parts.push(`[Character Card]
+    // Check if it's a group chat
+    if (chat.is_group_chat) {
+      // For group chats, get all participants' character cards
+      const participants = db.prepare(
+        'SELECT c.* FROM chat_participants cp JOIN characters c ON cp.character_id = c.id WHERE cp.chat_id = ? AND cp.is_active = 1'
+      ).all(mainChatId) as any[];
+      
+      if (participants.length > 0) {
+        const characterCards = participants.map((character: any) => 
+          `[Character Card]
+Name: ${character.name}
+Description: ${character.description || ''}
+Personality: ${character.personality || ''}
+Scenario: ${character.scenario || ''}
+System Prompt: ${character.system_prompt || ''}
+First Message: ${character.first_mes || ''}`
+        ).join('\n\n');
+        parts.push(characterCards);
+      }
+    } else {
+      // For normal chats, get the single character
+      const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(chat.character_id) as any;
+      if (character) {
+        parts.push(`[Character Card]
 Name: ${character.name}
 Description: ${character.description || ''}
 Personality: ${character.personality || ''}
 Scenario: ${character.scenario || ''}
 System Prompt: ${character.system_prompt || ''}
 First Message: ${character.first_mes || ''}`);
+      }
     }
 
     // 2. Authors note
@@ -115,11 +137,12 @@ ${chat.authors_note}`);
 
   // 5. Recent messages (last 30)
   const messages = db.prepare(
-    "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY rowid DESC LIMIT 30"
+    "SELECT role, content, sender_name FROM messages WHERE chat_id = ? ORDER BY rowid DESC LIMIT 30"
   ).all(mainChatId) as any[];
   if (messages.length > 0) {
     const msgText = messages.reverse().map((m: any) => {
-      const label = m.role === 'user' ? 'User' : 'Character';
+      // Use sender_name for assistant messages in group chats
+      const label = m.role === 'user' ? 'User' : (m.sender_name || 'Character');
       return `${label}: ${m.content}`;
     }).join('\n\n');
     parts.push(`[Recent Chat History (last ${messages.length} messages)]\n${msgText}`);
