@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull } from '../utils/providers';
+import { advisorTools, buildAdvisorToolsContext, executeAdvisorTool } from '../utils/advisor-tools';
 
 const router = Router();
 
@@ -14,6 +15,21 @@ Your role:
 - Recommend story arcs based on current relationships and situation
 - Help the user troubleshoot when the AI response doesn't match expectations
 - Provide actionable, specific suggestions (exact text to change, specific prompts to add)
+
+## Tool Use
+You have access to tools that can create and modify lorebooks and characters. When the user asks you to:
+- **Create a lorebook** → use the \`create_lorebook\` tool
+- **Add entries to a lorebook** → use the \`add_lorebook_entries\` tool
+- **Edit a lorebook entry** → use the \`update_lorebook_entry\` tool
+- **Create a character** → use the \`create_character\` tool
+- **Edit/update a character** → use the \`update_character\` tool
+
+When using tools:
+- Provide complete, well-thought-out content
+- Include helpful comments describing each entry's purpose
+- Use descriptive keywords for lorebook entries
+- Always explain what you're doing in your text response alongside the tool call
+- If the user asks for something complex, break it into multiple tool calls
 
 Rules:
 - Respond in the same language the user writes in (Persian or English)
@@ -276,6 +292,9 @@ router.post('/send', async (req: Request, res: Response) => {
   // Build context from main chat
   const context = buildAdvisorContext(advisorChat.main_chat_id, db);
 
+  // Build tools context (available lorebooks, characters)
+  const toolsContext = buildAdvisorToolsContext(db);
+
   // Build conversation history
   const history = db.prepare(
     'SELECT role, content FROM story_advisor_messages WHERE advisor_chat_id = ? ORDER BY created_at ASC'
@@ -285,6 +304,7 @@ router.post('/send', async (req: Request, res: Response) => {
   const promptParts: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
     { role: 'system', content: ADVISOR_SYSTEM_PROMPT },
     ...(context ? [{ role: 'system' as const, content: `[Story Context]\n${context}` }] : []),
+    ...(toolsContext ? [{ role: 'system' as const, content: toolsContext }] : []),
     ...history.map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ];
 
@@ -298,6 +318,8 @@ router.post('/send', async (req: Request, res: Response) => {
     frequency_penalty: settings.frequency_penalty,
     presence_penalty: settings.presence_penalty,
     stream: !!settings.stream,
+    tools: advisorTools,
+    tool_choice: 'auto',
     reasoning_effort: settings.reasoning_effort || undefined,
   });
 
@@ -325,6 +347,9 @@ router.post('/send', async (req: Request, res: Response) => {
     const decoder = new TextDecoder();
     let fullContent = '';
 
+    // Track tool calls from streaming
+    const toolCalls: Record<number, { id: string; type: string; function: { name: string; arguments: string } }> = {};
+
     if (settings.stream && reader) {
       const lineBuffer = createLineBuffer();
       let done = false;
@@ -348,6 +373,44 @@ router.post('/send', async (req: Request, res: Response) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
       };
 
+      const processChunk = (rawData: string) => {
+        try {
+          const parsed = JSON.parse(rawData);
+          const delta = parsed.choices?.[0]?.delta;
+
+          // Check for tool calls
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (tc.index !== undefined) {
+                if (!toolCalls[tc.index]) {
+                  toolCalls[tc.index] = {
+                    id: tc.id || '',
+                    type: 'function',
+                    function: {
+                      name: tc.function?.name || '',
+                      arguments: tc.function?.arguments || '',
+                    },
+                  };
+                } else {
+                  if (tc.id) toolCalls[tc.index].id = tc.id;
+                  if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                  if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                }
+              }
+            }
+            return; // Don't send tool call tokens to client
+          }
+
+          // Regular content tokens
+          const parsed2 = parseStreamChunkFull(rawData);
+          if (parsed2) sendToken(parsed2.token, parsed2.isReasoning);
+        } catch {
+          // Fallback to simple parsing
+          const parsed = parseStreamChunkFull(rawData);
+          if (parsed) sendToken(parsed.token, parsed.isReasoning);
+        }
+      };
+
       while (!done) {
         const { done: streamDone, value } = await (reader as any).read();
         if (streamDone) break;
@@ -362,8 +425,7 @@ router.post('/send', async (req: Request, res: Response) => {
               done = true;
               break;
             }
-            const parsed = parseStreamChunkFull(data);
-            if (parsed) sendToken(parsed.token, parsed.isReasoning);
+            processChunk(data);
           }
         }
       }
@@ -379,23 +441,65 @@ router.post('/send', async (req: Request, res: Response) => {
         if (trimmed.startsWith('data: ')) {
           const data = trimmed.slice(6);
           if (data !== '[DONE]') {
-            const parsed = parseStreamChunkFull(data);
-            if (parsed) {
-              fullContent += parsed.token;
-              res.write(`data: ${JSON.stringify({ token: parsed.token })}\n\n`);
-            }
+            processChunk(data);
           }
         }
       }
     } else {
       // Non-streaming
       const data = await response.json() as any;
-      if (data.choices?.[0]?.message?.content) {
-        fullContent = data.choices[0].message.content;
+      const msg = data.choices?.[0]?.message;
+
+      // Handle tool calls in non-streaming
+      if (msg?.tool_calls) {
+        for (const [i, tc] of msg.tool_calls.entries()) {
+          toolCalls[i] = {
+            id: tc.id || '',
+            type: 'function',
+            function: {
+              name: tc.function?.name || '',
+              arguments: typeof tc.function?.arguments === 'string'
+                ? tc.function.arguments
+                : JSON.stringify(tc.function?.arguments || {}),
+            },
+          };
+        }
+      }
+
+      if (msg?.content) {
+        fullContent = msg.content;
       } else if (data.choices?.[0]?.text) {
         fullContent = data.choices[0].text;
       }
-      res.write(`data: ${JSON.stringify({ token: fullContent })}\n\n`);
+      if (fullContent) {
+        res.write(`data: ${JSON.stringify({ token: fullContent })}\n\n`);
+      }
+    }
+
+    // Send tool calls to client for approval
+    const toolCallArray = Object.values(toolCalls);
+    if (toolCallArray.length > 0) {
+      for (const tc of toolCallArray) {
+        try {
+          const parsedArgs = JSON.parse(tc.function.arguments);
+          res.write(`data: ${JSON.stringify({
+            tool_call: {
+              id: tc.id,
+              name: tc.function.name,
+              arguments: parsedArgs,
+            }
+          })}\n\n`);
+        } catch {
+          // If arguments can't be parsed, send raw
+          res.write(`data: ${JSON.stringify({
+            tool_call: {
+              id: tc.id,
+              name: tc.function.name,
+              arguments_raw: tc.function.arguments,
+            }
+          })}\n\n`);
+        }
+      }
     }
 
     // Save assistant message
@@ -418,6 +522,35 @@ router.post('/send', async (req: Request, res: Response) => {
       res.end();
     }
   }
+});
+
+// ─── POST /execute-tool — Execute an approved tool call ───
+router.post('/execute-tool', async (req: Request, res: Response) => {
+  const db = getDb();
+  const { advisor_chat_id, tool_name, arguments: toolArgs } = req.body;
+
+  if (!advisor_chat_id || !tool_name) {
+    res.status(400).json({ error: 'advisor_chat_id and tool_name are required' });
+    return;
+  }
+
+  const advisorChat = db.prepare('SELECT * FROM story_advisor_chats WHERE id = ?').get(advisor_chat_id) as any;
+  if (!advisorChat) {
+    res.status(404).json({ error: 'Advisor chat not found' });
+    return;
+  }
+
+  const result = await executeAdvisorTool(tool_name, toolArgs || {}, db, advisorChat.main_chat_id);
+
+  // Add a system message about the tool execution
+  const now = new Date().toISOString();
+  const toolMsg = `[Tool: ${tool_name}] ${result.message}`;
+  db.prepare(
+    'INSERT INTO story_advisor_messages (id, advisor_chat_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(uuidv4(), advisorChat.id, 'assistant', toolMsg, now);
+  db.prepare('UPDATE story_advisor_chats SET updated_at = ? WHERE id = ?').run(now, advisorChat.id);
+
+  res.json(result);
 });
 
 export default router;

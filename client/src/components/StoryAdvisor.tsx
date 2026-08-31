@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store/state';
 import { api } from '../api/client';
+import ToolCallCard, { ToolCallData } from './ToolCallCard';
 
 interface AdvisorChat {
   id: string;
@@ -39,6 +40,9 @@ export default function StoryAdvisor() {
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingChats, setLoadingChats] = useState(false);
+  const [pendingToolCalls, setPendingToolCalls] = useState<ToolCallData[]>([]);
+  const [executingTool, setExecutingTool] = useState<string | null>(null);
+  const [toolResults, setToolResults] = useState<Record<string, { success: boolean; message: string }>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -92,6 +96,8 @@ export default function StoryAdvisor() {
 
   const handleSelectChat = async (chat: AdvisorChat) => {
     setCurrentAdvisorChat(chat);
+    setPendingToolCalls([]);
+    setToolResults({});
     await loadAdvisorMessages(chat.id);
   };
 
@@ -117,6 +123,8 @@ export default function StoryAdvisor() {
     try {
       await api.clearAdvisorMessages(currentAdvisorChat.id);
       setMessages([]);
+      setPendingToolCalls([]);
+      setToolResults({});
     } catch (error: any) {
       addToast(`Error: ${error.message}`, 'error');
     }
@@ -128,6 +136,8 @@ export default function StoryAdvisor() {
 
     setInputValue('');
     setIsGenerating(true);
+    setPendingToolCalls([]);
+    setToolResults({});
 
     // Add user message optimistically
     const userMsg: AdvisorMessage = {
@@ -153,11 +163,23 @@ export default function StoryAdvisor() {
     abortRef.current = controller;
 
     let fullContent = '';
+    const toolCallsReceived: ToolCallData[] = [];
 
     try {
       await api.sendAdvisorMessage(
         { advisor_chat_id: currentAdvisorChat.id, message: text },
         (token) => {
+          // Check if this is a tool_call token
+          try {
+            const parsed = JSON.parse(token);
+            if (parsed.tool_call) {
+              toolCallsReceived.push(parsed.tool_call);
+              return;
+            }
+          } catch {
+            // Not JSON, treat as regular text token
+          }
+
           fullContent += token;
           setMessages(prev => {
             const updated = [...prev];
@@ -183,6 +205,11 @@ export default function StoryAdvisor() {
           });
           setIsGenerating(false);
           abortRef.current = null;
+
+          // Set pending tool calls after generation is done
+          if (toolCallsReceived.length > 0) {
+            setPendingToolCalls(toolCallsReceived);
+          }
         },
         controller.signal
       );
@@ -225,6 +252,41 @@ export default function StoryAdvisor() {
     }
     setIsGenerating(false);
   };
+
+  const handleApproveTool = useCallback(async (toolName: string, toolArgs: Record<string, any>) => {
+    if (!currentAdvisorChat) return;
+
+    setExecutingTool(toolName);
+    try {
+      const result = await api.executeAdvisorTool({
+        advisor_chat_id: currentAdvisorChat.id,
+        tool_name: toolName,
+        arguments: toolArgs,
+      });
+
+      setToolResults(prev => ({
+        ...prev,
+        [toolName]: { success: result.success, message: result.message },
+      }));
+
+      // Remove from pending after a delay
+      setTimeout(() => {
+        setPendingToolCalls(prev => prev.filter(tc => tc.name !== toolName));
+      }, 1500);
+    } catch (error: any) {
+      addToast(`Error: ${error.message}`, 'error');
+      setToolResults(prev => ({
+        ...prev,
+        [toolName]: { success: false, message: error.message },
+      }));
+    } finally {
+      setExecutingTool(null);
+    }
+  }, [currentAdvisorChat, addToast]);
+
+  const handleRejectTool = useCallback((toolName: string) => {
+    setPendingToolCalls(prev => prev.filter(tc => tc.name !== toolName));
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
@@ -363,6 +425,21 @@ export default function StoryAdvisor() {
                     </div>
                   )}
                   <div className="whitespace-pre-wrap break-words">{msg.content || (msg.id === 'generating' ? <span className="text-tavern-dim animate-pulse">Thinking...</span> : '')}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Pending Tool Calls */}
+            {pendingToolCalls.map((tc) => (
+              <div key={tc.id || tc.name} className="flex justify-start">
+                <div className="w-full max-w-[95%]">
+                  <ToolCallCard
+                    toolCall={tc}
+                    onApprove={handleApproveTool}
+                    onReject={() => handleRejectTool(tc.name)}
+                    isExecuting={executingTool === tc.name}
+                    result={toolResults[tc.name] || null}
+                  />
                 </div>
               </div>
             ))}

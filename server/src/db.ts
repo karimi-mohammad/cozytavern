@@ -364,4 +364,10 @@ export function initDb(): void {
   if (!msgCols.some(c => c.name === 'sender_character_id')) {
     database.exec("ALTER TABLE messages ADD COLUMN sender_character_id TEXT DEFAULT ''");
   }
+
+  // Migration: group_chat_settings columns
+  const gcSettingsCols = database.prepare("PRAGMA table_info(group_chat_settings)").all() as any[];
+  if (!gcSettingsCols.some(c => c.name === 'auto_respond_character_id')) {
+    database.exec("ALTER TABLE group_chat_settings ADD COLUMN auto_respond_character_id TEXT DEFAULT NULL");
+  }
 }

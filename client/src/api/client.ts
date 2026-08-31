@@ -351,6 +351,8 @@ export const api = {
     request(`/story-advisor/chats/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
   getAdvisorMessages: (chatId: string) => request(`/story-advisor/chats/${chatId}/messages`),
   clearAdvisorMessages: (chatId: string) => request(`/story-advisor/chats/${chatId}/messages`, { method: 'DELETE' }),
+  executeAdvisorTool: (data: { advisor_chat_id: string; tool_name: string; arguments: Record<string, any> }) =>
+    request('/story-advisor/execute-tool', { method: 'POST', body: JSON.stringify(data) }),
   sendAdvisorMessage: async (
     data: { advisor_chat_id: string; message: string },
     onToken: (token: string) => void,
@@ -401,6 +403,7 @@ export const api = {
             try {
               const parsed = JSON.parse(data);
               if (parsed.token) onToken(parsed.token);
+              else if (parsed.tool_call) onToken(JSON.stringify({ tool_call: parsed.tool_call }));
               else if (parsed.error) throw new Error(parsed.error);
             } catch (e: any) {
               if (e?.message && !e.message.includes('JSON')) throw e;
