@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { stripToolCallsFromContent } from '../utils/strip-tool-calls';
+import { getChapterSettingsCompat } from '../utils/plugin-store';
 
 const router = Router();
 
@@ -295,6 +296,24 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
 
   const systemPrompt = settings.system_prompt || '';
 
+  // Chapters + Raw Window (همانند single chat)
+  const chapters = db.prepare('SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC').all(req.params.id) as any[];
+  const chapterSettings = getChapterSettingsCompat(db);
+
+  // Story State (حافظه وضعیت داستان)
+  const storyStateRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+  let storyState = {
+    characters: {} as Record<string, any>,
+    relationships: {} as Record<string, string>,
+    current_situation: '',
+    rules: [] as string[],
+  };
+  if (storyStateRow) {
+    try {
+      storyState = JSON.parse(storyStateRow.state_json);
+    } catch {}
+  }
+
   let filteredMessages = messages;
   if (update_message_id && !req.body.continue_mode) {
     filteredMessages = messages.map(m =>
@@ -311,6 +330,23 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     {
       impersonate: false,
       continueMode: !!req.body.continue_mode,
+      chapters,
+      storyState,
+      rawWindowSettings: {
+        raw_mode: chapterSettings?.raw_mode || 'count',
+        raw_window: chapterSettings?.raw_window || 10,
+        raw_token_budget: chapterSettings?.raw_token_budget || 3000,
+        raw_min_messages: chapterSettings?.raw_min_messages || 3,
+        raw_max_messages: chapterSettings?.raw_max_messages || 20,
+      },
+      // Author's Note چت — در صورت وجود محتوا تزریق می‌شود
+      ...(chat?.authors_note && {
+        authorsNote: {
+          content: chat.authors_note,
+          depth: typeof chat.authors_note_depth === 'number' ? chat.authors_note_depth : 4,
+          position: chat.authors_note_position === 'after_char' ? 'after_char' as const : 'in_chat' as const,
+        },
+      }),
       isGroupChat: true,
       participants,
       respondingCharacterName: character.name,
