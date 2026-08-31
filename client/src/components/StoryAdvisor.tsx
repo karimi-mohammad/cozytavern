@@ -32,6 +32,7 @@ export default function StoryAdvisor() {
   const storyAdvisorOpen = useStore(s => s.storyAdvisorOpen);
   const setStoryAdvisorOpen = useStore(s => s.setStoryAdvisorOpen);
   const currentChat = useStore(s => s.currentChat);
+  const selectChat = useStore(s => s.selectChat);
   const addToast = useStore(s => s.addToast);
   const showConfirm = useStore(s => s.showConfirm);
 
@@ -325,7 +326,7 @@ export default function StoryAdvisor() {
   }, []);
 
   const handleInsertMessage = useCallback(async (toolArgs: Record<string, any>) => {
-    if (!currentAdvisorChat) return;
+    if (!currentAdvisorChat || !currentChat) return;
 
     const { character_id, generated_content } = toolArgs;
     if (!generated_content) {
@@ -343,16 +344,18 @@ export default function StoryAdvisor() {
       if (result.success) {
         addToast('Message inserted into chat', 'success');
         // Remove from pending
-        setPendingToolCalls(prev => prev.filter(tc => 
+        setPendingToolCalls(prev => prev.filter(tc =>
           !(tc.name === 'generate_character_message' && tc.arguments.character_id === character_id)
         ));
+        // Reload the main chat to show the new message
+        await selectChat(currentChat.id);
       } else {
         addToast('Failed to insert message', 'error');
       }
     } catch (error: any) {
       addToast(`Error: ${error.message}`, 'error');
     }
-  }, [currentAdvisorChat, addToast]);
+  }, [currentAdvisorChat, currentChat, selectChat, addToast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
