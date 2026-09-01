@@ -17,6 +17,7 @@ import backupRouter from './routes/backup';
 import storyStateRouter from './routes/story-state';
 import storyAdvisorRouter from './routes/story-advisor';
 import characterWizardRouter from './routes/character-wizard';
+import chatNotesRouter from './routes/chat-notes';
 import { getChapterSettingsCompat } from './utils/plugin-store';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } from './utils/providers';
 import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition } from './utils/prompt-builder';
@@ -161,6 +162,7 @@ app.use('/api/backup', backupRouter);
 app.use('/api/story-state', storyStateRouter);
 app.use('/api/story-advisor', storyAdvisorRouter);
 app.use('/api/character-wizard', characterWizardRouter);
+app.use('/api/chat-notes', chatNotesRouter);
 
 // Serve static files in production (client build)
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');

@@ -311,6 +311,18 @@ export function initDb(): void {
     );
   `);
 
+  // ─── Chat Notes (یادداشت‌های هر چت) ───
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_notes (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+  `);
+
   // ─── Performance indexes ───
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
@@ -322,6 +334,7 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_settings_chat ON group_chat_settings(chat_id);
     CREATE INDEX IF NOT EXISTS idx_advisor_chats_main_chat ON story_advisor_chats(main_chat_id);
     CREATE INDEX IF NOT EXISTS idx_advisor_msgs_chat ON story_advisor_messages(advisor_chat_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_notes_chat_id ON chat_notes(chat_id);
   `);
 
   // Migration: انتقال lorebook_id از chats به chat_lorebooks (پشتیبانی از چند لور بوک)

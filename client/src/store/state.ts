@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState, ChatLorebook } from '../types';
+import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState, ChatLorebook, ChatNote } from '../types';
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
@@ -68,6 +68,15 @@ interface AppState {
   updateStoryState: (chatId: string, delta: Partial<StoryState>) => Promise<void>;
   setStoryStateOpen: (open: boolean) => void;
   _initStoryStateListener: () => void;
+
+  // Chat Notes (یادداشت‌های هر چت)
+  chatNotes: ChatNote[];
+  chatNotesOpen: boolean;
+  loadChatNotes: (chatId: string) => Promise<void>;
+  createChatNote: (chatId: string, content: string) => Promise<void>;
+  updateChatNote: (id: string, content: string) => Promise<void>;
+  deleteChatNote: (id: string) => Promise<void>;
+  setChatNotesOpen: (open: boolean) => void;
 
   // Group Chat
   groupChatParticipants: ChatParticipant[];
@@ -339,6 +348,45 @@ export const useStore = create<AppState>((set, get) => ({
     // Return cleanup function for potential future use
     return () => window.removeEventListener('story-state-updated', handler);
   },
+
+  // Chat Notes (یادداشت‌های هر چت)
+  chatNotes: [],
+  chatNotesOpen: false,
+  loadChatNotes: async (chatId) => {
+    try {
+      const notes = await api.getChatNotes(chatId);
+      set({ chatNotes: notes });
+    } catch (error: any) {
+      get().addToast(`Error loading notes: ${error.message}`, 'error');
+    }
+  },
+  createChatNote: async (chatId, content) => {
+    try {
+      const note = await api.createChatNote(chatId, content);
+      set(s => ({ chatNotes: [note, ...s.chatNotes] }));
+    } catch (error: any) {
+      get().addToast(`Error creating note: ${error.message}`, 'error');
+    }
+  },
+  updateChatNote: async (id, content) => {
+    try {
+      const updated = await api.updateChatNote(id, content);
+      set(s => ({
+        chatNotes: s.chatNotes.map(n => n.id === id ? updated : n),
+      }));
+    } catch (error: any) {
+      get().addToast(`Error updating note: ${error.message}`, 'error');
+    }
+  },
+  deleteChatNote: async (id) => {
+    try {
+      await api.deleteChatNote(id);
+      set(s => ({ chatNotes: s.chatNotes.filter(n => n.id !== id) }));
+    } catch (error: any) {
+      get().addToast(`Error deleting note: ${error.message}`, 'error');
+    }
+  },
+  setChatNotesOpen: (open) => set({ chatNotesOpen: open }),
 
   // Group Chat state
   groupChatParticipants: [],
@@ -803,6 +851,8 @@ export const useStore = create<AppState>((set, get) => ({
       get().loadStoryState(chatId);
       // لود لوربوک‌های چت
       get().loadChatLorebooks(chatId);
+      // لود یادداشت‌های چت
+      get().loadChatNotes(chatId);
       // لود participant های گروه چت + settings
       if (chat.is_group_chat) {
         try {

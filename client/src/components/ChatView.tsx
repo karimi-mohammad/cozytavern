@@ -9,6 +9,7 @@ import { Chapter } from '../types';
 import ChapterEditor from './ChapterEditor';
 import ChapterSuggestion from './ChapterSuggestion';
 import ChapterTriggerProgress from './ChapterTriggerProgress';
+import ChatNotes from './ChatNotes';
 
 export default function ChatView() {
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
@@ -40,6 +41,8 @@ export default function ChatView() {
   const loadingChats = useStore(s => s.loadingChats);
   const chapters = useStore(s => s.chapters);
   const setStoryStateOpen = useStore(s => s.setStoryStateOpen);
+  const chatNotesOpen = useStore(s => s.chatNotesOpen);
+  const setChatNotesOpen = useStore(s => s.setChatNotesOpen);
 
   const handleBranch = async (messageId: string, sendDate: string) => {
     if (!currentChat || !currentCharacter) return;
@@ -228,6 +231,19 @@ export default function ChatView() {
                 Story State
               </button>
               <button
+                onClick={() => setChatNotesOpen(!chatNotesOpen)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors ${
+                  chatNotesOpen
+                    ? 'bg-tavern-accent/20 border-tavern-accent/50 text-tavern-accent'
+                    : 'bg-tavern-surface border-tavern-border text-tavern-text hover:bg-tavern-hover'
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Notes
+              </button>
+              <button
                 onClick={() => setShowGroupManager(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-tavern-accent/10 border border-tavern-accent/30 rounded-lg text-tavern-accent text-xs font-medium hover:bg-tavern-accent/20 transition-colors"
               >
@@ -255,6 +271,7 @@ export default function ChatView() {
           <ChapterTriggerProgress />
           <MessageInput />
           <ChapterSuggestion />
+          <ChatNotes />
           {editingChapter && (
             <ChapterEditor
               chapter={editingChapter}

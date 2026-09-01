@@ -233,6 +233,14 @@ export const api = {
     }
   },
 
+  // ─── Chat Notes (یادداشت‌های هر چت) ───
+  getChatNotes: (chatId: string) => request(`/chat-notes/${chatId}`),
+  createChatNote: (chatId: string, content: string) =>
+    request(`/chat-notes/${chatId}`, { method: 'POST', body: JSON.stringify({ content }) }),
+  updateChatNote: (id: string, content: string) =>
+    request(`/chat-notes/${id}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  deleteChatNote: (id: string) => request(`/chat-notes/${id}`, { method: 'DELETE' }),
+
   // ─── Group Chat Settings ───
   getGroupChatSettings: (chatId: string) => request(`/group-chats/${chatId}/settings`),
   updateGroupChatSettings: (chatId: string, data: any) =>

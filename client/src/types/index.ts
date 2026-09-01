@@ -292,6 +292,14 @@ export interface ImportantMemory {
   importance?: 'low' | 'medium' | 'high';
 }
 
+export interface ChatNote {
+  id: string;
+  chat_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StoryState {
   chat_id?: string;
   characters: Record<string, CharacterState>;
