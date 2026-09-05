@@ -18,9 +18,13 @@ import storyStateRouter from './routes/story-state';
 import storyAdvisorRouter from './routes/story-advisor';
 import characterWizardRouter from './routes/character-wizard';
 import chatNotesRouter from './routes/chat-notes';
+import scenesRouter from './routes/scenes';
+import portraitsRouter from './routes/portraits';
+import imageProfilesRouter from './routes/image-profiles';
+import imagePresetsRouter from './routes/image-presets';
 import { getChapterSettingsCompat } from './utils/plugin-store';
 import { buildEndpoint, buildHeaders, buildRequestBody, createLineBuffer, parseStreamChunkFull, parseNonStreamingResponse } from './utils/providers';
-import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition } from './utils/prompt-builder';
+import { buildPrompt, activateWorldInfo, getStoryStateToolDefinition, getStateExtractionPrompt } from './utils/prompt-builder';
 import { stripToolCallsFromContent } from './utils/strip-tool-calls';
 import { parseToolCallsFromText } from './utils/parse-tool-calls-from-text';
 import { getDb } from './db';
@@ -112,6 +116,12 @@ function deepMergeState(target: any, source: any): any {
 
     if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
       result[key] = deepMergeState(result[key] || {}, source[key]);
+    } else if (key === 'rules' && !Array.isArray(source[key])) {
+      // rules must always be an array — skip non-array values from AI
+      continue;
+    } else if (key === 'memories' && !Array.isArray(source[key])) {
+      // memories must always be an array — skip non-array values from AI
+      continue;
     } else {
       result[key] = source[key];
     }
@@ -163,6 +173,10 @@ app.use('/api/story-state', storyStateRouter);
 app.use('/api/story-advisor', storyAdvisorRouter);
 app.use('/api/character-wizard', characterWizardRouter);
 app.use('/api/chat-notes', chatNotesRouter);
+app.use('/api/scenes', scenesRouter);
+app.use('/api/portraits', portraitsRouter);
+app.use('/api/image-profiles', imageProfilesRouter);
+app.use('/api/image-presets', imagePresetsRouter);
 
 // Serve static files in production (client build)
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
@@ -340,6 +354,8 @@ app.post('/api/chat', async (req, res) => {
     isGroupChat,
     participants,
     respondingCharacterName: character.name,
+    // حذف blok‌های think از تاریخچه پیام‌ها
+    stripThink: !!settings.strip_think,
   });
 
   // Add enhanced identity enforcement for group chat
@@ -360,7 +376,8 @@ You are responding as "${character.name}" ONLY.
 - NEVER write messages for other characters
 - NEVER describe other characters' actions or thoughts
 - Use ${character.name}'s established personality, speech patterns, and knowledge
-- If you need another character to speak, STOP and let the system handle it${otherCharsInfo}`,
+- If you need another character to speak, STOP and let the system handle it
+- IMPORTANT: When using update_story_state tool, character names MUST be EXACTLY as provided: [${participants.map(p => `"${p.char_name}"`).join(', ')}]${otherCharsInfo}`,
     });
   }
 
@@ -373,8 +390,10 @@ You are responding as "${character.name}" ONLY.
       ? edited_messages.map((m: any) => ({ role: m.role, content: m.content }))
       : promptParts;
 
-    // ابزار update_story_state
-    const characterNames = [character.name];
+    // ابزار update_story_state - get ALL character names (current + participants in group chat)
+    const characterNames = isGroupChat
+      ? [character.name, ...participants.filter(p => p.char_name && p.char_name !== character.name).map(p => p.char_name!)]
+      : [character.name];
     const storyStateTool = getStoryStateToolDefinition(characterNames);
     console.log(`[StoryState] Tool definition for characters:`, JSON.stringify(characterNames));
     console.log(`[StoryState] Story state in prompt:`, storyState ? 'YES' : 'NO');
@@ -382,25 +401,33 @@ You are responding as "${character.name}" ONLY.
       console.log(`[StoryState] Current state:`, JSON.stringify(storyState).slice(0, 500));
     }
 
-    // اضافه کردن دستور استفاده از tool به انتهای پرامپت
+    // Two-phase mode: separate text generation from tool calls
+    const twoPhaseEnabled = settings.two_phase_state_update === 1;
+    console.log(`[StoryState] Two-phase mode: ${twoPhaseEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+    // اضافه کردن دستور استفاده از tool به انتهای پرامپت (فقط در حالت غیر two-phase)
     const toolInstruction = {
       role: 'system' as const,
       content: `[MANDATORY TOOL USE]\nYou MUST call update_story_state in EVERY response. Track ALL of these:\n\n1. CHARACTERS: location, position, clothing changes\n2. RELATIONSHIPS: "A-B": "description"\n3. RELATIONSHIP_DETAILS: Emotions 0-100 scale\n   - love, trust, anger, fear, respect, affection, shame, jealousy, gratitude\n   - summary: brief emotional state description\n4. CURRENT_SITUATION: What is happening NOW\n5. RULES: Persistent world rules\n6. MEMORIES: Important events that matter later\n   Format: [{content: "event", importance: "high|medium|low"}]\n\nMEMORY EXAMPLES:\n- "User saved Elena from assassination" (high)\n- "Elena learned User is a mage" (high)\n- "User promised to return before sunrise" (medium)\n\nALWAYS call the tool, even if only one thing changes. This is REQUIRED.`,
     };
 
-    const requestBody = buildRequestBody([...effectiveParts, toolInstruction], {
-      model: settings.model,
-      temperature: settings.temperature,
-      max_tokens: settings.max_tokens,
-      top_p: settings.top_p,
-      frequency_penalty: settings.frequency_penalty,
-      presence_penalty: settings.presence_penalty,
-      stream: !!settings.stream,
-      stop: JSON.parse(settings.stop || '[]'),
-      tools: [storyStateTool],
-      tool_choice: 'auto',
-      reasoning_effort: settings.reasoning_effort || undefined,
-    });
+    // Phase 1: Build request body (text only in two-phase mode, with tools otherwise)
+    const requestBody = buildRequestBody(
+      twoPhaseEnabled ? effectiveParts : [...effectiveParts, toolInstruction],
+      {
+        model: settings.model,
+        temperature: settings.temperature,
+        max_tokens: settings.max_tokens,
+        top_p: settings.top_p,
+        frequency_penalty: settings.frequency_penalty,
+        presence_penalty: settings.presence_penalty,
+        stream: !!settings.stream,
+        stop: JSON.parse(settings.stop || '[]'),
+        tools: twoPhaseEnabled ? undefined : [storyStateTool],
+        tool_choice: twoPhaseEnabled ? undefined : 'auto',
+        reasoning_effort: settings.reasoning_effort || undefined,
+      }
+    );
 
     // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
     if (req.body?.inspect) {
@@ -416,6 +443,7 @@ You are responding as "${character.name}" ONLY.
         model,
         params,
         messages,
+        two_phase_enabled: twoPhaseEnabled,
       });
     }
 
@@ -637,6 +665,66 @@ You are responding as "${character.name}" ONLY.
       let storyStateUpdated = false;
       let newStoryState = null;
       console.log(`[StoryState] Tool calls received: ${toolCalls.length}`);
+
+      // Two-phase mode: if enabled and no tool calls in phase 1, make phase 2 request
+      if (twoPhaseEnabled && toolCalls.length === 0 && fullContent) {
+        console.log(`[StoryState] Two-phase mode: Making phase 2 request for state extraction...`);
+
+        try {
+          // Build phase 2 request: same context + generated response + extraction prompt
+          const phase2PromptParts = [
+            ...effectiveParts,
+            { role: 'assistant' as const, content: fullContent },
+          ];
+
+          const extractionPrompt = getStateExtractionPrompt(character.name, storyState, characterNames);
+          const phase2RequestBody = buildRequestBody([...phase2PromptParts, ...extractionPrompt], {
+            model: settings.model,
+            temperature: 0.3, // Lower temperature for more precise extraction
+            max_tokens: 1000,
+            top_p: settings.top_p,
+            frequency_penalty: settings.frequency_penalty,
+            presence_penalty: settings.presence_penalty,
+            stream: false, // Non-streaming for phase 2
+            stop: JSON.parse(settings.stop || '[]'),
+            // No tools/tool_choice — extraction prompt asks for JSON response, not tool calls
+          });
+
+          const phase2Response = await fetch(endpoint, {
+            method: 'POST',
+            headers,
+            body: phase2RequestBody,
+          });
+
+          if (phase2Response.ok) {
+            const phase2Data = await phase2Response.json() as any;
+            const phase2Content = phase2Data.choices?.[0]?.message?.content || '';
+
+            console.log(`[StoryState] Phase 2 response: ${phase2Content.slice(0, 200)}...`);
+
+            // Parse JSON response from extraction prompt
+            // The prompt asks for: { "tool_calls": [{ "function": { "name": "...", "arguments": "..." } }] }
+            try {
+              const parsed = JSON.parse(phase2Content);
+              if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+                toolCalls = parsed.tool_calls;
+                console.log(`[StoryState] Phase 2 parsed ${toolCalls.length} tool calls from JSON`);
+              }
+            } catch (parseErr) {
+              console.log(`[StoryState] Phase 2 JSON parse failed, trying text extraction...`);
+              // Fallback: try to extract tool calls from text
+              const textToolCalls = parseToolCallsFromText(phase2Content);
+              if (textToolCalls.length > 0) {
+                toolCalls = textToolCalls;
+                console.log(`[StoryState] Phase 2 extracted ${toolCalls.length} tool calls from text`);
+              }
+            }
+          }
+        } catch (phase2Error) {
+          console.error('[StoryState] Phase 2 request failed:', phase2Error);
+          // Continue with fallback methods
+        }
+      }
 
       // ذخیره snapshot قبل از آپدیت state (برای امکان rollback)
       if (toolCalls.length > 0 || fullContent) {
