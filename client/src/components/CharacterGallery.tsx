@@ -4,12 +4,14 @@ import CharacterAvatar from './CharacterAvatar';
 import { GallerySkeleton } from './LoadingSkeleton';
 
 export default function CharacterGallery() {
-  const {
-    characters, selectCharacter, setCharacterEditorOpen,
-    setGalleryView, loadingCharacters,
-    importCharacterFromFile, exportCharacter,
-    setCharacterWizardOpen,
-  } = useStore();
+  const characters = useStore(s => s.characters);
+  const selectCharacter = useStore(s => s.selectCharacter);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const setGalleryView = useStore(s => s.setGalleryView);
+  const loadingCharacters = useStore(s => s.loadingCharacters);
+  const importCharacterFromFile = useStore(s => s.importCharacterFromFile);
+  const exportCharacter = useStore(s => s.exportCharacter);
+  const setCharacterWizardOpen = useStore(s => s.setCharacterWizardOpen);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectCharacter = async (char: typeof characters[0]) => {

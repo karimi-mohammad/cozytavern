@@ -3,6 +3,53 @@ import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, Chap
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
 
+// ─── Streaming token batching ───
+// Coalesces rapid token updates into one setState per animation frame
+// to prevent O(N×T) re-renders during LLM streaming.
+interface TokenBatcher {
+  /** Accumulate a token; the state setter fires at most once per animation frame */
+  push(token: string): void;
+  /** Flush any pending update immediately (used in onDone / error handlers) */
+  flush(): void;
+  /** Tear down the batcher (cancel any pending frame) */
+  dispose(): void;
+}
+
+function createTokenBatcher(
+  updater: (fullContent: string) => void,
+  initialContent: string = '',
+): TokenBatcher {
+  let full = initialContent;
+  let rafId: number | null = null;
+
+  const flushPending = () => {
+    rafId = null;
+    updater(full);
+  };
+
+  return {
+    push(token) {
+      full += token;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(flushPending);
+      }
+    },
+    flush() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      updater(full);
+    },
+    dispose() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    },
+  };
+}
+
 interface Toast {
   id: string;
   message: string;
@@ -505,6 +552,23 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       let fullContent = '';
       const isRegen = !!options?.update_message_id;
+      const tokenBatcher = createTokenBatcher((content) => {
+        fullContent = content;
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = [...s.currentChat.messages];
+          if (isRegen && options?.update_message_id) {
+            const idx = msgs.findIndex(m => m.id === options.update_message_id);
+            if (idx !== -1) msgs[idx] = { ...msgs[idx], content };
+          } else {
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.sender_character_id === characterId) {
+              msgs[msgs.length - 1] = { ...lastMsg, content };
+            }
+          }
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      });
 
       await api.generateGroupChatResponseStream(
         chatId,
@@ -516,7 +580,6 @@ export const useStore = create<AppState>((set, get) => ({
         },
         (messageId) => {
           if (isRegen && options?.update_message_id) {
-            // Regeneration: clear the existing message content for streaming
             set(s => {
               if (!s.currentChat) return s;
               const msgs = s.currentChat.messages.map(m =>
@@ -525,7 +588,6 @@ export const useStore = create<AppState>((set, get) => ({
               return { currentChat: { ...s.currentChat, messages: msgs } };
             });
           } else {
-            // New message: add to chat
             const participant = get().groupChatParticipants.find(p => p.character_id === characterId);
             const char = get().characters.find(c => c.id === characterId);
             const assistantMsg = {
@@ -550,29 +612,11 @@ export const useStore = create<AppState>((set, get) => ({
             }));
           }
         },
-        (token) => {
-          fullContent += token;
-          set(s => {
-            if (!s.currentChat) return s;
-            const msgs = [...s.currentChat.messages];
-            if (isRegen && options?.update_message_id) {
-              // Update the specific message by id
-              const idx = msgs.findIndex(m => m.id === options.update_message_id);
-              if (idx !== -1) msgs[idx] = { ...msgs[idx], content: fullContent };
-            } else {
-              // Update the last assistant message
-              const lastMsg = msgs[msgs.length - 1];
-              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.sender_character_id === characterId) {
-                msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
-              }
-            }
-            return { currentChat: { ...s.currentChat, messages: msgs } };
-          });
-        },
+        (token) => tokenBatcher.push(token),
         () => {
+          tokenBatcher.flush();
           set({ isGenerating: false, groupChatGenerating: false });
           get().updateContextUsage();
-          // Reload chat after regeneration to sync swipes from server
           if (isRegen) {
             api.getChat(chatId).then(refreshed => {
               set({ currentChat: refreshed });
@@ -582,6 +626,7 @@ export const useStore = create<AppState>((set, get) => ({
         controller.signal
       );
     } catch (error: any) {
+      tokenBatcher?.dispose();
       if (error?.name === 'AbortError') {
         set({ isGenerating: false, groupChatGenerating: false });
         return;
@@ -998,6 +1043,18 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       let fullContent = '';
+      const tokenBatcher = createTokenBatcher((content) => {
+        fullContent = content;
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = [...s.currentChat.messages];
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            msgs[msgs.length - 1] = { ...lastMsg, content };
+          }
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      });
       await api.chatWithAI(
         {
           chat_id: currentChat.id,
@@ -1024,19 +1081,9 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => {
-          fullContent += token;
-          set(s => {
-            if (!s.currentChat) return s;
-            const msgs = [...s.currentChat.messages];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant') {
-              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
-            }
-            return { currentChat: { ...s.currentChat, messages: msgs } };
-          });
-        },
+        (token) => tokenBatcher.push(token),
         () => {
+          tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
           if (isFirstMessage) {
@@ -1048,6 +1095,7 @@ export const useStore = create<AppState>((set, get) => ({
         controller.signal
       );
     } catch (error: any) {
+      tokenBatcher?.dispose();
       if (error?.name === 'AbortError') {
         set({ isGenerating: false });
         return;
@@ -1222,6 +1270,16 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       let fullContent = '';
+      const tokenBatcher = createTokenBatcher((content) => {
+        fullContent = content;
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = s.currentChat.messages.map(m =>
+            m.id === freshLastAssistant.id ? { ...m, content } : m
+          );
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      });
       await api.chatWithAI(
         {
           chat_id: currentChat.id,
@@ -1232,17 +1290,9 @@ export const useStore = create<AppState>((set, get) => ({
           ...(editedMessages2 && { edited_messages: editedMessages2 }),
         },
         () => {},
-        (token) => {
-          fullContent += token;
-          set(s => {
-            if (!s.currentChat) return s;
-            const msgs = s.currentChat.messages.map(m =>
-              m.id === freshLastAssistant.id ? { ...m, content: fullContent } : m
-            );
-            return { currentChat: { ...s.currentChat, messages: msgs } };
-          });
-        },
+        (token) => tokenBatcher.push(token),
         () => {
+          tokenBatcher.flush();
           set({ isGenerating: false });
           if (currentAbortController === controller) currentAbortController = null;
           get().updateContextUsage();
@@ -1250,6 +1300,7 @@ export const useStore = create<AppState>((set, get) => ({
         controller.signal
       );
     } catch (error: any) {
+      tokenBatcher?.dispose();
       if (error?.name === 'AbortError') {
         set({ isGenerating: false });
         return;
@@ -1260,8 +1311,6 @@ export const useStore = create<AppState>((set, get) => ({
       if (currentAbortController === controller) currentAbortController = null;
     }
   },
-
-  // ادامه تولید — AI از آخرین پاسخ خود ادامه می‌دهد
   continueGeneration: async () => {
     if (get().pendingEdit) {
       try { await get().pendingEdit; } catch {}
@@ -1303,6 +1352,18 @@ export const useStore = create<AppState>((set, get) => ({
 
     try {
       let fullContent = lastAssistantMsg.content;
+      const tokenBatcher = createTokenBatcher((content) => {
+        fullContent = content;
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = [...s.currentChat.messages];
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            msgs[msgs.length - 1] = { ...lastMsg, content };
+          }
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      }, lastAssistantMsg.content);
       await api.chatWithAI(
         {
           chat_id: currentChat.id,
@@ -1313,7 +1374,6 @@ export const useStore = create<AppState>((set, get) => ({
           ...(editedMessages3 && { edited_messages: editedMessages3 }),
         },
         (messageId) => {
-          // ایجاد پیام assistant جدید برای ادامه
           const newMsg = {
             id: messageId,
             chat_id: currentChat.id,
@@ -1332,25 +1392,16 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => {
-          fullContent += token;
-          set(s => {
-            if (!s.currentChat) return s;
-            const msgs = [...s.currentChat.messages];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant') {
-              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
-            }
-            return { currentChat: { ...s.currentChat, messages: msgs } };
-          });
-        },
+        (token) => tokenBatcher.push(token),
         () => {
+          tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
         },
         controller.signal
       );
     } catch (error: any) {
+      tokenBatcher?.dispose();
       if (error?.name === 'AbortError') {
         set({ isGenerating: false });
         return;
@@ -1400,6 +1451,18 @@ export const useStore = create<AppState>((set, get) => ({
     let aborted = false;
     try {
       let fullContent = '';
+      const tokenBatcher = createTokenBatcher((content) => {
+        fullContent = content;
+        set(s => {
+          if (!s.currentChat) return s;
+          const msgs = [...s.currentChat.messages];
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg && lastMsg.role === 'user') {
+            msgs[msgs.length - 1] = { ...lastMsg, content };
+          }
+          return { currentChat: { ...s.currentChat, messages: msgs } };
+        });
+      });
       await api.chatWithAI(
         {
           chat_id: currentChat.id,
@@ -1428,25 +1491,16 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => {
-          fullContent += token;
-          set(s => {
-            if (!s.currentChat) return s;
-            const msgs = [...s.currentChat.messages];
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg && lastMsg.role === 'user') {
-              msgs[msgs.length - 1] = { ...lastMsg, content: fullContent };
-            }
-            return { currentChat: { ...s.currentChat, messages: msgs } };
-          });
-        },
+        (token) => tokenBatcher.push(token),
         () => {
+          tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
         },
         controller.signal
       );
     } catch (error: any) {
+      tokenBatcher?.dispose();
       if (error?.name === 'AbortError') {
         set({ isGenerating: false });
         return;

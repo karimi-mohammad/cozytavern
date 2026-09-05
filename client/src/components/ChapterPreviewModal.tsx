@@ -4,17 +4,15 @@ import { api } from '../api/client';
 import CharacterAvatar from './CharacterAvatar';
 
 export default function ChapterPreviewModal() {
-  const {
-    chapterFlowPreviewOpen,
-    chapterFlowPreviewData,
-    chapterFlowStartId,
-    chapterFlowEndId,
-    cancelChapterCreation,
-    sendChapterForSummary,
-    currentChat,
-    chapterSettings,
-    chapters,
-  } = useStore();
+  const chapterFlowPreviewOpen = useStore(s => s.chapterFlowPreviewOpen);
+  const chapterFlowPreviewData = useStore(s => s.chapterFlowPreviewData);
+  const chapterFlowStartId = useStore(s => s.chapterFlowStartId);
+  const chapterFlowEndId = useStore(s => s.chapterFlowEndId);
+  const cancelChapterCreation = useStore(s => s.cancelChapterCreation);
+  const sendChapterForSummary = useStore(s => s.sendChapterForSummary);
+  const currentChat = useStore(s => s.currentChat);
+  const chapterSettings = useStore(s => s.chapterSettings);
+  const chapters = useStore(s => s.chapters);
 
   // قابلیت ویرایش شروع/پایان
   const [editStartId, setEditStartId] = useState<string | null>(null);

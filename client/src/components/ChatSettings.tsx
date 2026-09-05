@@ -3,10 +3,12 @@ import { useStore } from '../store/state';
 import { api } from '../api/client';
 
 export default function ChatSettings() {
-  const {
-    settingsOpen, setSettingsOpen, loadApiSettings, saveApiSettings, apiSettings,
-    currentChat,
-  } = useStore();
+  const settingsOpen = useStore(s => s.settingsOpen);
+  const setSettingsOpen = useStore(s => s.setSettingsOpen);
+  const loadApiSettings = useStore(s => s.loadApiSettings);
+  const saveApiSettings = useStore(s => s.saveApiSettings);
+  const apiSettings = useStore(s => s.apiSettings);
+  const currentChat = useStore(s => s.currentChat);
   const loadedRef = useRef(false);
   const [form, setForm] = useState({
     base_url: '', api_key: '', model: '',

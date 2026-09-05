@@ -2,16 +2,14 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/state';
 
 export default function ChapterReviewModal() {
-  const {
-    chapterFlowReviewOpen,
-    chapterFlowIsGenerating,
-    chapterFlowSummary,
-    chapterFlowSummaryMetadata,
-    cancelChapterCreation,
-    updateChapterFlowSummary,
-    regenerateChapterFlowSummary,
-    saveChapterFromFlow,
-  } = useStore();
+  const chapterFlowReviewOpen = useStore(s => s.chapterFlowReviewOpen);
+  const chapterFlowIsGenerating = useStore(s => s.chapterFlowIsGenerating);
+  const chapterFlowSummary = useStore(s => s.chapterFlowSummary);
+  const chapterFlowSummaryMetadata = useStore(s => s.chapterFlowSummaryMetadata);
+  const cancelChapterCreation = useStore(s => s.cancelChapterCreation);
+  const updateChapterFlowSummary = useStore(s => s.updateChapterFlowSummary);
+  const regenerateChapterFlowSummary = useStore(s => s.regenerateChapterFlowSummary);
+  const saveChapterFromFlow = useStore(s => s.saveChapterFromFlow);
 
   const [localSummary, setLocalSummary] = useState('');
 

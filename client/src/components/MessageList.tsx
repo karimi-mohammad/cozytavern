@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message, Character, Chat, Persona, Chapter } from '../types';
 import { useStore } from '../store/state';
@@ -33,7 +33,7 @@ export default function MessageList({
   const chapterEndId = useStore(s => s.chapterEndId);
 
   // Map end_message_id to chapter for quick lookup
-  const chapterByEndId = new Map(chapters.map(c => [c.end_message_id, c]));
+  const chapterByEndId = useMemo(() => new Map(chapters.map(c => [c.end_message_id, c])), [chapters]);
 
   // Helper: scroll to the very last item in the Virtuoso list
   // Uses a ref for items count so the callback always reads the current value
@@ -84,36 +84,35 @@ export default function MessageList({
   type ChapterItem = { type: 'chapter'; chapter: Chapter };
   type StreamingItem = { type: 'streaming'; message: Message };
 
-  const items: (MessageItem | ChapterItem | StreamingItem)[] = [];
+  const items = useMemo(() => {
+    const result: (MessageItem | ChapterItem | StreamingItem)[] = [];
+    if (messages.length > 0) {
+      const stableMessages = messages.length > 1 ? messages.slice(0, -1) : [];
+      const streamingMessage = messages[messages.length - 1];
 
-  if (messages.length > 0) {
-    const stableMessages = messages.length > 1 ? messages.slice(0, -1) : [];
-    const streamingMessage = messages[messages.length - 1];
+      stableMessages.forEach((msg, idx) => {
+        if (idx > 0) {
+          const prevMsg = stableMessages[idx - 1];
+          const chapter = chapterByEndId.get(prevMsg.id);
+          if (chapter) {
+            result.push({ type: 'chapter', chapter });
+          }
+        }
+        result.push({ type: 'message', message: msg, isLast: false });
+      });
 
-    stableMessages.forEach((msg, idx) => {
-      // Check if previous message was a chapter end → insert marker after it
-      if (idx > 0) {
-        const prevMsg = stableMessages[idx - 1];
+      if (stableMessages.length > 0) {
+        const prevMsg = stableMessages[stableMessages.length - 1];
         const chapter = chapterByEndId.get(prevMsg.id);
         if (chapter) {
-          items.push({ type: 'chapter', chapter });
+          result.push({ type: 'chapter', chapter });
         }
       }
-      items.push({ type: 'message', message: msg, isLast: false });
-    });
 
-    // Chapter marker before streaming message
-    if (stableMessages.length > 0) {
-      const prevMsg = stableMessages[stableMessages.length - 1];
-      const chapter = chapterByEndId.get(prevMsg.id);
-      if (chapter) {
-        items.push({ type: 'chapter', chapter });
-      }
+      result.push({ type: 'streaming', message: streamingMessage });
     }
-
-    // Streaming message
-    items.push({ type: 'streaming', message: streamingMessage });
-  }
+    return result;
+  }, [messages, chapterByEndId]);
 
   // Keep itemsCountRef in sync with the current items length
   // This must run synchronously during render so that scrollToBottom

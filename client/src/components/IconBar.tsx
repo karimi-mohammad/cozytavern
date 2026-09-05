@@ -1,7 +1,13 @@
 import { useStore } from '../store/state';
 
 export default function IconBar() {
-  const { activePanel, setActivePanel, panelOpen, searchOpen, setSearchOpen, storyAdvisorOpen, setStoryAdvisorOpen } = useStore();
+  const activePanel = useStore(s => s.activePanel);
+  const setActivePanel = useStore(s => s.setActivePanel);
+  const panelOpen = useStore(s => s.panelOpen);
+  const searchOpen = useStore(s => s.searchOpen);
+  const setSearchOpen = useStore(s => s.setSearchOpen);
+  const storyAdvisorOpen = useStore(s => s.storyAdvisorOpen);
+  const setStoryAdvisorOpen = useStore(s => s.setStoryAdvisorOpen);
 
   const icons = [
     {

@@ -1,8 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useStore } from '../store/state';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { isRTL } from '../utils/textDirection';
+
+// Memoize plugins at module scope (avoid re-creating array on every render)
+const remarkPlugins = [remarkGfm];
 
 interface WizardMessage {
   role: 'user' | 'assistant';
@@ -104,6 +107,28 @@ function cleanDisplayText(text: string): string {
   return result;
 }
 
+// Memoized wizard message bubble — only re-renders when its own content changes
+const WizardMessageBubble = memo(function WizardMessageBubble({ msg, index }: { msg: WizardMessage; index: number }) {
+  const rtl = msg.role === 'user' && isRTL(msg.content);
+  return (
+    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className="max-w-[85%] rounded-2xl px-4 py-2.5"
+        style={msg.role === 'user' ? { backgroundColor: '#6366f1', color: '#ffffff', borderBottomRightRadius: '4px' }
+          : { backgroundColor: '#1a1d2e', color: '#d1d5db', border: '1px solid #2a2d3e', borderBottomLeftRadius: '4px' }}>
+        {msg.role === 'assistant' ? (
+          <div className="prose prose-sm max-w-none" style={{ color: '#d1d5db' }}>
+            <div className="[&_p]:my-1 [&_h1]:my-2 [&_h2]:my-2 [&_h3]:my-2 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_strong]:text-gray-200 [&_em]:text-gray-300 [&_code]:bg-[#252836] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-gray-300 [&_pre]:bg-[#252836] [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto">
+              <ReactMarkdown remarkPlugins={remarkPlugins}>{cleanDisplayText(msg.content)}</ReactMarkdown>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm whitespace-pre-wrap" dir={rtl ? 'rtl' : 'ltr'} style={{ textAlign: rtl ? 'right' : 'left' }}>{msg.content}</p>
+        )}
+      </div>
+    </div>
+  );
+});
+
 // API helpers for wizard conversations
 const wizardApi = {
   listConversations: async (): Promise<WizardConversation[]> => {
@@ -183,10 +208,13 @@ async function streamChat(
 }
 
 export default function CharacterWizard() {
-  const {
-    characterWizardOpen, setCharacterWizardOpen, addToast,
-    createCharacter, setCharacterEditorOpen, characters, chats,
-  } = useStore();
+  const characterWizardOpen = useStore(s => s.characterWizardOpen);
+  const setCharacterWizardOpen = useStore(s => s.setCharacterWizardOpen);
+  const addToast = useStore(s => s.addToast);
+  const createCharacter = useStore(s => s.createCharacter);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const characters = useStore(s => s.characters);
+  const chats = useStore(s => s.chats);
 
   const [conversations, setConversations] = useState<WizardConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -371,8 +399,12 @@ export default function CharacterWizard() {
     }
   };
 
-  // Auto-scroll
+  // Auto-scroll (throttled to avoid jank during streaming)
+  const lastScrollTime = useRef(0);
   useEffect(() => {
+    const now = Date.now();
+    if (now - lastScrollTime.current < 100) return;
+    lastScrollTime.current = now;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, generatedCharacter]);
 
@@ -677,26 +709,9 @@ export default function CharacterWizard() {
             </div>
           )}
 
-          {messages.map((msg, i) => {
-            const rtl = msg.role === 'user' && isRTL(msg.content);
-            return (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className="max-w-[85%] rounded-2xl px-4 py-2.5"
-                  style={msg.role === 'user' ? { backgroundColor: '#6366f1', color: '#ffffff', borderBottomRightRadius: '4px' }
-                    : { backgroundColor: '#1a1d2e', color: '#d1d5db', border: '1px solid #2a2d3e', borderBottomLeftRadius: '4px' }}>
-                  {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm max-w-none" style={{ color: '#d1d5db' }}>
-                      <div className="[&_p]:my-1 [&_h1]:my-2 [&_h2]:my-2 [&_h3]:my-2 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_strong]:text-gray-200 [&_em]:text-gray-300 [&_code]:bg-[#252836] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-gray-300 [&_pre]:bg-[#252836] [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanDisplayText(msg.content)}</ReactMarkdown>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm whitespace-pre-wrap" dir={rtl ? 'rtl' : 'ltr'} style={{ textAlign: rtl ? 'right' : 'left' }}>{msg.content}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {messages.map((msg, i) => (
+            <WizardMessageBubble key={i} msg={msg} index={i} />
+          ))}
 
           {isGenerating && generatingPhase === 'thinking' && (
             <div className="flex justify-start">

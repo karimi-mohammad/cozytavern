@@ -2,7 +2,13 @@ import { useState, useEffect } from 'react';
 import { useStore } from '../store/state';
 
 export default function PersonaEditor() {
-  const { personaEditorOpen, editingPersona, setPersonaEditorOpen, createPersona, updatePersona, deletePersona, showConfirm } = useStore();
+  const personaEditorOpen = useStore(s => s.personaEditorOpen);
+  const editingPersona = useStore(s => s.editingPersona);
+  const setPersonaEditorOpen = useStore(s => s.setPersonaEditorOpen);
+  const createPersona = useStore(s => s.createPersona);
+  const updatePersona = useStore(s => s.updatePersona);
+  const deletePersona = useStore(s => s.deletePersona);
+  const showConfirm = useStore(s => s.showConfirm);
 
   const [form, setForm] = useState({
     name: '', description: '', personality: '', avatar: '',

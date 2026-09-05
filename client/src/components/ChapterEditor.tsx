@@ -18,10 +18,14 @@ export default function ChapterEditor({ chapter, onClose }: Props) {
   const [newEndId, setNewEndId] = useState(chapter.end_message_id);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const {
-    updateChapter, deleteChapter, regenerateChapter,
-    showConfirm, addToast, currentChat, chapters, chapterSettings,
-  } = useStore();
+  const updateChapter = useStore(s => s.updateChapter);
+  const deleteChapter = useStore(s => s.deleteChapter);
+  const regenerateChapter = useStore(s => s.regenerateChapter);
+  const showConfirm = useStore(s => s.showConfirm);
+  const addToast = useStore(s => s.addToast);
+  const currentChat = useStore(s => s.currentChat);
+  const chapters = useStore(s => s.chapters);
+  const chapterSettings = useStore(s => s.chapterSettings);
 
   const messages = currentChat?.messages || [];
   const rawWindow = chapterSettings?.raw_window || 10;
