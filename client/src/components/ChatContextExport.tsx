@@ -19,7 +19,9 @@ export default function ChatContextExport({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const { currentChat, currentCharacter, activePersona } = useStore();
+  const currentChat = useStore(s => s.currentChat);
+  const currentCharacter = useStore(s => s.currentCharacter);
+  const activePersona = useStore(s => s.activePersona);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ContextExportData | null>(null);

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/state';
 
 export default function ConfirmModal() {
-  const { confirmDialog, resolveConfirm } = useStore();
+  const confirmDialog = useStore(s => s.confirmDialog);
+  const resolveConfirm = useStore(s => s.resolveConfirm);
   const [closing, setClosing] = useState(false);
   const pendingResult = useRef<boolean | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);

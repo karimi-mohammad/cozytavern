@@ -3,7 +3,14 @@ import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
 
 export default function CharacterEditor() {
-  const { characterEditorOpen, editingCharacter, setCharacterEditorOpen, createCharacter, updateCharacter, lorebooks, loadLorebooks, addToast } = useStore();
+  const characterEditorOpen = useStore(s => s.characterEditorOpen);
+  const editingCharacter = useStore(s => s.editingCharacter);
+  const setCharacterEditorOpen = useStore(s => s.setCharacterEditorOpen);
+  const createCharacter = useStore(s => s.createCharacter);
+  const updateCharacter = useStore(s => s.updateCharacter);
+  const lorebooks = useStore(s => s.lorebooks);
+  const loadLorebooks = useStore(s => s.loadLorebooks);
+  const addToast = useStore(s => s.addToast);
 
   const [form, setForm] = useState({
     name: '', nickname: '', description: '', personality: '', scenario: '',

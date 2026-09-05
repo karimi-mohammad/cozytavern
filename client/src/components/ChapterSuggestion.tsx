@@ -1,7 +1,10 @@
 import { useStore } from '../store/state';
 
 export default function ChapterSuggestion() {
-  const { chapterSuggestion, dismissChapterSuggestion, createChapter, currentChat } = useStore();
+  const chapterSuggestion = useStore(s => s.chapterSuggestion);
+  const dismissChapterSuggestion = useStore(s => s.dismissChapterSuggestion);
+  const createChapter = useStore(s => s.createChapter);
+  const currentChat = useStore(s => s.currentChat);
 
   if (!chapterSuggestion || !currentChat) return null;
 

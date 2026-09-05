@@ -7,7 +7,10 @@ import GenerateLorebookModal from './GenerateLorebookModal';
 type EntryFilter = 'all' | 'active' | 'disabled' | 'constant' | 'selective';
 
 export default function LorebookEditor() {
-  const { lorebookEditorOpen, setLorebookEditorOpen, lorebooks, loadLorebooks } = useStore();
+  const lorebookEditorOpen = useStore(s => s.lorebookEditorOpen);
+  const setLorebookEditorOpen = useStore(s => s.setLorebookEditorOpen);
+  const lorebooks = useStore(s => s.lorebooks);
+  const loadLorebooks = useStore(s => s.loadLorebooks);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lorebookData, setLorebookData] = useState<any>(null);
   const [newName, setNewName] = useState('');

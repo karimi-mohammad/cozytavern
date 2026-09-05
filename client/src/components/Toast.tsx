@@ -35,7 +35,8 @@ const TOAST_STYLES: Record<string, { border: string; icon: React.ReactNode }> = 
 };
 
 export default function Toast() {
-  const { toasts, removeToast } = useStore();
+  const toasts = useStore(s => s.toasts);
+  const removeToast = useStore(s => s.removeToast);
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none">
