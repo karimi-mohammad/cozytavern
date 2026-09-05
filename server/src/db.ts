@@ -195,6 +195,11 @@ export function initDb(): void {
     database.exec("ALTER TABLE api_settings ADD COLUMN reasoning_effort TEXT DEFAULT ''");
   }
 
+  // Migration: pollinations_api_key for image generation
+  if (!apiCols.some(c => c.name === 'pollinations_api_key')) {
+    database.exec("ALTER TABLE api_settings ADD COLUMN pollinations_api_key TEXT DEFAULT ''");
+  }
+
   const chatFolderCols = database.prepare("PRAGMA table_info(chats)").all() as any[];
   if (!chatFolderCols.some(c => c.name === 'folder')) {
     database.exec("ALTER TABLE chats ADD COLUMN folder TEXT DEFAULT ''");
@@ -262,6 +267,9 @@ export function initDb(): void {
   if (!entryCols.some(c => c.name === 'probability')) {
     database.exec("ALTER TABLE lorebook_entries ADD COLUMN probability INTEGER DEFAULT 100");
   }
+  if (!entryCols.some(c => c.name === 'always_active')) {
+    database.exec("ALTER TABLE lorebook_entries ADD COLUMN always_active INTEGER DEFAULT 0");
+  }
 
   // ─── Group Chat tables ───
   database.exec(`
@@ -323,6 +331,116 @@ export function initDb(): void {
     );
   `);
 
+  // ─── Image Generation Tables ───
+  database.exec(`
+    -- Image profiles (built-in + custom)
+    CREATE TABLE IF NOT EXISTS image_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      instruction TEXT NOT NULL,
+      negative_prompt TEXT DEFAULT 'text, watermark, logo, blurry, deformed',
+      width INTEGER DEFAULT 1024,
+      height INTEGER DEFAULT 1024,
+      model TEXT DEFAULT 'flux',
+      is_builtin INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Image presets ( ذخیره تنظیمات ترکیبی)
+    CREATE TABLE IF NOT EXISTS image_presets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      preset_type TEXT DEFAULT 'scene' CHECK(preset_type IN ('scene', 'portrait')),
+      profile_id TEXT DEFAULT 'scene',
+      model TEXT DEFAULT 'flux',
+      width INTEGER DEFAULT 1024,
+      height INTEGER DEFAULT 1024,
+      auto_use_last_prompt INTEGER DEFAULT 0,
+      prompt_template TEXT DEFAULT '',
+      negative_prompt TEXT DEFAULT 'text, watermark, logo, blurry, deformed',
+      selected_character_ids TEXT DEFAULT '[]',
+      is_builtin INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Scene images
+    CREATE TABLE IF NOT EXISTS scene_images (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      message_id TEXT DEFAULT '',
+      profile_id TEXT DEFAULT 'scene',
+      llm_prompt TEXT DEFAULT '',
+      image_prompt TEXT NOT NULL,
+      negative_prompt TEXT DEFAULT '',
+      image_url TEXT DEFAULT '',
+      image_data TEXT DEFAULT '',
+      model TEXT DEFAULT 'flux',
+      seed INTEGER DEFAULT 0,
+      width INTEGER DEFAULT 1024,
+      height INTEGER DEFAULT 1024,
+      chapter_id TEXT DEFAULT '',
+      is_auto_generated INTEGER DEFAULT 0,
+      is_pinned INTEGER DEFAULT 0,
+      metadata JSON DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Character portraits
+    CREATE TABLE IF NOT EXISTS character_portraits (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL,
+      chat_id TEXT DEFAULT '',
+      profile_id TEXT DEFAULT 'portrait',
+      llm_prompt TEXT DEFAULT '',
+      image_prompt TEXT NOT NULL,
+      negative_prompt TEXT DEFAULT '',
+      image_url TEXT DEFAULT '',
+      image_data TEXT DEFAULT '',
+      model TEXT DEFAULT 'flux',
+      seed INTEGER DEFAULT 0,
+      width INTEGER DEFAULT 1024,
+      height INTEGER DEFAULT 1024,
+      is_current INTEGER DEFAULT 0,
+      is_variation INTEGER DEFAULT 0,
+      parent_id TEXT DEFAULT '',
+      metadata JSON DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Indexes for image tables
+    CREATE INDEX IF NOT EXISTS idx_scene_images_chat_id ON scene_images(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_scene_images_pinned ON scene_images(is_pinned);
+    CREATE INDEX IF NOT EXISTS idx_portraits_character ON character_portraits(character_id);
+    CREATE INDEX IF NOT EXISTS idx_portraits_current ON character_portraits(is_current);
+  `);
+
+  // Seed built-in image profiles
+  const existingProfiles = database.prepare("SELECT COUNT(*) as count FROM image_profiles").get() as any;
+  if (existingProfiles.count === 0) {
+    database.exec(`
+      INSERT INTO image_profiles (id, name, instruction, negative_prompt, width, height, model, is_builtin) VALUES
+      ('scene', 'Scene', 'Create a polished visual prompt for a full scene. Focus on environment, story moment, composition, lighting, and mood.', 'text, watermark, logo, blurry, deformed', 1024, 1024, 'flux', 1),
+      ('portrait', 'Portrait', 'Create a polished visual prompt for a character portrait. Focus on face, expression, pose, lighting, clothing, and composition.', 'text, watermark, logo, blurry, deformed, extra limbs, bad anatomy', 1024, 1024, 'flux', 1),
+      ('face', 'Face', 'Create a polished close-up face prompt. Focus on facial features, eyes, expression, skin detail, and lighting.', 'text, watermark, logo, blurry, deformed', 1024, 1024, 'flux', 1),
+      ('background', 'Background', 'Create a polished background prompt. Focus on setting, atmosphere, depth, and visual details without centering a character.', 'text, watermark, logo, blurry, deformed', 1024, 1024, 'flux', 1),
+      ('character-sheet', 'Character Sheet', 'Create a polished character sheet prompt. Focus on consistent outfit, body shape, front and side views, and detail callouts.', 'text, watermark, logo, blurry, deformed', 1024, 1024, 'flux', 1);
+    `);
+  }
+
+  // Seed built-in image presets
+  const existingPresets = database.prepare("SELECT COUNT(*) as count FROM image_presets").get() as any;
+  if (existingPresets.count === 0) {
+    database.exec(`
+      INSERT INTO image_presets (id, name, description, preset_type, profile_id, model, width, height, is_builtin) VALUES
+      ('default-scene', 'Default Scene', 'Standard scene generation settings', 'scene', 'scene', 'flux', 1024, 1024, 1),
+      ('default-portrait', 'Default Portrait', 'Standard portrait generation settings', 'portrait', 'portrait', 'flux', 1024, 1024, 1),
+      ('anime-scene', 'Anime Scene', 'Anime style scene generation', 'scene', 'scene', 'flux-anime', 1024, 1024, 1),
+      ('realistic-portrait', 'Realistic Portrait', 'Photorealistic portrait generation', 'portrait', 'portrait', 'flux-realism', 1024, 1024, 1),
+      ('quick-draft', 'Quick Draft', 'Fast generation for testing ideas', 'scene', 'scene', 'flux-turbo', 512, 512, 1);
+    `);
+  }
+
   // ─── Performance indexes ───
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
@@ -382,5 +500,24 @@ export function initDb(): void {
   const gcSettingsCols = database.prepare("PRAGMA table_info(group_chat_settings)").all() as any[];
   if (!gcSettingsCols.some(c => c.name === 'auto_respond_character_id')) {
     database.exec("ALTER TABLE group_chat_settings ADD COLUMN auto_respond_character_id TEXT DEFAULT NULL");
+  }
+
+  // Migration: strip_think for API settings
+  if (!apiCols.some(c => c.name === 'strip_think')) {
+    database.exec("ALTER TABLE api_settings ADD COLUMN strip_think INTEGER DEFAULT 0");
+  }
+
+  // Migration: two_phase_state_update (separate text generation from tool calls)
+  if (!apiCols.some(c => c.name === 'two_phase_state_update')) {
+    database.exec("ALTER TABLE api_settings ADD COLUMN two_phase_state_update INTEGER DEFAULT 1");
+  }
+
+  // Migration: اضافه کردن preset_type و selected_character_ids به image_presets
+  const presetCols = database.prepare("PRAGMA table_info(image_presets)").all() as any[];
+  if (!presetCols.some(c => c.name === 'preset_type')) {
+    database.exec("ALTER TABLE image_presets ADD COLUMN preset_type TEXT DEFAULT 'scene'");
+  }
+  if (!presetCols.some(c => c.name === 'selected_character_ids')) {
+    database.exec("ALTER TABLE image_presets ADD COLUMN selected_character_ids TEXT DEFAULT '[]'");
   }
 }

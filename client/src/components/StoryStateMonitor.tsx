@@ -88,7 +88,7 @@ export default function StoryStateMonitor() {
       parts.push('Relationships updated');
     }
 
-    if (changes.rules) {
+    if (changes.rules && Array.isArray(changes.rules)) {
       parts.push(`${changes.rules.length} rules`);
     }
 
@@ -318,7 +318,7 @@ export default function StoryStateMonitor() {
   // Update rule
   const updateRule = (index: number, value: string) => {
     if (!editState) return;
-    const newRules = [...editState.rules];
+    const newRules = [...(Array.isArray(editState.rules) ? editState.rules : [])];
     newRules[index] = value;
     setEditState({ ...editState, rules: newRules });
   };
@@ -326,7 +326,7 @@ export default function StoryStateMonitor() {
   // Remove rule
   const removeRule = (index: number) => {
     if (!editState) return;
-    const newRules = [...editState.rules];
+    const newRules = [...(Array.isArray(editState.rules) ? editState.rules : [])];
     newRules.splice(index, 1);
     setEditState({ ...editState, rules: newRules });
   };
@@ -678,12 +678,12 @@ export default function StoryStateMonitor() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                         </svg>
                         <h3 className="text-sm font-semibold text-tavern-text-bright">Important Memories</h3>
-                        <span className="text-xs text-tavern-dim">({((displayState as any).memories || []).length})</span>
+                        <span className="text-xs text-tavern-dim">({(Array.isArray((displayState as any).memories) ? (displayState as any).memories : []).length})</span>
                       </div>
                     </div>
-                    {((displayState as any).memories || []).length > 0 ? (
+                    {(Array.isArray((displayState as any).memories) ? (displayState as any).memories : []).length > 0 ? (
                       <div className="space-y-2">
-                        {(displayState as any).memories.map((memory: any, i: number) => (
+                        {(Array.isArray((displayState as any).memories) ? (displayState as any).memories : []).map((memory: any, i: number) => (
                           <div key={i} className="flex items-start gap-2 bg-tavern-surface rounded-lg p-2">
                             <span className="text-tavern-accent text-xs">•</span>
                             <div className="flex-1">
@@ -714,15 +714,15 @@ export default function StoryStateMonitor() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                         </svg>
                         <h3 className="text-sm font-semibold text-tavern-text-bright">Story Rules</h3>
-                        <span className="text-xs text-tavern-dim">({(displayState.rules || []).length})</span>
+                        <span className="text-xs text-tavern-dim">({(Array.isArray(displayState.rules) ? displayState.rules : []).length})</span>
                       </div>
                       {isEditing && (
                         <button onClick={addRule} className="text-xs text-tavern-accent hover:underline">+ Add</button>
                       )}
                     </div>
-                    {(displayState.rules || []).length > 0 ? (
+                    {(Array.isArray(displayState.rules) ? displayState.rules : []).length > 0 ? (
                       <div className="space-y-2">
-                        {displayState.rules.map((rule, i) => (
+                        {(Array.isArray(displayState.rules) ? displayState.rules : []).map((rule, i) => (
                           <div key={i} className="flex items-start gap-2 bg-tavern-surface rounded-lg p-2">
                             <span className="text-tavern-accent text-xs font-medium">{i + 1}.</span>
                             {isEditing ? (

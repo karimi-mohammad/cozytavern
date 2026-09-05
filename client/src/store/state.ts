@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Character, Chat, Message, Persona, Lorebook, ApiSettings, Chapter, ChapterSettings, LorebookPluginSettings, PromptInspection, PromptInspectionPayload, PromptPart, QuickReplySettings, SearchResult, ChatParticipant, ChapterPreviewData, ChapterSummaryResult, StoryState, ChatLorebook, ChatNote } from '../types';
 import { api } from '../api/client';
 import { estimateContextUsage, ContextUsage } from '../utils/tokenEstimate';
+import { playNotifySound } from '../utils/notifySound';
 
 // ─── Streaming token batching ───
 // Coalesces rapid token updates into one setState per animation frame
@@ -136,6 +137,12 @@ interface AppState {
   generateGroupResponse: (chatId: string, characterId: string, options?: { update_message_id?: string }) => Promise<void>;
   createGroupChat: (data: { name?: string; character_ids: string[]; lorebook_id?: string }) => Promise<Chat>;
   addCharacterToChat: (chatId: string, characterId: string) => Promise<void>;
+
+  // Notification Settings
+  notifyOnResponse: boolean;
+  notifyVolume: number;
+  setNotifyOnResponse: (enabled: boolean) => void;
+  setNotifyVolume: (volume: number) => void;
 
   // Loading States
   loadingCharacters: boolean;
@@ -617,11 +624,16 @@ export const useStore = create<AppState>((set, get) => ({
           tokenBatcher.flush();
           set({ isGenerating: false, groupChatGenerating: false });
           get().updateContextUsage();
+          // 🔔 پخش صدای هشدار
+          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
+          // Reload chat after regeneration to sync swipes from server
           if (isRegen) {
             api.getChat(chatId).then(refreshed => {
               set({ currentChat: refreshed });
             }).catch(() => {});
           }
+          // Check for chapter trigger suggestion (same as normal chat)
+          get().checkChapterTrigger(chatId);
         },
         controller.signal
       );
@@ -660,6 +672,22 @@ export const useStore = create<AppState>((set, get) => ({
     if (chat?.is_group_chat) {
       api.updateGroupChatSettings(chat.id, { auto_respond_character_id: charId }).catch(() => {});
     }
+  },
+
+  // Notification settings (persisted in localStorage)
+  notifyOnResponse: (() => {
+    try { return localStorage.getItem('cozytavern.notifyOnResponse') !== '0'; } catch { return true; }
+  })(),
+  notifyVolume: (() => {
+    try { return Number(localStorage.getItem('cozytavern.notifyVolume')) || 0.25; } catch { return 0.25; }
+  })(),
+  setNotifyOnResponse: (enabled) => {
+    try { localStorage.setItem('cozytavern.notifyOnResponse', enabled ? '1' : '0'); } catch {}
+    set({ notifyOnResponse: enabled });
+  },
+  setNotifyVolume: (volume) => {
+    try { localStorage.setItem('cozytavern.notifyVolume', String(volume)); } catch {}
+    set({ notifyVolume: volume });
   },
 
   // Loading states
@@ -1086,6 +1114,8 @@ export const useStore = create<AppState>((set, get) => ({
           tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
+          // 🔔 پخش صدای هشدار
+          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
           if (isFirstMessage) {
             get().autoNameChat(currentChat.id);
           }
@@ -1296,6 +1326,8 @@ export const useStore = create<AppState>((set, get) => ({
           set({ isGenerating: false });
           if (currentAbortController === controller) currentAbortController = null;
           get().updateContextUsage();
+          // 🔔 پخش صدای هشدار
+          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
         },
         controller.signal
       );
@@ -1397,6 +1429,8 @@ export const useStore = create<AppState>((set, get) => ({
           tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
+          // 🔔 پخش صدای هشدار
+          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
         },
         controller.signal
       );
@@ -1496,6 +1530,8 @@ export const useStore = create<AppState>((set, get) => ({
           tokenBatcher.flush();
           set({ isGenerating: false });
           get().updateContextUsage();
+          // 🔔 پخش صدای هشدار
+          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
         },
         controller.signal
       );

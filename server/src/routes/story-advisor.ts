@@ -127,11 +127,11 @@ ${chat.authors_note}`);
         stateParts.push(`Current Situation: ${state.current_situation}`);
       }
 
-      if (state.rules && state.rules.length > 0) {
+      if (state.rules && Array.isArray(state.rules) && state.rules.length > 0) {
         stateParts.push(`Story Rules:\n${state.rules.map((r: string) => `- ${r}`).join('\n')}`);
       }
 
-      if (state.memories && state.memories.length > 0) {
+      if (state.memories && Array.isArray(state.memories) && state.memories.length > 0) {
         const memText = state.memories.map((m: any) => `- ${m.content}`).join('\n');
         stateParts.push(`Important Memories:\n${memText}`);
       }

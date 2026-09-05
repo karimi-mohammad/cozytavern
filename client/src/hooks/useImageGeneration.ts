@@ -267,11 +267,19 @@ export function useImageGeneration() {
 
   // ─── Context Preview API ───
 
-  const getContext = useCallback(async (chatId: string, profileId: string): Promise<ImageContextResult> => {
+  const getContext = useCallback(async (
+    chatId: string,
+    profileId: string,
+    selectedCharacterIds?: string[]
+  ): Promise<ImageContextResult> => {
     const response = await fetch(`${API_BASE}/scenes/context`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, profile_id: profileId }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        profile_id: profileId,
+        selected_character_ids: selectedCharacterIds,
+      }),
     });
     if (!response.ok) throw new Error('Failed to get context');
     return await response.json();
@@ -295,10 +303,12 @@ export function useImageGeneration() {
     if (!response.ok) throw new Error('Failed to fetch presets');
     const data = await response.json();
     // تبدیل snake_case به camelCase
+    // سرور selected_character_ids رو از قبل parse کرده (آرایه هست)
     return data.map((p: any) => ({
       id: p.id,
       name: p.name,
       description: p.description,
+      presetType: p.preset_type || 'scene',
       profileId: p.profile_id,
       model: p.model,
       width: p.width,
@@ -306,6 +316,7 @@ export function useImageGeneration() {
       autoUseLastPrompt: p.auto_use_last_prompt === 1,
       promptTemplate: p.prompt_template,
       negativePrompt: p.negative_prompt,
+      selectedCharacterIds: Array.isArray(p.selected_character_ids) ? p.selected_character_ids : [],
       isBuiltin: p.isBuiltin,
       createdAt: p.created_at,
     }));
@@ -318,6 +329,7 @@ export function useImageGeneration() {
       body: JSON.stringify({
         name: preset.name,
         description: preset.description,
+        preset_type: preset.presetType || 'scene',
         profile_id: preset.profileId,
         model: preset.model,
         width: preset.width,
@@ -325,6 +337,7 @@ export function useImageGeneration() {
         auto_use_last_prompt: preset.autoUseLastPrompt,
         prompt_template: preset.promptTemplate,
         negative_prompt: preset.negativePrompt,
+        selected_character_ids: preset.selectedCharacterIds || [],
       }),
     });
     if (!response.ok) throw new Error('Failed to create preset');
@@ -338,6 +351,7 @@ export function useImageGeneration() {
       body: JSON.stringify({
         name: preset.name,
         description: preset.description,
+        preset_type: preset.presetType,
         profile_id: preset.profileId,
         model: preset.model,
         width: preset.width,
@@ -345,6 +359,7 @@ export function useImageGeneration() {
         auto_use_last_prompt: preset.autoUseLastPrompt,
         prompt_template: preset.promptTemplate,
         negative_prompt: preset.negativePrompt,
+        selected_character_ids: preset.selectedCharacterIds,
       }),
     });
     if (!response.ok) throw new Error('Failed to update preset');

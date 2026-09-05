@@ -94,12 +94,12 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
     }
 
     // Rules changes - use shallow comparison
-    const oldRules = snapshot.rules || [];
-    const newRules = storyState.rules || [];
+    const oldRules = Array.isArray(snapshot.rules) ? snapshot.rules : [];
+    const newRules = Array.isArray(storyState.rules) ? storyState.rules : [];
     const rulesChanged = newRules.length !== oldRules.length ||
       newRules.some((r: any, i: number) => r !== oldRules[i]);
     if (rulesChanged) {
-      diff.rules = storyState.rules;
+      diff.rules = newRules;
     }
 
     // Relationship Details changes - use shallow comparison
@@ -113,8 +113,8 @@ export default function StateChangeIndicator({ messageId, isUser }: Props) {
     }
 
     // Memories changes - use shallow comparison
-    const oldMemories = (snapshot as any).memories || [];
-    const newMemories = (storyState as any).memories || [];
+    const oldMemories = Array.isArray((snapshot as any).memories) ? (snapshot as any).memories : [];
+    const newMemories = Array.isArray((storyState as any).memories) ? (storyState as any).memories : [];
     const memoriesChanged = newMemories.length !== oldMemories.length ||
       newMemories.some((m: any, i: number) => m.content !== oldMemories[i]?.content);
     if (memoriesChanged) {

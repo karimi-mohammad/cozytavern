@@ -6,7 +6,9 @@
 import { useState, useEffect } from 'react';
 import { useImageGeneration } from '../hooks/useImageGeneration';
 import { ImagePresetManager } from './ImagePresetManager';
+import { api } from '../api/client';
 import type { ImagePreset, ImageProfile, PollinationsModel, ImageType } from '../types/image';
+import type { Character } from '../types';
 
 const PERCHANCE_URL = 'https://perchance.org/ai-text-to-image-generator';
 
@@ -41,6 +43,7 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
   const [presets, setPresets] = useState<ImagePreset[]>([]);
   const [profiles, setProfiles] = useState<ImageProfile[]>([]);
   const [models, setModels] = useState<PollinationsModel[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState('flux');
   const [width, setWidth] = useState(1024);
@@ -57,12 +60,17 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
   const [context, setContext] = useState('');
   const [editedContext, setEditedContext] = useState('');
   const [profileInstruction, setProfileInstruction] = useState('');
+  // For portrait mode: selected character ID
+  const [selectedPortraitCharacterId, setSelectedPortraitCharacterId] = useState<string>(characterId || '');
+  // Effective preset type (from preset or from props type)
+  const [effectivePresetType, setEffectivePresetType] = useState<ImageType>(type);
 
   useEffect(() => {
     loadProfiles();
     loadModels();
     loadApiStatus();
     loadPresets();
+    loadCharacters();
   }, []);
 
   const loadProfiles = async () => {
@@ -71,6 +79,15 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
       setProfiles(data);
     } catch (err) {
       console.error('Failed to load profiles:', err);
+    }
+  };
+
+  const loadCharacters = async () => {
+    try {
+      const data = await api.getCharacters();
+      setCharacters(data as Character[]);
+    } catch (err) {
+      console.error('Failed to load characters:', err);
     }
   };
 
@@ -100,6 +117,12 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
       setSelectedModel(preset.model);
       setWidth(preset.width);
       setHeight(preset.height);
+      // Update effective preset type based on the preset
+      setEffectivePresetType(preset.presetType);
+      // If preset has default character selection, use it
+      if (preset.presetType === 'portrait' && preset.selectedCharacterIds?.length > 0) {
+        setSelectedPortraitCharacterId(preset.selectedCharacterIds[0]);
+      }
     }
   };
 
@@ -146,21 +169,48 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
     setStep('generating');
 
     try {
-      if (type === 'scene' && chatId) {
-        // دریافت profileId و promptTemplate از پریست انتخاب شده
-        const selectedPresetObj = presets.find(p => p.id === selectedPreset);
-        const profileId = selectedPresetObj?.profileId || 'scene';
-        const promptTemplate = selectedPresetObj?.promptTemplate;
+      // دریافت profileId و promptTemplate از پریست انتخاب شده
+      const selectedPresetObj = presets.find(p => p.id === selectedPreset);
+      const profileId = selectedPresetObj?.profileId || (effectivePresetType === 'portrait' ? 'portrait' : 'scene');
+      const promptTemplate = selectedPresetObj?.promptTemplate;
+      const selectedCharacterIds = selectedPresetObj?.selectedCharacterIds;
 
-        const result = await getContext(chatId, profileId);
+      if (effectivePresetType === 'scene' && chatId) {
+        // Scene mode: دریافت کانتکست از چت (با اطلاعات تمام کاراکترها)
+        const result = await getContext(chatId, profileId, selectedCharacterIds);
         setContext(result.context);
         setEditedContext(result.context);
         // استفاده از promptTemplate اگر وجود داشته باشد، در غیر این صورت profile.instruction
         setProfileInstruction(promptTemplate?.trim() || result.profile.instruction);
         setStep('context-preview');
+      } else if (effectivePresetType === 'portrait') {
+        // Portrait mode: اگر کاراکتر انتخاب شده باشد، کانتکست رو بساز
+        const charId = selectedPortraitCharacterId || characterId;
+        if (charId) {
+          // می‌توانیم از همان getContext برای پرتره استفاده کنیم
+          // یا کانتکست ساده‌تری بسازیم
+          const character = characters.find(c => c.id === charId);
+          if (character) {
+            const portraitContext = [
+              character.name ? `Name: ${character.name}` : '',
+              character.description ? `Description: ${character.description}` : '',
+              character.personality ? `Personality: ${character.personality}` : '',
+            ].filter(Boolean).join('\n');
+            setContext(portraitContext);
+            setEditedContext(portraitContext);
+            setProfileInstruction(promptTemplate?.trim() || 'Create a polished visual prompt for a character portrait. Focus on face, expression, pose, lighting, clothing, and composition.');
+            setStep('context-preview');
+          } else {
+            setGeneratedPrompt(customPrompt || `Portrait of ${character?.name || 'a character'}`);
+            setStep('prompt-ready');
+          }
+        } else {
+          // بدون انتخاب کاراکتر، از customPrompt استفاده کن
+          setGeneratedPrompt(customPrompt || 'Portrait of a character');
+          setStep('prompt-ready');
+        }
       } else {
-        // برای پرتره، فعلاً از customPrompt استفاده کن
-        setGeneratedPrompt(customPrompt || 'Portrait of a character');
+        setGeneratedPrompt(customPrompt || 'Generate an image');
         setStep('prompt-ready');
       }
     } catch (err) {
@@ -172,19 +222,21 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
   const handleGeneratePrompt = async () => {
     clearError();
     setStep('generating');
-    
+
     try {
-      if (type === 'scene') {
+      const selectedPresetObj = presets.find(p => p.id === selectedPreset);
+      const profileId = selectedPresetObj?.profileId || (effectivePresetType === 'portrait' ? 'portrait' : 'scene');
+
+      if (effectivePresetType === 'scene') {
         // برای صحنه، فقط پرامپت تولید کن (بدون API Key)
         const result = await generateScenePrompt({
           chatId,
-          profileId: 'scene', // Default profile
+          profileId,
           customPrompt: customPrompt || undefined,
         });
         setGeneratedPrompt(result.imagePrompt);
       } else {
-        // برای پرتره، فعلاً از customPrompt استفاده کن
-        // TODO: endpoint پرتره جداگانه اضافه شود
+        // برای پرتره، از customPrompt یا پرامپت پیش‌فرض استفاده کن
         setGeneratedPrompt(customPrompt || 'Portrait of a character');
       }
       setStep('prompt-ready');
@@ -202,7 +254,7 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
     try {
       // دریافت profileId و promptTemplate از پریست انتخاب شده
       const selectedPresetObj = presets.find(p => p.id === selectedPreset);
-      const profileId = selectedPresetObj?.profileId || 'scene';
+      const profileId = selectedPresetObj?.profileId || (effectivePresetType === 'portrait' ? 'portrait' : 'scene');
       const promptTemplate = selectedPresetObj?.promptTemplate || undefined;
 
       // ارسال context ادیت شده به LLM برای تولید پرامپت تصویر
@@ -218,12 +270,17 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
   const handleGenerateWithAPI = async () => {
     clearError();
     setStep('generating');
-    
+
     try {
+      const selectedPresetObj = presets.find(p => p.id === selectedPreset);
+      const profileId = selectedPresetObj?.profileId || (effectivePresetType === 'portrait' ? 'portrait' : 'scene');
+      // Use selected character ID for portrait mode
+      const charId = effectivePresetType === 'portrait' ? (selectedPortraitCharacterId || characterId) : characterId;
+
       const request = {
         chatId,
-        characterId,
-        profileId: 'scene', // Default profile
+        characterId: charId,
+        profileId,
         customPrompt: generatedPrompt, // استفاده از پرامپت تولید شده
         width,
         height,
@@ -231,7 +288,7 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
       };
 
       let result;
-      if (type === 'scene') {
+      if (effectivePresetType === 'scene') {
         result = await generateSceneImage(request);
       } else {
         result = await generatePortrait(request);
@@ -278,7 +335,7 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-tavern-border">
           <h2 className="text-lg font-semibold">
-            {type === 'scene' ? '🎨 Generate Scene Image' : '👤 Generate Portrait'}
+            {effectivePresetType === 'scene' ? '🎬 Generate Scene Image' : '👤 Generate Portrait'}
           </h2>
           <button onClick={onClose} className="text-tavern-dim hover:text-tavern-text">
             ✕
@@ -319,9 +376,10 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
                   {presets.map((p) => {
                     // پیدا کردن نام profile مربوطه
                     const profileName = profiles.find(pro => pro.id === p.profileId)?.name || p.profileId;
+                    const typeIcon = p.presetType === 'portrait' ? '👤' : '🎬';
                     return (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({profileName}) {p.isBuiltin ? '' : '⭐'}
+                        {typeIcon} {p.name} ({profileName}) {p.isBuiltin ? '' : '⭐'}
                       </option>
                     );
                   })}
@@ -332,6 +390,44 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
                   </p>
                 )}
               </div>
+
+              {/* Character Selection for Portrait Mode */}
+              {effectivePresetType === 'portrait' && (
+                <div className="bg-tavern-bg/50 rounded-lg p-3 border border-tavern-border">
+                  <label className="text-sm font-medium mb-2 block">🎭 Select Character</label>
+                  {characters.length === 0 ? (
+                    <p className="text-xs text-tavern-dim">Loading characters...</p>
+                  ) : (
+                    <select
+                      value={selectedPortraitCharacterId}
+                      onChange={(e) => setSelectedPortraitCharacterId(e.target.value)}
+                      className="w-full bg-tavern-card border border-tavern-border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">-- Select a Character --</option>
+                      {characters.map((char) => (
+                        <option key={char.id} value={char.id}>
+                          {char.avatar ? '🎭 ' : ''}{char.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedPortraitCharacterId && (
+                    <p className="text-xs text-tavern-dim mt-1">
+                      Portrait will be generated for: {characters.find(c => c.id === selectedPortraitCharacterId)?.name}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Scene Info */}
+              {effectivePresetType === 'scene' && chatId && (
+                <div className="bg-tavern-bg/50 rounded-lg p-3 border border-tavern-border">
+                  <label className="text-sm font-medium mb-1 block">🎬 Scene Mode</label>
+                  <p className="text-xs text-tavern-dim">
+                    All characters' information from the current chat will be included in the context.
+                  </p>
+                </div>
+              )}
 
               {/* Model Selection */}
               <div>

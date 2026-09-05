@@ -128,12 +128,12 @@ export function buildImageContext(
     }
 
     // قوانین داستان
-    if (storyState.rules && storyState.rules.length > 0) {
+    if (storyState.rules && Array.isArray(storyState.rules) && storyState.rules.length > 0) {
       stateParts.push(`Story Rules:\n${storyState.rules.map((r: string) => `- ${r}`).join('\n')}`);
     }
 
     // خاطرات مهم
-    if (storyState.memories && storyState.memories.length > 0) {
+    if (storyState.memories && Array.isArray(storyState.memories) && storyState.memories.length > 0) {
       const memText = storyState.memories.map((m: any) => `- ${m.content}`).join('\n');
       stateParts.push(`Important Memories:\n${memText}`);
     }

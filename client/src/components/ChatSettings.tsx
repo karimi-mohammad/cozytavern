@@ -17,6 +17,9 @@ export default function ChatSettings() {
     stream: true, stop: [] as string[],
     system_prompt: '',
     reasoning_effort: '' as string,
+    strip_think: false as boolean,
+    two_phase_state_update: true as boolean,
+    pollinations_api_key: '',
     authors_note: '',
     authors_note_depth: 4,
     authors_note_position: 'in_chat' as 'after_char' | 'in_chat',
@@ -161,6 +164,22 @@ export default function ChatSettings() {
             />
           </div>
 
+          {/* Pollinations API Key (for Image Generation) */}
+          <div className="bg-tavern-bg/50 rounded-lg p-3 border border-tavern-border">
+            <label className="block text-sm font-medium mb-1">🎨 Pollinations API Key <span className="text-tavern-dim text-xs">(for Image Generation)</span></label>
+            <input
+              type="password"
+              value={form.pollinations_api_key}
+              onChange={(e) => setForm(f => ({ ...f, pollinations_api_key: e.target.value }))}
+              className="w-full bg-tavern-card border border-tavern-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-tavern-accent"
+              placeholder="Optional - for AI image generation"
+              dir="ltr"
+            />
+            <p className="text-[10px] text-tavern-dim mt-1">
+              Optional. Get from <a href="https://pollinations.ai" target="_blank" rel="noopener" className="text-tavern-accent hover:underline">pollinations.ai</a>. Without this, you can still use free Perchance.org.
+            </p>
+          </div>
+
           {/* Model */}
           <div>
             <label className="block text-sm font-medium mb-1">Model</label>
@@ -251,6 +270,40 @@ export default function ChatSettings() {
               For models that support reasoning (DeepSeek-R1, o1, etc.). Enables thinking display in chat.
             </p>
           </div>
+
+          {/* Strip Thinking Blocks */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.strip_think}
+              onChange={(e) => setForm(f => ({ ...f, strip_think: e.target.checked }))}
+              className="accent-tavern-accent"
+              id="strip-think-toggle"
+            />
+            <label htmlFor="strip-think-toggle" className="text-sm font-medium">
+              Strip Thinking from Context
+            </label>
+          </div>
+          <p className="text-[10px] text-tavern-dim -mt-2 ml-6">
+            حذف blok‌های think از تاریخچه پیام‌ها قبل از ارسال به مدل. پیام‌ها در چت نمایش داده می‌شوند ولی به مدل ارسال نمی‌شوند.
+          </p>
+
+          {/* Two-Phase State Update */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.two_phase_state_update}
+              onChange={(e) => setForm(f => ({ ...f, two_phase_state_update: e.target.checked }))}
+              className="accent-tavern-accent"
+              id="two-phase-toggle"
+            />
+            <label htmlFor="two-phase-toggle" className="text-sm font-medium">
+              Two-Phase State Update
+            </label>
+          </div>
+          <p className="text-[10px] text-tavern-dim -mt-2 ml-6">
+            جداسازی تولید متن از به‌روزرسانی state. درخواست اول فقط متن تولید می‌کند، درخواست دوم tool call‌ها را برای به‌روزرسانی state اجرا می‌کند. پاسخ‌های تمیزتر ولی کمی کندتر.
+          </p>
         </div>
 
         <div className="p-4 border-t border-tavern-border flex justify-end gap-2 sticky bottom-0 bg-tavern-card rounded-b-xl">

@@ -3,7 +3,9 @@
 
 import { useState, useEffect } from 'react';
 import { useImageGeneration } from '../hooks/useImageGeneration';
+import { api } from '../api/client';
 import type { ImagePreset } from '../types/image';
+import type { Character } from '../types';
 
 interface ImagePresetManagerProps {
   onClose: () => void;
@@ -23,15 +25,18 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
   const [loading, setLoading] = useState(true);
   const [editingPreset, setEditingPreset] = useState<ImagePreset | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [characters, setCharacters] = useState<Character[]>([]);
 
   // فرم
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formPresetType, setFormPresetType] = useState<'scene' | 'portrait'>('scene');
   const [formModel, setFormModel] = useState('flux');
   const [formWidth, setFormWidth] = useState(1024);
   const [formHeight, setFormHeight] = useState(1024);
   const [formPromptTemplate, setFormPromptTemplate] = useState('');
   const [formNegativePrompt, setFormNegativePrompt] = useState('text, watermark, logo, blurry, deformed');
+  const [formSelectedCharacterIds, setFormSelectedCharacterIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -40,8 +45,12 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
   const loadData = async () => {
     setLoading(true);
     try {
-      const presetsData = await getPresets();
+      const [presetsData, charactersData] = await Promise.all([
+        getPresets(),
+        api.getCharacters().catch(() => []),
+      ]);
       setPresets(presetsData);
+      setCharacters(charactersData as Character[]);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
@@ -52,11 +61,13 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
   const resetForm = () => {
     setFormName('');
     setFormDescription('');
+    setFormPresetType('scene');
     setFormModel('flux');
     setFormWidth(1024);
     setFormHeight(1024);
     setFormPromptTemplate('');
     setFormNegativePrompt('text, watermark, logo, blurry, deformed');
+    setFormSelectedCharacterIds([]);
   };
 
   const handleCreate = () => {
@@ -68,11 +79,13 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
   const handleEdit = (preset: ImagePreset) => {
     setFormName(preset.name);
     setFormDescription(preset.description);
+    setFormPresetType(preset.presetType || 'scene');
     setFormModel(preset.model);
     setFormWidth(preset.width);
     setFormHeight(preset.height);
     setFormPromptTemplate(preset.promptTemplate);
     setFormNegativePrompt(preset.negativePrompt);
+    setFormSelectedCharacterIds(preset.selectedCharacterIds || []);
     setEditingPreset(preset);
     setIsCreating(false);
   };
@@ -81,15 +94,20 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
     if (!formName.trim()) return;
 
     try {
+      // profileId بر اساس presetType انتخاب می‌شود
+      const profileId = formPresetType === 'portrait' ? 'portrait' : 'scene';
+
       const presetData = {
         name: formName,
         description: formDescription,
-        profileId: 'scene', // Default profile
+        presetType: formPresetType,
+        profileId,
         model: formModel,
         width: formWidth,
         height: formHeight,
         promptTemplate: formPromptTemplate,
         negativePrompt: formNegativePrompt,
+        selectedCharacterIds: formSelectedCharacterIds,
       };
 
       if (editingPreset) {
@@ -130,6 +148,12 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
   const handleSelect = (preset: ImagePreset) => {
     onSelect?.(preset);
     onClose();
+  };
+
+  const toggleCharacter = (charId: string) => {
+    setFormSelectedCharacterIds(prev =>
+      prev.includes(charId) ? prev.filter(id => id !== charId) : [...prev, charId]
+    );
   };
 
   return (
@@ -186,6 +210,7 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
                           <p className="text-xs text-tavern-dim mt-0.5 truncate">{preset.description}</p>
                         )}
                         <div className="flex items-center gap-3 mt-1.5 text-[10px] text-tavern-dim">
+                          <span>{preset.presetType === 'portrait' ? '👤' : '🎬'} {preset.presetType || 'scene'}</span>
                           <span>🤖 {preset.model}</span>
                           <span>📐 {preset.width}x{preset.height}</span>
                         </div>
@@ -255,6 +280,90 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
                     placeholder="Optional description"
                   />
                 </div>
+
+                {/* ═══ Preset Type ═══ */}
+                <div className="border border-tavern-border rounded-lg p-3 bg-tavern-surface/30">
+                  <label className="block text-sm font-medium mb-2">🎬 Preset Type *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormPresetType('scene')}
+                      className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium border transition-all ${
+                        formPresetType === 'scene'
+                          ? 'bg-tavern-accent text-white border-tavern-accent shadow-lg'
+                          : 'bg-tavern-card text-tavern-text border-tavern-border hover:border-tavern-accent/50 hover:bg-tavern-hover'
+                      }`}
+                    >
+                      <span className="text-lg">🎬</span>
+                      <p className="font-medium">Scene</p>
+                      <p className="text-[10px] font-normal mt-0.5 opacity-75">All characters included</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormPresetType('portrait')}
+                      className={`flex-1 px-3 py-3 rounded-lg text-sm font-medium border transition-all ${
+                        formPresetType === 'portrait'
+                          ? 'bg-tavern-accent text-white border-tavern-accent shadow-lg'
+                          : 'bg-tavern-card text-tavern-text border-tavern-border hover:border-tavern-accent/50 hover:bg-tavern-hover'
+                      }`}
+                    >
+                      <span className="text-lg">👤</span>
+                      <p className="font-medium">Portrait</p>
+                      <p className="text-[10px] font-normal mt-0.5 opacity-75">Single character focus</p>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-tavern-dim mt-2">
+                    {formPresetType === 'scene'
+                      ? '🎬 Scene mode: All characters from the chat will be included in the image context.'
+                      : '👤 Portrait mode: Select a specific character to generate their portrait.'}
+                  </p>
+                </div>
+
+                {/* ═══ Character Selection (for Portrait type) ═══ */}
+                {formPresetType === 'portrait' && (
+                  <div className="border border-tavern-border rounded-lg p-3 bg-tavern-surface/30">
+                    <label className="block text-sm font-medium mb-2">
+                      🎭 Select Characters
+                      <span className="text-tavern-dim font-normal ml-1">(optional)</span>
+                    </label>
+                    {characters.length === 0 ? (
+                      <p className="text-xs text-tavern-dim py-2">No characters available</p>
+                    ) : (
+                      <div className="max-h-36 overflow-y-auto border border-tavern-border rounded-lg p-2 space-y-1 bg-tavern-bg/50">
+                        {characters.map((char) => (
+                          <label
+                            key={char.id}
+                            className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                              formSelectedCharacterIds.includes(char.id)
+                                ? 'bg-tavern-accent/20 border border-tavern-accent/50'
+                                : 'hover:bg-tavern-hover border border-transparent'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formSelectedCharacterIds.includes(char.id)}
+                              onChange={() => toggleCharacter(char.id)}
+                              className="rounded border-tavern-border"
+                            />
+                            {char.avatar ? (
+                              <img src={char.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
+                            ) : (
+                              <span className="w-6 h-6 rounded-full bg-tavern-accent/30 flex items-center justify-center text-xs">
+                                {char.name[0]}
+                              </span>
+                            )}
+                            <span className="text-sm">{char.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-tavern-dim mt-2">
+                      {formSelectedCharacterIds.length === 0
+                        ? '💡 Character will be selected when generating the image'
+                        : `✓ ${formSelectedCharacterIds.length} character(s) selected as default`}
+                    </p>
+                  </div>
+                )}
 
                 {/* Model */}
                 <div>
@@ -327,7 +436,7 @@ export function ImagePresetManager({ onClose, onSelect }: ImagePresetManagerProp
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 pt-2">
+                <div className="flex gap-2 pt-2 border-t border-tavern-border">
                   <button
                     onClick={() => { setIsCreating(false); setEditingPreset(null); resetForm(); }}
                     className="flex-1 px-4 py-2 text-tavern-dim hover:text-tavern-text transition-colors"

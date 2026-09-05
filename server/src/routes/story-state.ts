@@ -232,6 +232,12 @@ function deepMerge(target: any, source: any): any {
 
     if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
       result[key] = deepMerge(result[key] || {}, source[key]);
+    } else if (key === 'rules' && !Array.isArray(source[key])) {
+      // rules must always be an array — skip non-array values from AI
+      continue;
+    } else if (key === 'memories' && !Array.isArray(source[key])) {
+      // memories must always be an array — skip non-array values from AI
+      continue;
     } else {
       result[key] = source[key];
     }

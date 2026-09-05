@@ -77,6 +77,7 @@ export interface LorebookEntry {
   case_sensitive: boolean;
   use_regex: boolean;
   probability: number;
+  always_active: boolean;
 }
 
 export interface Lorebook {
@@ -121,6 +122,9 @@ export interface ApiSettings {
   stop: string[];
   system_prompt: string;
   reasoning_effort?: 'low' | 'medium' | 'high' | '';
+  strip_think?: boolean;
+  two_phase_state_update?: boolean;
+  pollinations_api_key?: string;
 }
 
 export interface PromptPart {

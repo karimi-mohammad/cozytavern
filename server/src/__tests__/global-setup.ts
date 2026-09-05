@@ -108,6 +108,7 @@ testDb.exec(`
     case_sensitive INTEGER DEFAULT 0,
     use_regex INTEGER DEFAULT 0,
     probability INTEGER DEFAULT 100,
+    always_active INTEGER DEFAULT 0,
     FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
   );
 

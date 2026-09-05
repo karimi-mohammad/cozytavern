@@ -427,6 +427,20 @@ export default function Sidebar() {
                 </span>
               )}
               <div className="flex items-center flex-shrink-0">
+                {/* Rename button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingChatId(chat.id);
+                    setRenameValue(chat.name);
+                  }}
+                  className="text-tavern-dim hover:text-tavern-text text-xs p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-tavern-hover"
+                  title="Rename chat"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
                 {/* Folder assignment button */}
                 <div className="relative">
                   <button

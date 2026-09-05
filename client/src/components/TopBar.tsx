@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/state';
 import { formatTokenCount } from '../utils/tokenEstimate';
 import ChatContextExport from './ChatContextExport';
+import TokenUsageModal from './TokenUsageModal';
 
 export default function TopBar() {
   // استفاده از selector‌های جداگانه برای جلوگیری از re-render بی‌رویه
@@ -24,9 +25,12 @@ export default function TopBar() {
   const contextUsage = useStore(s => s.contextUsage);
   const promptInspectEnabled = useStore(s => s.promptInspectEnabled);
   const togglePromptInspect = useStore(s => s.togglePromptInspect);
+  const notifyOnResponse = useStore(s => s.notifyOnResponse);
+  const setNotifyOnResponse = useStore(s => s.setNotifyOnResponse);
 
   const [showChatDropdown, setShowChatDropdown] = useState(false);
   const [showContextExport, setShowContextExport] = useState(false);
+  const [showTokenUsage, setShowTokenUsage] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // بستن dropdown با کلیک بیرون یا Escape
@@ -127,7 +131,10 @@ export default function TopBar() {
         <span className="text-[10px] text-tavern-dim font-mono">{model}</span>
         {contextUsage && currentChat && (
           <div className="relative group">
-            <div className="flex items-center gap-1.5 cursor-default">
+            <button
+              onClick={() => setShowTokenUsage(true)}
+              className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+            >
               <div className="w-24 h-1.5 bg-tavern-border rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ${
@@ -148,7 +155,7 @@ export default function TopBar() {
                   ↳{formatTokenCount(settings.max_tokens)}
                 </span>
               ) : null}
-            </div>
+            </button>
             {/* Tooltip with breakdown */}
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-tavern-surface2 border border-tavern-border rounded-lg shadow-xl shadow-black/30 p-3 text-[10px] space-y-1 opacity-0 invisible translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-150 delay-100 z-50 min-w-[180px]">
               <div className="font-medium text-tavern-text mb-1.5">Context Breakdown</div>
@@ -232,6 +239,27 @@ export default function TopBar() {
         </button>
 
         <button
+          onClick={() => setNotifyOnResponse(!notifyOnResponse)}
+          className={`w-7 h-7 flex items-center justify-center rounded-md active:scale-90 transition-colors ${
+            notifyOnResponse
+              ? 'bg-tavern-accent/20 text-tavern-accent'
+              : 'text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover'
+          }`}
+          title={notifyOnResponse ? 'Notification sound ON — click to mute' : 'Notification sound OFF — click to unmute'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            {notifyOnResponse ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15z" />
+            ) : (
+              <>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+              </>
+            )}
+          </svg>
+        </button>
+
+        <button
           onClick={() => setShowContextExport(true)}
           disabled={!currentChat}
           className="w-7 h-7 flex items-center justify-center rounded-md active:scale-90 text-tavern-dim hover:text-tavern-text-bright hover:bg-tavern-hover transition-colors disabled:opacity-30"
@@ -256,6 +284,10 @@ export default function TopBar() {
       <ChatContextExport
         isOpen={showContextExport}
         onClose={() => setShowContextExport(false)}
+      />
+      <TokenUsageModal
+        isOpen={showTokenUsage}
+        onClose={() => setShowTokenUsage(false)}
       />
     </div>
   );

@@ -219,6 +219,12 @@ export const api = {
               if (parsed.message_id) onMessageId(parsed.message_id);
               else if (parsed.token) onToken(parsed.token);
               else if (parsed.error) throw new Error(parsed.error);
+              else if (parsed.story_state_updated) {
+                // Story state was updated by AI - trigger reload in store
+                try {
+                  window.dispatchEvent(new CustomEvent('story-state-updated', { detail: parsed.state }));
+                } catch {}
+              }
             } catch {}
           }
         }

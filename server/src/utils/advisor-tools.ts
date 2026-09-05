@@ -21,7 +21,8 @@ export const advisorTools = [
                 keys: { type: 'array', items: { type: 'string' }, description: 'Keywords that trigger this entry' },
                 content: { type: 'string', description: 'The lore/content to inject when triggered' },
                 comment: { type: 'string', description: 'Internal comment about this entry' },
-                constant: { type: 'boolean', description: 'If true, always included in context' },
+                constant: { type: 'boolean', description: 'If true, always included in context (ignoring keywords)' },
+                always_active: { type: 'boolean', description: 'If true, always active and injected into context regardless of keywords. Similar to constant but more explicit.' },
                 insertion_order: { type: 'number', description: 'Insertion order (lower = higher priority)' },
               },
               required: ['keys', 'content'],
@@ -53,7 +54,8 @@ export const advisorTools = [
                 keys: { type: 'array', items: { type: 'string' }, description: 'Keywords that trigger this entry' },
                 content: { type: 'string', description: 'The lore/content to inject when triggered' },
                 comment: { type: 'string', description: 'Internal comment about this entry' },
-                constant: { type: 'boolean', description: 'If true, always included in context' },
+                constant: { type: 'boolean', description: 'If true, always included in context (ignoring keywords)' },
+                always_active: { type: 'boolean', description: 'If true, always active and injected into context regardless of keywords. Similar to constant but more explicit.' },
                 insertion_order: { type: 'number', description: 'Insertion order (lower = higher priority)' },
               },
               required: ['keys', 'content'],
@@ -80,7 +82,8 @@ export const advisorTools = [
           keys: { type: 'array', items: { type: 'string' }, description: 'Updated keywords' },
           content: { type: 'string', description: 'Updated lore/content' },
           comment: { type: 'string', description: 'Updated comment' },
-          constant: { type: 'boolean' },
+          constant: { type: 'boolean', description: 'If true, always included in context' },
+          always_active: { type: 'boolean', description: 'If true, always active and injected into context regardless of keywords' },
           insertion_order: { type: 'number' },
           disable: { type: 'boolean' },
         },
@@ -154,10 +157,21 @@ export const advisorTools = [
 export function buildAdvisorToolsContext(db: any): string {
   const parts: string[] = [];
 
-  // List available lorebooks
-  const lorebooks = db.prepare('SELECT id, name FROM lorebooks').all() as any[];
+  // List available lorebooks with entry counts
+  const lorebooks = db.prepare(`
+    SELECT l.id, l.name,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id) as entry_count,
+      (SELECT COUNT(*) FROM lorebook_entries WHERE lorebook_id = l.id AND always_active = 1) as always_active_count
+    FROM lorebooks l
+  `).all() as any[];
   if (lorebooks.length > 0) {
-    const lbList = lorebooks.map((lb: any) => `- ${lb.name} (ID: ${lb.id})`).join('\n');
+    const lbList = lorebooks.map((lb: any) => {
+      let info = `- ${lb.name} (ID: ${lb.id}) — ${lb.entry_count} entries`;
+      if (lb.always_active_count > 0) {
+        info += ` (${lb.always_active_count} always active)`;
+      }
+      return info;
+    }).join('\n');
     parts.push(`[Available Lorebooks]\n${lbList}`);
   } else {
     parts.push(`[Available Lorebooks]\nNone yet. Use create_lorebook to create one.`);
@@ -235,7 +249,7 @@ function executeCreateLorebook(args: Record<string, any>, db: any): ToolResult {
   // Add entries if provided
   if (args.entries && Array.isArray(args.entries)) {
     const insertEntry = db.prepare(
-      'INSERT INTO lorebook_entries (id, lorebook_id, keys, content, comment, constant, insertion_order, disable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO lorebook_entries (id, lorebook_id, keys, content, comment, constant, insertion_order, disable, always_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     for (const entry of args.entries) {
       insertEntry.run(
@@ -246,7 +260,8 @@ function executeCreateLorebook(args: Record<string, any>, db: any): ToolResult {
         entry.comment || '',
         entry.constant ? 1 : 0,
         entry.insertion_order ?? 100,
-        0
+        0,
+        entry.always_active ? 1 : 0
       );
     }
   }
@@ -266,7 +281,7 @@ function executeAddLorebookEntries(args: Record<string, any>, db: any): ToolResu
   }
 
   const insertEntry = db.prepare(
-    'INSERT INTO lorebook_entries (id, lorebook_id, keys, content, comment, constant, insertion_order, disable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO lorebook_entries (id, lorebook_id, keys, content, comment, constant, insertion_order, disable, always_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
 
   let count = 0;
@@ -279,7 +294,8 @@ function executeAddLorebookEntries(args: Record<string, any>, db: any): ToolResu
       entry.comment || '',
       entry.constant ? 1 : 0,
       entry.insertion_order ?? 100,
-      0
+      0,
+      entry.always_active ? 1 : 0
     );
     count++;
   }
@@ -304,6 +320,7 @@ function executeUpdateLorebookEntry(args: Record<string, any>, db: any): ToolRes
   if (args.content !== undefined) { updates.push('content = ?'); values.push(args.content); }
   if (args.comment !== undefined) { updates.push('comment = ?'); values.push(args.comment); }
   if (args.constant !== undefined) { updates.push('constant = ?'); values.push(args.constant ? 1 : 0); }
+  if (args.always_active !== undefined) { updates.push('always_active = ?'); values.push(args.always_active ? 1 : 0); }
   if (args.insertion_order !== undefined) { updates.push('insertion_order = ?'); values.push(args.insertion_order); }
   if (args.disable !== undefined) { updates.push('disable = ?'); values.push(args.disable ? 1 : 0); }
 

@@ -175,8 +175,8 @@ function MessageBubbleInner({
   return (
     <div
       className={`flex gap-3 py-3 group hover:bg-tavern-hover/20 transition-colors border-b border-tavern-border/30 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
-      onMouseEnter={() => setShowControls(true)}
-      onMouseLeave={() => setShowControls(false)}
+      onMouseEnter={() => !isEditing && setShowControls(true)}
+      onMouseLeave={() => !isEditing && setShowControls(false)}
     >
       {/* Avatar - for AI messages (including group chat) */}
       {isAssistant && (
@@ -291,8 +291,8 @@ function MessageBubbleInner({
           <div className={`flex items-center gap-1 mt-2 pt-1.5 border-t border-tavern-border/30 ${isUser ? 'flex-row-reverse' : ''}`}>
             {/* Edit */}
             <button
-              onClick={() => { setEditContent(message.content); setIsEditing(true); }}
-              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              onClick={(e) => { e.stopPropagation(); setEditContent(message.content); setIsEditing(true); }}
+              className={`text-tavern-dim hover:text-tavern-text p-1 rounded-md hover:bg-tavern-hover transition-all duration-150 ${showControls || isEditing ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               title="Edit"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

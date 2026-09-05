@@ -101,6 +101,7 @@ export function setupTestDb(): Database.Database {
       position TEXT DEFAULT 'before_main',
       disable INTEGER DEFAULT 0,
       comment TEXT DEFAULT '',
+      always_active INTEGER DEFAULT 0,
       FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
     );
 

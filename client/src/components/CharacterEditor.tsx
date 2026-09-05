@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/state';
 import CharacterAvatar from './CharacterAvatar';
+import { CharacterPortraitButton } from './CharacterPortraitButton';
 
 export default function CharacterEditor() {
   const characterEditorOpen = useStore(s => s.characterEditorOpen);
@@ -160,9 +161,19 @@ export default function CharacterEditor() {
               onChange={handleAvatarUpload}
               className="hidden"
             />
-            <div className="text-xs text-tavern-muted">
-              <p>Click the icon to upload a photo</p>
-              <p>Max 2MB</p>
+            <div className="flex flex-col gap-2">
+              <div className="text-xs text-tavern-muted">
+                <p>Click the icon to upload a photo</p>
+                <p>Max 2MB</p>
+              </div>
+              {editingCharacter?.id && (
+                <CharacterPortraitButton
+                  characterId={editingCharacter.id}
+                  onPortraitGenerated={(imageUrl) => {
+                    setForm(f => ({ ...f, avatar: imageUrl }));
+                  }}
+                />
+              )}
             </div>
           </div>
 

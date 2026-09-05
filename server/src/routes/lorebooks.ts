@@ -246,6 +246,7 @@ function mapEntry(e: any) {
     case_sensitive: !!(e.case_sensitive ?? 0),
     use_regex: !!(e.use_regex ?? 0),
     probability: e.probability ?? 100,
+    always_active: !!(e.always_active ?? 0),
   };
 }
 
@@ -268,11 +269,11 @@ router.get('/', (_req: Request, res: Response) => {
 router.post('/:id/entries', (req: Request, res: Response) => {
   const db = getDb();
   const entryId = uuidv4();
-  const { key, keysecondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability } = req.body;
+  const { key, keysecondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability, always_active } = req.body;
 
   db.prepare(`
-    INSERT INTO lorebook_entries (id, lorebook_id, keys, keys_secondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO lorebook_entries (id, lorebook_id, keys, keys_secondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability, always_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     entryId, req.params.id,
     JSON.stringify(key || []), JSON.stringify(keysecondary || []),
@@ -281,6 +282,7 @@ router.post('/:id/entries', (req: Request, res: Response) => {
     disable ? 1 : 0, comment || '',
     case_sensitive ? 1 : 0, use_regex ? 1 : 0,
     typeof probability === 'number' ? Math.min(100, Math.max(0, Math.trunc(probability))) : 100,
+    always_active ? 1 : 0,
   );
 
   const entry = db.prepare('SELECT * FROM lorebook_entries WHERE id = ?').get(entryId) as any;
@@ -290,7 +292,7 @@ router.post('/:id/entries', (req: Request, res: Response) => {
 // بروزرسانی entry
 router.put('/entries/:entryId', (req: Request, res: Response) => {
   const db = getDb();
-  const { key, keysecondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability } = req.body;
+  const { key, keysecondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability, always_active } = req.body;
   const existing = db.prepare('SELECT * FROM lorebook_entries WHERE id = ?').get(req.params.entryId) as any;
   if (!existing) {
     res.status(404).json({ error: 'Entry not found' });
@@ -298,7 +300,7 @@ router.put('/entries/:entryId', (req: Request, res: Response) => {
   }
 
   db.prepare(`
-    UPDATE lorebook_entries SET keys=?, keys_secondary=?, content=?, constant=?, selective=?, insertion_order=?, position=?, disable=?, comment=?, case_sensitive=?, use_regex=?, probability=?
+    UPDATE lorebook_entries SET keys=?, keys_secondary=?, content=?, constant=?, selective=?, insertion_order=?, position=?, disable=?, comment=?, case_sensitive=?, use_regex=?, probability=?, always_active=?
     WHERE id=?
   `).run(
     JSON.stringify(key || []), JSON.stringify(keysecondary || []),
@@ -310,6 +312,7 @@ router.put('/entries/:entryId', (req: Request, res: Response) => {
     probability !== undefined
       ? Math.min(100, Math.max(0, Math.trunc(probability)))
       : (existing.probability ?? 100),
+    always_active !== undefined ? (always_active ? 1 : 0) : (existing.always_active ?? 0),
     req.params.entryId
   );
 
@@ -812,8 +815,8 @@ router.post('/:id/apply-generated', (req: Request, res: Response) => {
 
   const insertedEntries: any[] = [];
   const insertEntry = db.prepare(`
-    INSERT INTO lorebook_entries (id, lorebook_id, keys, keys_secondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO lorebook_entries (id, lorebook_id, keys, keys_secondary, content, constant, selective, insertion_order, position, disable, comment, case_sensitive, use_regex, probability, always_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // دریافت بالاترین insertion_order موجود
@@ -839,6 +842,7 @@ router.post('/:id/apply-generated', (req: Request, res: Response) => {
         entry.case_sensitive ? 1 : 0,
         entry.use_regex ? 1 : 0,
         typeof entry.probability === 'number' ? entry.probability : 100,
+        entry.always_active ? 1 : 0,
       );
       nextOrder += 10;
       insertedEntries.push({ id: entryId, ...entry });

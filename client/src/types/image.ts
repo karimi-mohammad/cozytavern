@@ -94,6 +94,7 @@ export interface ImagePreset {
   id: string;
   name: string;
   description: string;
+  presetType: 'scene' | 'portrait';
   profileId: string;
   model: string;
   width: number;
@@ -101,6 +102,7 @@ export interface ImagePreset {
   autoUseLastPrompt: boolean;
   promptTemplate: string;
   negativePrompt: string;
+  selectedCharacterIds: string[];
   isBuiltin: boolean;
   createdAt: string;
 }

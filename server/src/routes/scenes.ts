@@ -41,12 +41,12 @@ router.get('/models', async (req: Request, res: Response) => {
 // POST /api/scenes/context - ساخت کانتکست برای پیش‌نمایش
 router.post('/context', async (req: Request, res: Response) => {
   try {
-    const { chat_id, profile_id } = req.body;
-    
+    const { chat_id, profile_id, selected_character_ids } = req.body;
+
     if (!chat_id) {
       return res.status(400).json({ error: 'chat_id is required' });
     }
-    
+
     const db = getDb();
     const chat = db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY rowid ASC').all(chat_id) as any[];
     const chatInfo = db.prepare('SELECT * FROM chats WHERE id = ?').get(chat_id) as any;
@@ -55,38 +55,38 @@ router.post('/context', async (req: Request, res: Response) => {
     let lorebookEntries: any[] = [];
     let storyState = null;
 
-    // دریافت کاراکتر
+    // دریافت کاراکتر اصلی
     if (chatInfo?.character_id) {
       character = db.prepare('SELECT * FROM characters WHERE id = ?').get(chatInfo.character_id) as any;
     }
-    
+
     // دریافت پرسونا (اگر وجود داشته باشد)
     if (chatInfo?.persona_id) {
       persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(chatInfo.persona_id) as any;
     }
-    
+
     // دریافت لوربوک‌ها
     const lorebookIds: string[] = [];
-    
+
     // از chat_lorebooks
     const chatLorebooks = db.prepare(
       'SELECT cl.lorebook_id FROM chat_lorebooks cl WHERE cl.chat_id = ? AND cl.is_active = 1'
     ).all(chat_id) as any[];
-    
+
     for (const cl of chatLorebooks) {
       if (cl.lorebook_id) lorebookIds.push(cl.lorebook_id);
     }
-    
+
     // fallback: lorebook_id چت
     if (lorebookIds.length === 0 && chatInfo?.lorebook_id) {
       lorebookIds.push(chatInfo.lorebook_id);
     }
-    
+
     // fallback: lorebook_id کاراکتر
     if (lorebookIds.length === 0 && character?.lorebook_id) {
       lorebookIds.push(character.lorebook_id);
     }
-    
+
     // دریافت entries لوربوک‌ها
     for (const lbId of lorebookIds) {
       const entries = db.prepare(
@@ -103,9 +103,49 @@ router.post('/context', async (req: Request, res: Response) => {
       } catch {}
     }
 
-    // ساخت کانتکست
+    // دریافت تمام کاراکترهای شرکت‌کننده در چت گروهی
+    let allCharacters: any[] = [];
+    if (chatInfo?.is_group_chat) {
+      const participants = db.prepare(
+        'SELECT cp.character_id FROM chat_participants cp WHERE cp.chat_id = ? AND cp.is_active = 1'
+      ).all(chat_id) as any[];
+
+      for (const p of participants) {
+        const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(p.character_id) as any;
+        if (char) allCharacters.push(char);
+      }
+    }
+
+    // اگر selected_character_ids ارائه شده باشد، فقط همان کاراکترها رو در نظر بگیر
+    if (selected_character_ids && Array.isArray(selected_character_ids) && selected_character_ids.length > 0) {
+      allCharacters = allCharacters.filter(c => selected_character_ids.includes(c.id));
+      // اگر کاراکتر اصلی در لیست نیست، اضافه‌اش کن
+      if (character && !allCharacters.some(c => c.id === character.id)) {
+        allCharacters.unshift(character);
+      }
+    } else if (allCharacters.length === 0 && character) {
+      // اگر چت گروهی نیست یا شرکت‌کننده‌ای ندارد، فقط کاراکتر اصلی
+      allCharacters = [character];
+    }
+
+    // ساخت کانتکست با اطلاعات تمام کاراکترها
     const profile = getProfile(profile_id || 'scene') || getProfile('scene')!;
-    const context = buildImageContext(chat, character, persona, lorebookEntries, storyState);
+
+    // Build a richer context that includes all characters
+    let context = '';
+    if (allCharacters.length > 1) {
+      // For group chats with multiple characters, include all their info
+      const { buildGroupPortraitContext } = await import('../utils/image-context');
+      const characterContext = buildGroupPortraitContext(allCharacters, character?.id);
+
+      // Also build the regular scene context
+      const sceneContext = buildImageContext(chat, character, persona, lorebookEntries, storyState);
+
+      context = `Characters in Scene:\n${characterContext}\n\nScene Context:\n${sceneContext}`;
+    } else {
+      // Single character - use regular context
+      context = buildImageContext(chat, character, persona, lorebookEntries, storyState);
+    }
 
     res.json({
       context,

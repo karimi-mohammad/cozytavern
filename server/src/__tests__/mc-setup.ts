@@ -53,6 +53,7 @@ testDb.exec(`
     content TEXT DEFAULT '', constant INTEGER DEFAULT 0, selective INTEGER DEFAULT 0,
     insertion_order INTEGER DEFAULT 100, position TEXT DEFAULT 'before_main', disable INTEGER DEFAULT 0,
     comment TEXT DEFAULT '', case_sensitive INTEGER DEFAULT 0, use_regex INTEGER DEFAULT 0, probability INTEGER DEFAULT 100,
+    always_active INTEGER DEFAULT 0,
     FOREIGN KEY (lorebook_id) REFERENCES lorebooks(id) ON DELETE CASCADE
   );
   CREATE TABLE IF NOT EXISTS api_settings (

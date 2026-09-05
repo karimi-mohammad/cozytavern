@@ -2,9 +2,39 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { stripToolCallsFromContent } from '../utils/strip-tool-calls';
+import { parseToolCallsFromText } from '../utils/parse-tool-calls-from-text';
 import { getChapterSettingsCompat } from '../utils/plugin-store';
+import { getStoryStateToolDefinition } from '../utils/prompt-builder';
 
 const router = Router();
+
+// Deep merge for story state
+function deepMergeState(target: any, source: any): any {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return source;
+
+  const result = { ...target };
+
+  for (const key of Object.keys(source)) {
+    if (source[key] === null || source[key] === undefined) {
+      continue;
+    }
+
+    if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
+      result[key] = deepMergeState(result[key] || {}, source[key]);
+    } else if (key === 'rules' && !Array.isArray(source[key])) {
+      // rules must always be an array — skip non-array values from AI
+      continue;
+    } else if (key === 'memories' && !Array.isArray(source[key])) {
+      // memories must always be an array — skip non-array values from AI
+      continue;
+    } else {
+      result[key] = source[key];
+    }
+  }
+
+  return result;
+}
 
 // ─── Create Group Chat ───
 router.post('/', (req: Request, res: Response) => {
@@ -302,7 +332,12 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
 
   // Story State (حافظه وضعیت داستان)
   const storyStateRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
-  let storyState = {
+  let storyState: {
+    characters: Record<string, any>;
+    relationships: Record<string, string>;
+    current_situation: string;
+    rules: string[];
+  } = {
     characters: {} as Record<string, any>,
     relationships: {} as Record<string, string>,
     current_situation: '',
@@ -310,7 +345,13 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
   };
   if (storyStateRow) {
     try {
-      storyState = JSON.parse(storyStateRow.state_json);
+      const parsed = JSON.parse(storyStateRow.state_json);
+      storyState = {
+        characters: parsed.characters || {},
+        relationships: parsed.relationships || {},
+        current_situation: parsed.current_situation || '',
+        rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+      };
     } catch {}
   }
 
@@ -350,6 +391,8 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       isGroupChat: true,
       participants,
       respondingCharacterName: character.name,
+      // حذف blok‌های think از تاریخچه پیام‌ها
+      stripThink: !!settings.strip_think,
     }
   );
 
@@ -382,7 +425,17 @@ You are responding as "${character.name}" ONLY.
     ? editedMessages.map((m: any) => ({ role: m.role, content: m.content }))
     : promptParts;
 
-  const requestBody = buildRequestBody(effectiveParts, {
+  // ابزار update_story_state
+  const storyStateTool = getStoryStateToolDefinition([character.name]);
+  console.log(`[GroupChat][StoryState] Tool definition for character: ${character.name}`);
+
+  // اضافه کردن دستور استفاده از tool به انتهای پرامپت
+  const toolInstruction = {
+    role: 'system' as const,
+    content: `[MANDATORY TOOL USE]\nYou MUST call update_story_state in EVERY response. Track ALL of these:\n\n1. CHARACTERS: location, position, clothing changes\n2. RELATIONSHIPS: "A-B": "description"\n3. RELATIONSHIP_DETAILS: Emotions 0-100 scale\n   - love, trust, anger, fear, respect, affection, shame, jealousy, gratitude\n   - summary: brief emotional state description\n4. CURRENT_SITUATION: What is happening NOW\n5. RULES: Persistent world rules\n6. MEMORIES: Important events that matter later\n   Format: [{content: "event", importance: "high|medium|low"}]\n\nMEMORY EXAMPLES:\n- "User saved Elena from assassination" (high)\n- "Elena learned User is a mage" (high)\n- "User promised to return before sunrise" (medium)\n\nALWAYS call the tool, even if only one thing changes. This is REQUIRED.`,
+  };
+
+  const requestBody = buildRequestBody([...effectiveParts, toolInstruction], {
     model: settings.model,
     temperature: settings.temperature,
     max_tokens: settings.max_tokens,
@@ -391,6 +444,8 @@ You are responding as "${character.name}" ONLY.
     presence_penalty: settings.presence_penalty,
     stream: !!settings.stream,
     stop: JSON.parse(settings.stop || '[]'),
+    tools: [storyStateTool],
+    tool_choice: 'auto',
     reasoning_effort: settings.reasoning_effort || undefined,
   });
 
@@ -448,12 +503,14 @@ You are responding as "${character.name}" ONLY.
       const decoder = new TextDecoder();
       let fullContent = '';
       let streamAborted = false;
+      let toolCalls: any[] = [];
 
       if (reader) {
         try {
           const lineBuffer = createLineBuffer();
           let done = false;
           let inThinking = false;
+          let chunkCount = 0;
 
           // ارسال token به client با مدیریت تگ‌های thinking
           const sendToken = (token: string, isReasoning: boolean) => {
@@ -474,6 +531,45 @@ You are responding as "${character.name}" ONLY.
             res.write(`data: ${JSON.stringify({ token })}\n\n`);
           };
 
+          const processChunk = (rawData: string) => {
+            chunkCount++;
+            try {
+              const parsed = JSON.parse(rawData);
+              const delta = parsed.choices?.[0]?.delta;
+
+              // Check for tool calls
+              if (delta?.tool_calls) {
+                console.log(`[GroupChat][StoryState] Tool call detected in chunk ${chunkCount}`);
+                for (const tc of delta.tool_calls) {
+                  if (tc.index !== undefined) {
+                    if (!toolCalls[tc.index]) {
+                      toolCalls[tc.index] = {
+                        id: tc.id || '',
+                        type: 'function',
+                        function: {
+                          name: tc.function?.name || '',
+                          arguments: tc.function?.arguments || '',
+                        },
+                      };
+                    } else {
+                      if (tc.id) toolCalls[tc.index].id = tc.id;
+                      if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                      if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                    }
+                  }
+                }
+                return; // Don't send tool call tokens to client
+              }
+
+              // Regular content tokens
+              const parsed2 = parseStreamChunkFull(rawData);
+              if (parsed2) sendToken(parsed2.token, parsed2.isReasoning);
+            } catch {
+              const parsed = parseStreamChunkFull(rawData);
+              if (parsed) sendToken(parsed.token, parsed.isReasoning);
+            }
+          };
+
           while (!done) {
             const { done: streamDone, value } = await reader.read();
             if (streamDone) break;
@@ -489,10 +585,10 @@ You are responding as "${character.name}" ONLY.
                   done = true;
                   break;
                 }
-                const parsed = parseStreamChunkFull(data);
-                if (parsed) sendToken(parsed.token, parsed.isReasoning);
+                processChunk(data);
               }
             }
+            if (done) break;
           }
 
           const remaining = lineBuffer.flush();
@@ -501,8 +597,7 @@ You are responding as "${character.name}" ONLY.
             if (trimmed.startsWith('data: ')) {
               const data = trimmed.slice(6);
               if (data !== '[DONE]') {
-                const parsed = parseStreamChunkFull(data);
-                if (parsed) sendToken(parsed.token, parsed.isReasoning);
+                processChunk(data);
               }
             }
           }
@@ -519,7 +614,12 @@ You are responding as "${character.name}" ONLY.
         }
       }
 
-      fullContent = stripToolCallsFromContent(fullContent);
+      // Strip tool calls from content before saving
+      const strippedContent = stripToolCallsFromContent(fullContent);
+      if (strippedContent !== fullContent) {
+        fullContent = strippedContent;
+      }
+
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, msgId);
       if (update_message_id && fullContent) {
         const msg = db.prepare('SELECT swipes FROM messages WHERE id = ?').get(msgId) as any;
@@ -531,6 +631,89 @@ You are responding as "${character.name}" ONLY.
         }
       }
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), req.params.id);
+
+      // ─── Story State Processing (Tool Calls) ───
+      let storyStateUpdated = false;
+      let newStoryState = null;
+      console.log(`[GroupChat][StoryState] Tool calls received: ${toolCalls.length}`);
+
+      // Save snapshot before state update (for rollback)
+      if (toolCalls.length > 0 || fullContent) {
+        const existingRowForSnapshot = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+        if (existingRowForSnapshot) {
+          const snapshotId = uuidv4();
+          db.prepare(`
+            INSERT INTO chat_state_snapshots (id, chat_id, message_id, state_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(snapshotId, req.params.id, msgId, existingRowForSnapshot.state_json, new Date().toISOString());
+          console.log(`[GroupChat][StoryState] Snapshot saved for message: ${msgId}`);
+        }
+      }
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.function?.name === 'update_story_state') {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+            let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+            if (existingRow) {
+              try { currentState = JSON.parse(existingRow.state_json); } catch {}
+            }
+            newStoryState = deepMergeState(currentState, args);
+            const now2 = new Date().toISOString();
+            if (existingRow) {
+              db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                .run(JSON.stringify(newStoryState), now2, req.params.id);
+            } else {
+              db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                .run(uuidv4(), req.params.id, JSON.stringify(newStoryState), now2);
+            }
+            storyStateUpdated = true;
+            console.log(`[GroupChat][StoryState] State updated via tool call`);
+          } catch (e) {
+            console.error('[GroupChat][StoryState] Failed to process update_story_state:', e);
+          }
+        }
+      }
+
+      // Fallback: parse tool calls from text if no tool calls were detected
+      if (!storyStateUpdated && fullContent) {
+        console.log(`[GroupChat][StoryState] No tool calls detected, trying text parsing...`);
+        const textToolCalls = parseToolCallsFromText(fullContent);
+        console.log(`[GroupChat][StoryState] Found ${textToolCalls.length} tool calls in text`);
+
+        for (const toolCall of textToolCalls) {
+          if (toolCall.function?.name === 'update_story_state') {
+            try {
+              const args = JSON.parse(toolCall.function.arguments);
+              const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+              let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+              if (existingRow) {
+                try { currentState = JSON.parse(existingRow.state_json); } catch {}
+              }
+              newStoryState = deepMergeState(currentState, args);
+              const now2 = new Date().toISOString();
+              if (existingRow) {
+                db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                  .run(JSON.stringify(newStoryState), now2, req.params.id);
+              } else {
+                db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                  .run(uuidv4(), req.params.id, JSON.stringify(newStoryState), now2);
+              }
+              storyStateUpdated = true;
+              console.log(`[GroupChat][StoryState] State updated via text parsing`);
+            } catch (e) {
+              console.error('[GroupChat][StoryState] Failed to process update_story_state from text:', e);
+            }
+          }
+        }
+      }
+
+      // Send story state update before DONE
+      if (storyStateUpdated && newStoryState) {
+        res.write(`data: ${JSON.stringify({ story_state_updated: true, state: newStoryState })}\n\n`);
+      }
+
       if (!streamAborted) {
         res.write('data: [DONE]\n\n');
       }
@@ -554,8 +737,78 @@ You are responding as "${character.name}" ONLY.
         return;
       }
 
-      const data = await response.json();
-      const content = parseNonStreamingResponse(data);
+      const data = await response.json() as any;
+      let content = parseNonStreamingResponse(data);
+
+      // Process tool calls from response
+      let storyStateUpdated = false;
+      let newStoryState = null;
+
+      // Check for tool_calls in response
+      const responseToolCalls = data.choices?.[0]?.message?.tool_calls || [];
+      if (responseToolCalls.length > 0) {
+        console.log(`[GroupChat][StoryState] Non-streaming: ${responseToolCalls.length} tool calls`);
+        for (const toolCall of responseToolCalls) {
+          if (toolCall.function?.name === 'update_story_state') {
+            try {
+              const args = typeof toolCall.function.arguments === 'string'
+                ? JSON.parse(toolCall.function.arguments)
+                : toolCall.function.arguments;
+              const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+              let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+              if (existingRow) {
+                try { currentState = JSON.parse(existingRow.state_json); } catch {}
+              }
+              newStoryState = deepMergeState(currentState, args);
+              const now2 = new Date().toISOString();
+              if (existingRow) {
+                db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                  .run(JSON.stringify(newStoryState), now2, req.params.id);
+              } else {
+                db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                  .run(uuidv4(), req.params.id, JSON.stringify(newStoryState), now2);
+              }
+              storyStateUpdated = true;
+              console.log(`[GroupChat][StoryState] State updated via tool call (non-streaming)`);
+            } catch (e) {
+              console.error('[GroupChat][StoryState] Failed to process update_story_state:', e);
+            }
+          }
+        }
+      }
+
+      // Fallback: parse tool calls from text
+      if (!storyStateUpdated && content) {
+        const textToolCalls = parseToolCallsFromText(content);
+        for (const toolCall of textToolCalls) {
+          if (toolCall.function?.name === 'update_story_state') {
+            try {
+              const args = JSON.parse(toolCall.function.arguments);
+              const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(req.params.id) as any;
+              let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+              if (existingRow) {
+                try { currentState = JSON.parse(existingRow.state_json); } catch {}
+              }
+              newStoryState = deepMergeState(currentState, args);
+              const now2 = new Date().toISOString();
+              if (existingRow) {
+                db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                  .run(JSON.stringify(newStoryState), now2, req.params.id);
+              } else {
+                db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                  .run(uuidv4(), req.params.id, JSON.stringify(newStoryState), now2);
+              }
+              storyStateUpdated = true;
+              console.log(`[GroupChat][StoryState] State updated via text parsing (non-streaming)`);
+            } catch (e) {
+              console.error('[GroupChat][StoryState] Failed to process update_story_state from text:', e);
+            }
+          }
+        }
+      }
+
+      // Strip tool calls from content
+      content = stripToolCallsFromContent(content);
 
       db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, msgId);
       if (update_message_id && content) {
@@ -569,7 +822,7 @@ You are responding as "${character.name}" ONLY.
       }
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), req.params.id);
 
-      res.json({ content, message_id: msgId });
+      res.json({ content, message_id: msgId, ...(storyStateUpdated && newStoryState ? { story_state_updated: true, state: newStoryState } : {}) });
     } catch (error: any) {
       console.error('Group chat generation error:', error);
       res.status(500).json({ error: error.message || 'Error generating response' });

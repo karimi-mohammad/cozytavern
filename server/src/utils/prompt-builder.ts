@@ -20,6 +20,19 @@ interface RawWindowSettings {
   raw_max_messages: number;
 }
 
+// ─── Think Block Stripping ───
+
+/** حذف blok‌های think از متن — شامل فرمت‌های مختلف */
+export function stripThinkBlocks(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
+    .replace(/<reflection>[\s\S]*?<\/reflection>/g, '')
+    .replace(/\[thinking\][\s\S]*?\[\/thinking\]/g, '')
+    .trim();
+}
+
 interface BuildPromptOptions {
   impersonate?: boolean;
   continueMode?: boolean;
@@ -37,6 +50,8 @@ interface BuildPromptOptions {
   participants?: Array<{ char_name?: string; display_name?: string }>;
   /** Name of the character currently responding — used to scope story state in group chats */
   respondingCharacterName?: string;
+  /** حذف blok‌های think از محتوای پیام‌ها قبل از ارسال به مدل */
+  stripThink?: boolean;
 }
 
 // ─── Dynamic Raw Window Calculation (server-side) ───
@@ -110,6 +125,7 @@ export function buildPrompt(
     character.description && `Description: ${character.description}`,
     character.personality && `Personality: ${character.personality}`,
     character.scenario && `Scenario: ${character.scenario}`,
+    `\n⚠️ IMPORTANT: When using update_story_state tool, character names MUST be EXACTLY "${character.name}". NO variations, NO translations, NO duplicates.`,
   ].filter(Boolean).join('\n');
 
   parts.push({ role: 'system', content: charDesc });
@@ -227,13 +243,13 @@ export function buildPrompt(
     }
 
     // Rules
-    if (storyState.rules && storyState.rules.length > 0) {
+    if (storyState.rules && Array.isArray(storyState.rules) && storyState.rules.length > 0) {
       const rulesText = storyState.rules.map(r => `- ${r}`).join('\n');
       stateParts.push(`Story Rules:\n${rulesText}`);
     }
 
     // Important Memories
-    const memories = (storyState as any).memories || [];
+    const memories = Array.isArray((storyState as any).memories) ? (storyState as any).memories : [];
     if (memories.length > 0) {
       const memoriesText = memories.map((m: any) => `- ${m.content}`).join('\n');
       stateParts.push(`Important Memories:\n${memoriesText}`);
@@ -259,6 +275,12 @@ export function buildPrompt(
   const historyParts: PromptPart[] = [];
   const chapters = options?.chapters || [];
   const isGroupChat = options?.isGroupChat || false;
+
+  // Helper: Strip think blocks if setting is enabled
+  const processMessageContent = (content: string): string => {
+    if (!options?.stripThink) return content;
+    return stripThinkBlocks(content);
+  };
 
   // Helper: Format message content with sender name for group chats
   const formatGroupMessage = (msg: any): string => {
@@ -336,7 +358,7 @@ export function buildPrompt(
       const msg = chatHistory[i];
       historyParts.push({
         role: msg.role as 'user' | 'assistant',
-        content: formatGroupMessage(msg),
+        content: processMessageContent(formatGroupMessage(msg)),
       });
     }
   } else {
@@ -344,7 +366,7 @@ export function buildPrompt(
     for (const msg of chatHistory) {
       historyParts.push({
         role: msg.role as 'user' | 'assistant',
-        content: formatGroupMessage(msg),
+        content: processMessageContent(formatGroupMessage(msg)),
       });
     }
   }
@@ -386,39 +408,45 @@ export function buildPrompt(
 
 // Tool definition for update_story_state
 export function getStoryStateToolDefinition(characterNames: string[]) {
+  // Create a strict character name list for the prompt
+  const characterNameList = characterNames.map((n, i) => `${i + 1}. "${n}"`).join(', ');
+
   return {
     type: 'function',
     function: {
       name: 'update_story_state',
       description: `Update the current state of the roleplay. ONLY provide properties that CHANGED.
 
+⚠️ CRITICAL RULE: Character names MUST be EXACTLY as listed below. NO variations, NO translations, NO duplicates.
+ALLOWED NAMES: [${characterNames.map(n => `"${n}"`).join(', ')}]
+
 TRACK THESE:
-1. characters - Location, position, clothing changes
-2. relationships - "A-B": "description"  
+1. characters - Location, position, clothing changes (USE EXACT NAMES FROM LIST ABOVE)
+2. relationships - "A-B": "description" (USE EXACT NAMES FROM LIST ABOVE)  
 3. relationship_details - "A-B": {love: 0-100, trust: 0-100, anger: 0-100, fear: 0-100, respect: 0-100, affection: 0-100, shame: 0-100, jealousy: 0-100, gratitude: 0-100, summary: "text"}
 4. current_situation - What is happening RIGHT NOW (replace, don't append)
 5. rules - Persistent world rules (only truly persistent facts)
 6. memories - IMPORTANT events that may matter later (format: [{content: "event description", importance: "low|medium|high"}])
 
 EXAMPLES:
-- Character moves: {"characters": {"Alice": {"location": "Kitchen"}}}
-- Emotions change: {"relationship_details": {"Alice-Bob": {"trust": 30, "anger": 70, "summary": "Bob is furious"}}}
-- Important event: {"memories": [{"content": "User saved Elena from assassination", "importance": "high"}]}
-- Multiple changes: {"characters": {"Alice": {"clothing": "torn dress"}}, "current_situation": "Alice confronts Bob", "relationship_details": {"Alice-Bob": {"love": 20, "anger": 90}}}`,
+- Character moves: {"characters": {"${characterNames[0] || 'Alice'}": {"location": "Kitchen"}}}
+- Emotions change: {"relationship_details": {"${characterNames[0] || 'Alice'}-${characterNames[1] || 'Bob'}": {"trust": 30, "anger": 70, "summary": "Bob is furious"}}}
+- Important event: {"memories": [{"content": "User saved ${characterNames[0] || 'Elena'} from assassination", "importance": "high"}]}
+- Multiple changes: {"characters": {"${characterNames[0] || 'Alice'}": {"clothing": "torn dress"}}, "current_situation": "${characterNames[0] || 'Alice'} confronts ${characterNames[1] || 'Bob'}", "relationship_details": {"${characterNames[0] || 'Alice'}-${characterNames[1] || 'Bob'}": {"love": 20, "anger": 90}}}`,
       parameters: {
         type: 'object',
         properties: {
           characters: {
             type: 'object',
-            description: 'Character state changes. Key is character name.',
+            description: `Character state changes. Keys MUST be EXACT character names from this list: [${characterNames.join(', ')}]`,
           },
           relationships: {
             type: 'object',
-            description: 'Relationship status. Key: "CharA-CharB", Value: description string',
+            description: `Relationship status. Keys MUST use EXACT character names: "CharA-CharB" where CharA and CharB are from: [${characterNames.join(', ')}]`,
           },
           relationship_details: {
             type: 'object',
-            description: 'Emotional state. Key: "CharA-CharB", Value: object with emotion scores 0-100',
+            description: `Emotional state. Keys MUST use EXACT character names: "CharA-CharB" where CharA and CharB are from: [${characterNames.join(', ')}]`,
           },
           current_situation: {
             type: 'string',
@@ -449,6 +477,57 @@ function replaceMacros(text: string, charName?: string, userName?: string): stri
     result = result.replace(/\{\{user\}\}/g, userName);
   }
   return result;
+}
+
+// ─── Two-Phase State Update: System prompt for Phase 2 ───
+
+export function getStateExtractionPrompt(characterName: string, storyState?: any, allCharacterNames?: string[]): PromptPart[] {
+  const stateContext = storyState ? `\n\nCurrent State:\n${JSON.stringify(storyState, null, 2)}` : '';
+  const allowedNames = allCharacterNames && allCharacterNames.length > 0
+    ? allCharacterNames
+    : [characterName];
+
+  return [
+    {
+      role: 'system',
+      content: `You are a state extraction assistant. Your ONLY job is to analyze the conversation and extract state updates.
+
+⚠️ CRITICAL RULE: Character names MUST be EXACTLY as listed below. NO variations, NO translations, NO duplicates.
+ALLOWED NAMES: [${allowedNames.map(n => `"${n}"`).join(', ')}]
+
+${stateContext}
+
+TASK:
+Analyze the last assistant message and extract ONLY the state changes that occurred. Focus on:
+
+1. CHARACTERS: location, position, clothing changes (USE EXACT NAMES FROM LIST ABOVE)
+2. RELATIONSHIPS: "A-B": "description" (USE EXACT NAMES FROM LIST ABOVE)
+3. RELATIONSHIP_DETAILS: Emotions 0-100 scale (USE EXACT NAMES FROM LIST ABOVE)
+   - love, trust, anger, fear, respect, affection, shame, jealousy, gratitude
+   - summary: brief emotional state description
+4. CURRENT_SITUATION: What is happening NOW
+5. RULES: Persistent world rules
+6. MEMORIES: Important events that matter later
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object with the update_story_state tool call format. No explanations, no text before or after.
+
+Example:
+{
+  "tool_calls": [{
+    "function": {
+      "name": "update_story_state",
+      "arguments": "{\"characters\":{\"${allowedNames[0] || characterName}\":{\"location\":\"Kitchen\"}},\"current_situation\":\"${allowedNames[0] || characterName} enters the kitchen\"}"
+    }
+  }]
+}
+
+If nothing changed, return:
+{
+  "tool_calls": []
+}`,
+    },
+  ];
 }
 
 // ─── World Info Engine ───
@@ -498,11 +577,17 @@ export function activateWorldInfo(chatMessages: any[], lorebook: any, worldOpts?
   for (const entry of lorebook.entries) {
     if (entry.disable) continue;
 
-    // احتمال فعال‌سازی (probability درصد) — شامل constant ها هم می‌شود
+    // احتمال فعال‌سازی (probability درصد) — شامل constant ها و always_active هم می‌شود
     const probability = typeof entry.probability === 'number'
       ? Math.min(100, Math.max(0, entry.probability))
       : 100;
     if (probability < 100 && rng() >= probability / 100) continue;
+
+    // always_active: همیشه فعاله، نیازی به بررسی تریگر نیست
+    if (entry.always_active) {
+      candidates.push(entry);
+      continue;
+    }
 
     if (!entry.constant) {
       const useRegex = !!entry.use_regex;

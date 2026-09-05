@@ -432,6 +432,24 @@ describe('Prompt Builder', () => {
         // بدون بودجه هر دو فعال می‌مانند (سازگاری با رفتار قبلی)
         expect(activateWorldInfo([{ content: 'الف' }], { entries, scan_depth: 50 })).toHaveLength(2);
       });
+
+      it('باید entry های always_active رو همیشه فعال کنه', () => {
+        const entries = [{
+          id: '1',
+          key: ['چیزی که وجود ندارد'],
+          content: 'همیشه فعال',
+          constant: false,
+          disable: false,
+          selective: false,
+          insertion_order: 100,
+          always_active: true,
+        }];
+
+        // حتی اگر key پیدا نشه، باید فعال باشه
+        const result = activateWorldInfo([{ content: 'متن بدون کلیدواژه' }], { entries, scan_depth: 50 });
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe('همیشه فعال');
+      });
     });
   });
 });

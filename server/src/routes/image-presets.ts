@@ -9,18 +9,34 @@ const router = Router();
 
 // GET /api/image-presets - دریافت تمام پریست‌ها
 router.get('/', (req: Request, res: Response) => {
-  const db = getDb();
-  const presets = db.prepare(
-    'SELECT * FROM image_presets ORDER BY is_builtin DESC, name'
-  ).all();
-  
-  // تبدیل is_builtin به boolean
-  const result = presets.map((p: any) => ({
-    ...p,
-    isBuiltin: p.is_builtin === 1,
-  }));
-  
-  res.json(result);
+  try {
+    const db = getDb();
+    const presets = db.prepare(
+      'SELECT * FROM image_presets ORDER BY is_builtin DESC, name'
+    ).all();
+
+    // تبدیل is_builtin به boolean و parse selected_character_ids
+    const result = presets.map((p: any) => {
+      let selectedCharacterIds: string[] = [];
+      try {
+        selectedCharacterIds = JSON.parse(p.selected_character_ids || '[]');
+      } catch (e) {
+        selectedCharacterIds = [];
+      }
+
+      return {
+        ...p,
+        isBuiltin: p.is_builtin === 1,
+        preset_type: p.preset_type || 'scene',
+        selected_character_ids: selectedCharacterIds,
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Failed to fetch presets:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // GET /api/image-presets/:id - دریافت یک پریست
@@ -29,14 +45,23 @@ router.get('/:id', (req: Request, res: Response) => {
   const preset = db.prepare(
     'SELECT * FROM image_presets WHERE id = ?'
   ).get(req.params.id) as any;
-  
+
   if (!preset) {
     return res.status(404).json({ error: 'Preset not found' });
   }
-  
+
+  let selectedCharacterIds: string[] = [];
+  try {
+    selectedCharacterIds = JSON.parse(preset.selected_character_ids || '[]');
+  } catch (e) {
+    selectedCharacterIds = [];
+  }
+
   res.json({
     ...preset,
     isBuiltin: preset.is_builtin === 1,
+    preset_type: preset.preset_type || 'scene',
+    selected_character_ids: selectedCharacterIds,
   });
 });
 
@@ -46,6 +71,7 @@ router.post('/', (req: Request, res: Response) => {
     const {
       name,
       description,
+      preset_type,
       profile_id,
       model,
       width,
@@ -53,33 +79,36 @@ router.post('/', (req: Request, res: Response) => {
       auto_use_last_prompt,
       prompt_template,
       negative_prompt,
+      selected_character_ids,
     } = req.body;
-    
+
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
-    
+
     const id = `preset-${uuidv4()}`;
-    
+
     const db = getDb();
     db.prepare(`
-      INSERT INTO image_presets (id, name, description, profile_id, model, width, height, auto_use_last_prompt, prompt_template, negative_prompt, is_builtin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      INSERT INTO image_presets (id, name, description, preset_type, profile_id, model, width, height, auto_use_last_prompt, prompt_template, negative_prompt, selected_character_ids, is_builtin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       id,
       name,
       description || '',
-      profile_id || 'scene',
+      preset_type || 'scene',
+      profile_id || (preset_type === 'portrait' ? 'portrait' : 'scene'),
       model || 'flux',
       width || 1024,
       height || 1024,
       auto_use_last_prompt ? 1 : 0,
       prompt_template || '',
       negative_prompt || 'text, watermark, logo, blurry, deformed',
+      JSON.stringify(selected_character_ids || []),
     );
-    
+
     const preset = db.prepare('SELECT * FROM image_presets WHERE id = ?').get(id) as any;
-    
+
     res.status(201).json({
       ...preset,
       isBuiltin: preset.is_builtin === 1,
@@ -108,6 +137,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const {
       name,
       description,
+      preset_type,
       profile_id,
       model,
       width,
@@ -115,11 +145,12 @@ router.put('/:id', (req: Request, res: Response) => {
       auto_use_last_prompt,
       prompt_template,
       negative_prompt,
+      selected_character_ids,
     } = req.body;
-    
+
     const updates: string[] = [];
     const values: any[] = [];
-    
+
     if (name !== undefined) {
       updates.push('name = ?');
       values.push(name);
@@ -127,6 +158,10 @@ router.put('/:id', (req: Request, res: Response) => {
     if (description !== undefined) {
       updates.push('description = ?');
       values.push(description);
+    }
+    if (preset_type !== undefined) {
+      updates.push('preset_type = ?');
+      values.push(preset_type);
     }
     if (profile_id !== undefined) {
       updates.push('profile_id = ?');
@@ -156,11 +191,15 @@ router.put('/:id', (req: Request, res: Response) => {
       updates.push('negative_prompt = ?');
       values.push(negative_prompt);
     }
-    
+    if (selected_character_ids !== undefined) {
+      updates.push('selected_character_ids = ?');
+      values.push(JSON.stringify(selected_character_ids));
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
-    
+
     values.push(req.params.id);
     db.prepare(`UPDATE image_presets SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     
@@ -212,14 +251,15 @@ router.post('/:id/clone', (req: Request, res: Response) => {
     
     const { name } = req.body;
     const newId = `preset-${uuidv4()}`;
-    
+
     db.prepare(`
-      INSERT INTO image_presets (id, name, description, profile_id, model, width, height, auto_use_last_prompt, prompt_template, negative_prompt, is_builtin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      INSERT INTO image_presets (id, name, description, preset_type, profile_id, model, width, height, auto_use_last_prompt, prompt_template, negative_prompt, selected_character_ids, is_builtin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       newId,
       name || `${existing.name} (Copy)`,
       existing.description,
+      existing.preset_type,
       existing.profile_id,
       existing.model,
       existing.width,
@@ -227,6 +267,7 @@ router.post('/:id/clone', (req: Request, res: Response) => {
       existing.auto_use_last_prompt,
       existing.prompt_template,
       existing.negative_prompt,
+      existing.selected_character_ids,
     );
     
     const preset = db.prepare('SELECT * FROM image_presets WHERE id = ?').get(newId) as any;

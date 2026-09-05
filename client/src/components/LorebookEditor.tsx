@@ -4,7 +4,7 @@ import { LorebookEntry } from '../types';
 import { api } from '../api/client';
 import GenerateLorebookModal from './GenerateLorebookModal';
 
-type EntryFilter = 'all' | 'active' | 'disabled' | 'constant' | 'selective';
+type EntryFilter = 'all' | 'active' | 'disabled' | 'constant' | 'selective' | 'always_active';
 
 export default function LorebookEditor() {
   const lorebookEditorOpen = useStore(s => s.lorebookEditorOpen);
@@ -35,7 +35,7 @@ export default function LorebookEditor() {
     constant: false, selective: false,
     insertion_order: 100, position: 'before_main' as 'before_main' | 'after_main',
     disable: false, comment: '',
-    case_sensitive: false, use_regex: false, probability: 100,
+    case_sensitive: false, use_regex: false, probability: 100, always_active: false,
   });
 
   // Entry edit form
@@ -88,6 +88,9 @@ export default function LorebookEditor() {
       case 'selective':
         entries = entries.filter((e: any) => e.selective);
         break;
+      case 'always_active':
+        entries = entries.filter((e: any) => e.always_active);
+        break;
     }
 
     // Apply search
@@ -106,7 +109,7 @@ export default function LorebookEditor() {
 
   // Stats
   const stats = useMemo(() => {
-    if (!lorebookData?.entries) return { total: 0, active: 0, disabled: 0, constant: 0, selective: 0 };
+    if (!lorebookData?.entries) return { total: 0, active: 0, disabled: 0, constant: 0, selective: 0, always_active: 0 };
     const entries = lorebookData.entries;
     return {
       total: entries.length,
@@ -114,6 +117,7 @@ export default function LorebookEditor() {
       disabled: entries.filter((e: any) => e.disable).length,
       constant: entries.filter((e: any) => e.constant).length,
       selective: entries.filter((e: any) => e.selective).length,
+      always_active: entries.filter((e: any) => e.always_active).length,
     };
   }, [lorebookData?.entries]);
 
@@ -150,7 +154,7 @@ export default function LorebookEditor() {
       constant: false, selective: false,
       insertion_order: 100, position: 'before_main',
       disable: false, comment: '',
-      case_sensitive: false, use_regex: false, probability: 100,
+      case_sensitive: false, use_regex: false, probability: 100, always_active: false,
     });
   };
 
@@ -169,6 +173,7 @@ export default function LorebookEditor() {
       case_sensitive: entry.case_sensitive,
       use_regex: entry.use_regex,
       probability: entry.probability,
+      always_active: entry.always_active,
     });
   };
 
@@ -323,6 +328,7 @@ export default function LorebookEditor() {
                     {stats.disabled > 0 && <span className="text-red-400">Disabled: {stats.disabled}</span>}
                     {stats.constant > 0 && <span className="text-blue-400">Constant: {stats.constant}</span>}
                     {stats.selective > 0 && <span className="text-purple-400">Selective: {stats.selective}</span>}
+                    {stats.always_active > 0 && <span className="text-yellow-400">Always Active: {stats.always_active}</span>}
                   </div>
 
                   {editingSettings ? (
@@ -383,7 +389,7 @@ export default function LorebookEditor() {
 
                   {/* Filter tabs */}
                   <div className="flex items-center gap-1 text-[11px]">
-                    {(['all', 'active', 'disabled', 'constant', 'selective'] as EntryFilter[]).map(f => (
+                    {(['all', 'active', 'disabled', 'constant', 'selective', 'always_active'] as EntryFilter[]).map(f => (
                       <button
                         key={f}
                         onClick={() => setEntryFilter(f)}
@@ -399,6 +405,7 @@ export default function LorebookEditor() {
                         {f === 'disabled' && ` (${stats.disabled})`}
                         {f === 'constant' && ` (${stats.constant})`}
                         {f === 'selective' && ` (${stats.selective})`}
+                        {f === 'always_active' && ` (${stats.always_active})`}
                       </button>
                     ))}
                   </div>
@@ -507,7 +514,7 @@ function EntryCard({
       >
         {/* Status indicator */}
         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-          entry.disable ? 'bg-red-400' : entry.constant ? 'bg-blue-400' : 'bg-green-400'
+          entry.disable ? 'bg-red-400' : entry.always_active ? 'bg-yellow-400' : entry.constant ? 'bg-blue-400' : 'bg-green-400'
         }`} />
 
         {/* Keys */}
@@ -540,6 +547,7 @@ function EntryCard({
 
         {/* Badges */}
         <div className="flex items-center gap-1 flex-shrink-0">
+          {entry.always_active && <span className="text-[9px] bg-yellow-500/10 text-yellow-400 px-1 py-0.5 rounded">always</span>}
           {entry.constant && <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1 py-0.5 rounded">const</span>}
           {entry.selective && <span className="text-[9px] bg-purple-500/10 text-purple-400 px-1 py-0.5 rounded">sel</span>}
           {entry.use_regex && <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1 py-0.5 rounded">regex</span>}
@@ -676,6 +684,10 @@ function EntryForm({
 
       {/* Checkboxes */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={form.always_active} onChange={(e) => setForm((f: any) => ({ ...f, always_active: e.target.checked }))} className="accent-tavern-accent w-3.5 h-3.5" />
+          <span className="text-yellow-400">Always Active</span>
+        </label>
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked={form.constant} onChange={(e) => setForm((f: any) => ({ ...f, constant: e.target.checked }))} className="accent-tavern-accent w-3.5 h-3.5" />
           <span>Constant</span>
