@@ -583,10 +583,11 @@ export const useStore = create<AppState>((set, get) => ({
     const controller = new AbortController();
     currentAbortController = controller;
 
+    let tokenBatcher: TokenBatcher | null = null;
     try {
       let fullContent = '';
       const isRegen = !!options?.update_message_id;
-      const tokenBatcher = createTokenBatcher((content) => {
+      tokenBatcher = createTokenBatcher((content) => {
         fullContent = content;
         set(s => {
           if (!s.currentChat) return s;
@@ -646,9 +647,9 @@ export const useStore = create<AppState>((set, get) => ({
             }));
           }
         },
-        (token) => tokenBatcher.push(token),
+        (token) => tokenBatcher!.push(token),
         () => {
-          tokenBatcher.flush();
+          tokenBatcher!.flush();
           set({ isGenerating: false, groupChatGenerating: false });
           get().updateContextUsage();
           // 🔔 پخش صدای هشدار
@@ -1077,6 +1078,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     let aborted = false;
     let editedMessages: PromptPart[] | undefined;
+    let tokenBatcher: TokenBatcher | null = null;
     try {
       // ─── Prompt Inspector gate: پیش‌نمایش payload قبل از ارسال واقعی ───
       if (get().promptInspectEnabled) {
@@ -1099,7 +1101,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       let fullContent = '';
-      const tokenBatcher = createTokenBatcher((content) => {
+      tokenBatcher = createTokenBatcher((content) => {
         fullContent = content;
         set(s => {
           if (!s.currentChat) return s;
@@ -1137,13 +1139,13 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => tokenBatcher.push(token),
+        (token) => tokenBatcher!.push(token),
         () => {
           // [DEBUG] onDone callback — critical point for two-phase debugging
           if (localStorage.getItem('DEBUG_CHAT') === '1') {
             console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [onDone] isGenerating: true→false, calling updateContextUsage`);
           }
-          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone] tokenBatcher.flush error:', e); }
+          try { tokenBatcher!.flush(); } catch (e) { console.error('[onDone] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
           try { get().updateContextUsage(); } catch (e) { console.error('[onDone] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
@@ -1325,6 +1327,7 @@ export const useStore = create<AppState>((set, get) => ({
     const controller = new AbortController();
     currentAbortController = controller;
 
+    let tokenBatcher: TokenBatcher | null = null;
     try {
       // سرور محتوای فعلی رو به swipes اضافه می‌کنه و پیام آپدیت شده رو برمی‌گردونه
       await api.regenerateMessage(currentChat.id);
@@ -1342,7 +1345,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       let fullContent = '';
-      const tokenBatcher = createTokenBatcher((content) => {
+      tokenBatcher = createTokenBatcher((content) => {
         fullContent = content;
         set(s => {
           if (!s.currentChat) return s;
@@ -1362,9 +1365,9 @@ export const useStore = create<AppState>((set, get) => ({
           ...(editedMessages2 && { edited_messages: editedMessages2 }),
         },
         () => {},
-        (token) => tokenBatcher.push(token),
+        (token) => tokenBatcher!.push(token),
         () => {
-          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-regen] tokenBatcher.flush error:', e); }
+          try { tokenBatcher!.flush(); } catch (e) { console.error('[onDone-regen] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
           if (currentAbortController === controller) currentAbortController = null;
           try { get().updateContextUsage(); } catch (e) { console.error('[onDone-regen] updateContextUsage error:', e); }
@@ -1430,9 +1433,10 @@ export const useStore = create<AppState>((set, get) => ({
     const controller = new AbortController();
     currentAbortController = controller;
 
+    let tokenBatcher: TokenBatcher | null = null;
     try {
       let fullContent = lastAssistantMsg.content;
-      const tokenBatcher = createTokenBatcher((content) => {
+      tokenBatcher = createTokenBatcher((content) => {
         fullContent = content;
         set(s => {
           if (!s.currentChat) return s;
@@ -1472,9 +1476,9 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => tokenBatcher.push(token),
+        (token) => tokenBatcher!.push(token),
         () => {
-          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-continue] tokenBatcher.flush error:', e); }
+          try { tokenBatcher!.flush(); } catch (e) { console.error('[onDone-continue] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
           try { get().updateContextUsage(); } catch (e) { console.error('[onDone-continue] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
@@ -1537,9 +1541,10 @@ export const useStore = create<AppState>((set, get) => ({
     currentAbortController = controller;
 
     let aborted = false;
+    let tokenBatcher: TokenBatcher | null = null;
     try {
       let fullContent = '';
-      const tokenBatcher = createTokenBatcher((content) => {
+      tokenBatcher = createTokenBatcher((content) => {
         fullContent = content;
         set(s => {
           if (!s.currentChat) return s;
@@ -1579,9 +1584,9 @@ export const useStore = create<AppState>((set, get) => ({
             } : null,
           }));
         },
-        (token) => tokenBatcher.push(token),
+        (token) => tokenBatcher!.push(token),
         () => {
-          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-impersonate] tokenBatcher.flush error:', e); }
+          try { tokenBatcher!.flush(); } catch (e) { console.error('[onDone-impersonate] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
           try { get().updateContextUsage(); } catch (e) { console.error('[onDone-impersonate] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار

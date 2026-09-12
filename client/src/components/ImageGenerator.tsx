@@ -201,7 +201,7 @@ export function ImageGenerator({ type, chatId, characterId, onClose, onGenerated
             setProfileInstruction(promptTemplate?.trim() || 'Create a polished visual prompt for a character portrait. Focus on face, expression, pose, lighting, clothing, and composition.');
             setStep('context-preview');
           } else {
-            setGeneratedPrompt(customPrompt || `Portrait of ${character?.name || 'a character'}`);
+            setGeneratedPrompt(customPrompt || 'Portrait of a character');
             setStep('prompt-ready');
           }
         } else {

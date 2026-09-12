@@ -50,6 +50,7 @@ export interface CharacterPortrait {
   height: number;
   isCurrent: boolean;
   isVariation: boolean;
+  isPinned: boolean;
   parentId?: string;
   metadata: Record<string, any>;
   createdAt: string;
