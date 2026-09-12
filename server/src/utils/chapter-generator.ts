@@ -319,7 +319,8 @@ export function detectChapterTrigger(
   }
 
   // پیدا کردن شروع اسکن: بعد از آخرین چپتر
-  let scanStart = 0;
+  // وقتی فصلی نیست، از پیام دوم شروع کن (پیام اول greeting کاراکتر است و نباید trigger تشخیص داده شود)
+  let scanStart = chapters.length === 0 ? 1 : 0;
   const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
   if (lastChapter) {
     if (lastChapter.trigger_message_id) {
@@ -367,12 +368,17 @@ export function detectChapterTrigger(
     }
   }
 
+  console.log('[CHAPTER-DETECT-FN] scanStart:', scanStart, 'lastTriggerIndex:', lastTriggerIndex, 'lastTriggerPhrase:', lastTriggerPhrase);
+
   if (lastTriggerIndex === -1) {
+    console.log('[CHAPTER-DETECT-FN] ❌ No trigger found in', messagesAfterLastChapter.length, 'messages after scan start');
     return { suggested: false };
   }
 
   // فاصله از تریگر تا آخر پیام‌ها
   const distanceFromTrigger = messages.length - 1 - lastTriggerIndex;
+
+  console.log('[CHAPTER-DETECT-FN] distance:', distanceFromTrigger, 'rawWindow:', rawWindow, 'suggested:', distanceFromTrigger >= rawWindow);
 
   if (distanceFromTrigger >= rawWindow) {
     return {

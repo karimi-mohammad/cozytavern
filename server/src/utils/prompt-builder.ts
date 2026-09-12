@@ -498,34 +498,23 @@ ALLOWED NAMES: [${allowedNames.map(n => `"${n}"`).join(', ')}]
 ${stateContext}
 
 TASK:
-Analyze the last assistant message and extract ONLY the state changes that occurred. Focus on:
+Analyze the last assistant message and extract ALL state changes. Return ONLY a valid JSON object.
 
-1. CHARACTERS: location, position, clothing changes (USE EXACT NAMES FROM LIST ABOVE)
-2. RELATIONSHIPS: "A-B": "description" (USE EXACT NAMES FROM LIST ABOVE)
-3. RELATIONSHIP_DETAILS: Emotions 0-100 scale (USE EXACT NAMES FROM LIST ABOVE)
-   - love, trust, anger, fear, respect, affection, shame, jealousy, gratitude
-   - summary: brief emotional state description
-4. CURRENT_SITUATION: What is happening NOW
-5. RULES: Persistent world rules
-6. MEMORIES: Important events that matter later
-
-OUTPUT FORMAT:
-Return ONLY a valid JSON object with the update_story_state tool call format. No explanations, no text before or after.
-
-Example:
+OUTPUT FORMAT — Return a SINGLE JSON object with these fields:
 {
-  "tool_calls": [{
-    "function": {
-      "name": "update_story_state",
-      "arguments": "{\"characters\":{\"${allowedNames[0] || characterName}\":{\"location\":\"Kitchen\"}},\"current_situation\":\"${allowedNames[0] || characterName} enters the kitchen\"}"
-    }
-  }]
+  "characters": {"${allowedNames[0] || characterName}": {"location": "...", "position": "...", "clothing": "..."}},
+  "relationships": {"${allowedNames[0] || characterName}-User": "description"},
+  "relationship_details": {"${allowedNames[0] || characterName}-User": {"love": 0, "trust": 0, "anger": 0, "fear": 0, "respect": 0, "affection": 0, "shame": 0, "jealousy": 0, "gratitude": 0, "summary": "..."}},
+  "current_situation": "What is happening RIGHT NOW",
+  "rules": ["rule1", "rule2"],
+  "memories": [{"content": "event", "importance": "high|medium|low"}]
 }
 
-If nothing changed, return:
-{
-  "tool_calls": []
-}`,
+RULES:
+- Return ONLY valid JSON. No explanations, no text before or after.
+- Keep ALL existing values from Current State. Only update what changed.
+- If nothing changed, return: {"current_situation":"no change"}
+- Memory importance: high = major plot point, medium = notable event, low = minor detail`,
     },
   ];
 }

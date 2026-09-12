@@ -34,19 +34,20 @@ router.get('/', (_req: Request, res: Response) => {
     reasoning_effort: setting.reasoning_effort || '',
     pollinations_api_key: setting.pollinations_api_key || '',
     strip_think: !!setting.strip_think,
+    two_phase_state_update: setting.two_phase_state_update !== 0, // DEFAULT 1 → truthy
   });
 });
 
 // ذخیره تنظیمات
 router.post('/', (req: Request, res: Response) => {
   const db = getDb();
-  const { base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort, pollinations_api_key, strip_think } = req.body;
+  const { base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort, pollinations_api_key, strip_think, two_phase_state_update } = req.body;
 
   const existing = db.prepare('SELECT id FROM api_settings LIMIT 1').get() as any;
 
   if (existing) {
     db.prepare(`
-      UPDATE api_settings SET base_url=?, api_key=?, model=?, temperature=?, max_tokens=?, max_context=?, top_p=?, frequency_penalty=?, presence_penalty=?, stream=?, stop=?, system_prompt=?, reasoning_effort=?, pollinations_api_key=?, strip_think=?
+      UPDATE api_settings SET base_url=?, api_key=?, model=?, temperature=?, max_tokens=?, max_context=?, top_p=?, frequency_penalty=?, presence_penalty=?, stream=?, stop=?, system_prompt=?, reasoning_effort=?, pollinations_api_key=?, strip_think=?, two_phase_state_update=?
       WHERE id=?
     `).run(
       base_url || '', api_key || '', model || '',
@@ -56,13 +57,14 @@ router.post('/', (req: Request, res: Response) => {
       system_prompt || '', reasoning_effort || '',
       pollinations_api_key || '',
       strip_think ? 1 : 0,
+      two_phase_state_update ? 1 : 0,
       existing.id
     );
   } else {
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO api_settings (id, provider, base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort, pollinations_api_key, strip_think)
-      VALUES (?, 'openai', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_settings (id, provider, base_url, api_key, model, temperature, max_tokens, max_context, top_p, frequency_penalty, presence_penalty, stream, stop, system_prompt, reasoning_effort, pollinations_api_key, strip_think, two_phase_state_update)
+      VALUES (?, 'openai', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, base_url || '', api_key || '', model || '',
       temperature ?? 0.7, max_tokens ?? 2048, max_context ?? 0, top_p ?? 1,
@@ -70,7 +72,8 @@ router.post('/', (req: Request, res: Response) => {
       stream ? 1 : 0, JSON.stringify(stop || []),
       system_prompt || '', reasoning_effort || '',
       pollinations_api_key || '',
-      strip_think ? 1 : 0
+      strip_think ? 1 : 0,
+      two_phase_state_update ? 1 : 0
     );
   }
 

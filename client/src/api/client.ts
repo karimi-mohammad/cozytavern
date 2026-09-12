@@ -1,5 +1,16 @@
 const BASE = '/api';
 
+// ─── Client-side Debug Logger for Two-Phase Chat ───
+// Enable: localStorage.setItem('DEBUG_CHAT', '1')
+// Disable: localStorage.removeItem('DEBUG_CHAT')
+const _chatDbgEnabled = () => localStorage.getItem('DEBUG_CHAT') === '1';
+function _chatDbg(phase: string, msg: string, data?: any) {
+  if (!_chatDbgEnabled()) return;
+  const ts = new Date().toISOString();
+  const d = data !== undefined ? (typeof data === 'string' ? data : JSON.stringify(data).slice(0, 300)) : '';
+  console.log(`[CHAT-CLIENT] [${ts}] [${phase}] ${msg}${d ? ' ' + d : ''}`);
+}
+
 async function request(path: string, options?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -225,6 +236,12 @@ export const api = {
                   window.dispatchEvent(new CustomEvent('story-state-updated', { detail: parsed.state }));
                 } catch {}
               }
+              else if (parsed.usage) {
+                // Usage data from API (ground truth for context estimation)
+                try {
+                  window.dispatchEvent(new CustomEvent('api-usage', { detail: parsed.usage }));
+                } catch {}
+              }
             } catch {}
           }
         }
@@ -234,6 +251,12 @@ export const api = {
       const data = await res.json();
       if (data.message_id) onMessageId(data.message_id);
       if (data.content) onToken(data.content);
+      // Handle story state update in non-streaming response
+      if (data.story_state_updated) {
+        try {
+          window.dispatchEvent(new CustomEvent('story-state-updated', { detail: data.state }));
+        } catch {}
+      }
       // Use setTimeout to ensure Zustand state updates are flushed before onDone
       setTimeout(() => onDone(), 0);
     }
@@ -286,6 +309,7 @@ export const api = {
     onDone: () => void,
     signal?: AbortSignal
   ) => {
+    _chatDbg('REQ', `POST /api/chat`, { chat_id: data.chat_id, character_id: data.character_id, update_message_id: data.update_message_id || 'none' });
     const res = await fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -299,21 +323,29 @@ export const api = {
     }
 
     const contentType = res.headers.get('content-type') || '';
+    _chatDbg('RES', `status=${res.status} content-type=${contentType}`);
 
     if (contentType.includes('text/event-stream')) {
+      _chatDbg('SSE', 'Stream mode — reading SSE events');
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let _eventCount = 0;
+      let _tokenCount = 0;
 
       while (true) {
         let result: { done: boolean; value?: Uint8Array };
         try {
           result = await reader.read();
         } catch (e: any) {
+          _chatDbg('SSE', `reader.read() ERROR: ${e?.message}`);
           if (signal?.aborted) throw e;
           throw e;
         }
-        if (result.done) break;
+        if (result.done) {
+          _chatDbg('SSE', `reader done — stream ended naturally (no [DONE] received!) tokens=${_tokenCount} events=${_eventCount}`);
+          break;
+        }
 
         buffer += decoder.decode(result.value, { stream: true });
         const lines = buffer.split('\n');
@@ -323,22 +355,43 @@ export const api = {
           const trimmed = line.trim();
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
+            _eventCount++;
             if (data === '[DONE]') {
+              _chatDbg('SSE', `✅ [DONE] received — tokens=${_tokenCount} events=${_eventCount}`);
               onDone();
               return;
             }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.message_id) onMessageId(parsed.message_id);
-              else if (parsed.token) onToken(parsed.token);
+              if (parsed.message_id) {
+                _chatDbg('SSE', `📨 message_id: ${parsed.message_id}`);
+                onMessageId(parsed.message_id);
+              }
+              else if (parsed.token) {
+                _tokenCount++;
+                if (_tokenCount <= 3 || _tokenCount % 50 === 0) {
+                  _chatDbg('SSE', `🔤 token #${_tokenCount}: "${parsed.token.slice(0, 50)}"`);
+                }
+                onToken(parsed.token);
+              }
               else if (parsed.error) {
+                _chatDbg('SSE', `❌ error: ${parsed.error}`);
                 throw new Error(parsed.error);
               }
               else if (parsed.story_state_updated) {
-                // Story state was updated by AI - trigger reload in store
+                _chatDbg('SSE', `📊 story_state_updated — state keys: ${Object.keys(parsed.state || {}).join(', ')}`);
                 try {
                   window.dispatchEvent(new CustomEvent('story-state-updated', { detail: parsed.state }));
                 } catch {}
+              }
+              else if (parsed.usage) {
+                _chatDbg('SSE', `📈 usage: prompt=${parsed.usage.prompt_tokens} completion=${parsed.usage.completion_tokens} total=${parsed.usage.total_tokens}`);
+                try {
+                  window.dispatchEvent(new CustomEvent('api-usage', { detail: parsed.usage }));
+                } catch {}
+              }
+              else {
+                _chatDbg('SSE', `❓ unknown event: ${data.slice(0, 200)}`);
               }
             } catch (e: any) {
               if (e?.message && !e.message.includes('JSON')) throw e;
@@ -346,13 +399,34 @@ export const api = {
           }
         }
       }
+      _chatDbg('SSE', `Fallback: stream ended, calling onDone (tokens=${_tokenCount})`);
       onDone();
     } else {
+      _chatDbg('NON-SSE', 'Non-streaming mode — waiting for full response');
       const data = await res.json();
+      _chatDbg('NON-SSE', `Response: message_id=${data.message_id} contentLen=${(data.content || '').length} hasStoryState=${!!data.story_state_updated} hasUsage=${!!data.usage}`);
       if (data.message_id) onMessageId(data.message_id);
       if (data.content) onToken(data.content);
+      // Handle story state update in non-streaming response
+      if (data.story_state_updated) {
+        _chatDbg('NON-SSE', `📊 story_state_updated`);
+        try {
+          window.dispatchEvent(new CustomEvent('story-state-updated', { detail: data.state }));
+        } catch {}
+      }
+      // Handle usage data from non-streaming response
+      if (data.usage) {
+        _chatDbg('NON-SSE', `📈 usage: prompt=${data.usage.prompt_tokens} completion=${data.usage.completion_tokens}`);
+        try {
+          window.dispatchEvent(new CustomEvent('api-usage', { detail: data.usage }));
+        } catch {}
+      }
       // Use setTimeout to ensure Zustand state updates are flushed before onDone
-      setTimeout(() => onDone(), 0);
+      _chatDbg('NON-SSE', `Calling onDone via setTimeout`);
+      setTimeout(() => {
+        _chatDbg('NON-SSE', `✅ onDone() called`);
+        onDone();
+      }, 0);
     }
   },
 

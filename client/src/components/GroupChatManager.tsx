@@ -28,9 +28,9 @@ export default function GroupChatManager({ onClose }: Props) {
 
   // Characters not yet in the group
   const participantCharIds = new Set(groupChatParticipants.map(p => p.character_id));
-  // Also exclude the main character of the chat
+  // Only exclude the main character if they're already a participant
   const availableCharacters = characters.filter(c =>
-    c.id !== currentChat.character_id &&
+    (c.id !== currentChat.character_id || !participantCharIds.has(c.id)) &&
     !participantCharIds.has(c.id) &&
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );

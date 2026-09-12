@@ -509,7 +509,10 @@ router.post('/chat/:chatId/detect', (req: Request, res: Response) => {
   const db = getDb();
   const settings = getChapterSettings(db);
 
+  console.log('[CHAPTER-DETECT-SERVER] Request received:', { chatId: req.params.chatId, settings });
+
   if (!settings || !settings.auto_detect_enabled) {
+    console.log('[CHAPTER-DETECT-SERVER] ❌ Settings disabled or missing:', settings);
     res.json({ suggested: false });
     return;
   }
@@ -527,7 +530,19 @@ router.post('/chat/:chatId/detect', (req: Request, res: Response) => {
     'SELECT * FROM chapters WHERE chat_id = ? ORDER BY created_at ASC'
   ).all(chatId) as any[];
 
+  console.log('[CHAPTER-DETECT-SERVER] Messages:', messages.length, 'Chapters:', chapters.length, 'rawWindow:', rawWindow, 'trigger_phrases:', settings.trigger_phrases);
+
+  // Log last few messages for debugging
+  const lastMessages = messages.slice(-5).map((m: any) => ({
+    id: m.id?.slice(0, 8),
+    role: m.role,
+    contentLen: m.content?.length || 0,
+    contentPreview: m.content?.slice(0, 100)
+  }));
+  console.log('[CHAPTER-DETECT-SERVER] Last 5 messages:', lastMessages);
+
   const result = detectChapterTrigger(messages, chapters, rawWindow, settings.trigger_phrases);
+  console.log('[CHAPTER-DETECT-SERVER] Result:', result);
   res.json(result);
 });
 

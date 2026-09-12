@@ -9,6 +9,7 @@ interface TokenUsageModalProps {
 
 export default function TokenUsageModal({ isOpen, onClose }: TokenUsageModalProps) {
   const contextUsage = useStore(s => s.contextUsage);
+  const lastApiUsage = useStore(s => s.lastApiUsage);
   const chapters = useStore(s => s.chapters);
   const chatLorebooks = useStore(s => s.chatLorebooks);
   const currentCharacter = useStore(s => s.currentCharacter);
@@ -154,6 +155,66 @@ export default function TokenUsageModal({ isOpen, onClose }: TokenUsageModalProp
               ]}
             />
 
+            {/* Story State */}
+            {contextUsage.breakdown.storyState > 0 && (
+              <TokenRow
+                label="Story State"
+                tokens={contextUsage.breakdown.storyState}
+                max={contextUsage.max}
+                icon="🌍"
+              />
+            )}
+
+            {/* Author's Note */}
+            {contextUsage.breakdown.authorsNote > 0 && (
+              <TokenRow
+                label="Author's Note"
+                tokens={contextUsage.breakdown.authorsNote}
+                max={contextUsage.max}
+                icon="📝"
+              />
+            )}
+
+            {/* Post-History Instructions */}
+            {contextUsage.breakdown.postHistory > 0 && (
+              <TokenRow
+                label="Post-History Instructions"
+                tokens={contextUsage.breakdown.postHistory}
+                max={contextUsage.max}
+                icon="📋"
+              />
+            )}
+
+            {/* Tool Definition */}
+            {contextUsage.breakdown.toolDefinition > 0 && (
+              <TokenRow
+                label="Tool Definition"
+                tokens={contextUsage.breakdown.toolDefinition}
+                max={contextUsage.max}
+                icon="🔧"
+              />
+            )}
+
+            {/* Tool Instruction */}
+            {contextUsage.breakdown.toolInstruction > 0 && (
+              <TokenRow
+                label="Tool Instruction"
+                tokens={contextUsage.breakdown.toolInstruction}
+                max={contextUsage.max}
+                icon="⚡"
+              />
+            )}
+
+            {/* Group Chat Rules */}
+            {contextUsage.breakdown.groupChatRules > 0 && (
+              <TokenRow
+                label="Group Chat Rules"
+                tokens={contextUsage.breakdown.groupChatRules}
+                max={contextUsage.max}
+                icon="👥"
+              />
+            )}
+
             {/* Overhead */}
             <TokenRow
               label="API Overhead"
@@ -176,6 +237,40 @@ export default function TokenUsageModal({ isOpen, onClose }: TokenUsageModalProp
               </div>
             )}
           </div>
+
+          {/* Real API Usage (if available) */}
+          {lastApiUsage && lastApiUsage.prompt_tokens && (
+            <div className="bg-tavern-bg/50 rounded-lg p-3 border border-tavern-border">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-medium text-tavern-text">API Usage (Real)</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">VERIFIED</span>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-tavern-dim">Prompt Tokens</span>
+                  <span className="font-mono text-tavern-text">{formatTokenCount(lastApiUsage.prompt_tokens)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-tavern-dim">Completion Tokens</span>
+                  <span className="font-mono text-tavern-text">{formatTokenCount(lastApiUsage.completion_tokens || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-tavern-dim">Total Tokens</span>
+                  <span className="font-mono text-tavern-text">{formatTokenCount(lastApiUsage.total_tokens || 0)}</span>
+                </div>
+                {contextUsage && (
+                  <div className="flex justify-between pt-1 border-t border-tavern-border/50">
+                    <span className="text-tavern-dim">Estimation Error</span>
+                    <span className={`font-mono ${Math.abs(contextUsage.used - lastApiUsage.prompt_tokens) / lastApiUsage.prompt_tokens > 0.15 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {contextUsage.used > lastApiUsage.prompt_tokens ? '+' : ''}
+                      {formatTokenCount(contextUsage.used - lastApiUsage.prompt_tokens)}
+                      ({Math.round(Math.abs(contextUsage.used - lastApiUsage.prompt_tokens) / lastApiUsage.prompt_tokens * 100)}%)
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

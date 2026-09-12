@@ -166,6 +166,12 @@ export default function TopBar() {
                 { label: 'Persona', value: contextUsage.breakdown.persona },
                 { label: 'Chapters', value: contextUsage.breakdown.chapters },
                 { label: 'History', value: contextUsage.breakdown.history },
+                { label: 'Story State', value: contextUsage.breakdown.storyState },
+                { label: 'Author\'s Note', value: contextUsage.breakdown.authorsNote },
+                { label: 'Post-History', value: contextUsage.breakdown.postHistory },
+                { label: 'Tool Def', value: contextUsage.breakdown.toolDefinition },
+                { label: 'Tool Instr', value: contextUsage.breakdown.toolInstruction },
+                { label: 'Group Rules', value: contextUsage.breakdown.groupChatRules },
                 { label: 'Overhead', value: contextUsage.breakdown.overhead },
               ].filter(item => item.value > 0).map(item => (
                 <div key={item.label} className="flex justify-between text-tavern-muted">

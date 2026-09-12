@@ -214,6 +214,7 @@ interface AppState {
 
   // Context usage
   contextUsage: ContextUsage | null;
+  lastApiUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   updateContextUsage: () => void;
 
   // Actions
@@ -371,9 +372,15 @@ export const useStore = create<AppState>((set, get) => ({
   loadingStoryState: false,
   storyStateOpen: false,
   loadStoryState: async (chatId) => {
+    if (localStorage.getItem('DEBUG_CHAT') === '1') {
+      console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [loadStoryState] → loading for chat=${chatId.slice(0, 8)}`);
+    }
     set({ loadingStoryState: true });
     try {
       const state = await api.getStoryState(chatId);
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [loadStoryState] ← loaded, keys: ${Object.keys(state || {}).join(', ')}`);
+      }
       set({ storyState: state });
     } finally {
       set({ loadingStoryState: false });
@@ -392,6 +399,9 @@ export const useStore = create<AppState>((set, get) => ({
   _initStoryStateListener: () => {
     // Store cleanup function to prevent listener leaks
     const handler = ((e: CustomEvent) => {
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [story-state-updated] event received — reloading state`);
+      }
       const { currentChat } = get();
       if (currentChat) {
         // Reload state from server
@@ -399,8 +409,25 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }) as EventListener;
     window.addEventListener('story-state-updated', handler);
+
+    // Listener for API usage data (ground truth from LLM response)
+    const usageHandler = ((e: CustomEvent) => {
+      const usage = e.detail;
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [api-usage] prompt=${usage?.prompt_tokens} completion=${usage?.completion_tokens} total=${usage?.total_tokens}`);
+      }
+      if (usage && typeof usage.prompt_tokens === 'number') {
+        // Store real usage for display / comparison with estimate
+        set({ lastApiUsage: usage });
+      }
+    }) as EventListener;
+    window.addEventListener('api-usage', usageHandler);
+
     // Return cleanup function for potential future use
-    return () => window.removeEventListener('story-state-updated', handler);
+    return () => {
+      window.removeEventListener('story-state-updated', handler);
+      window.removeEventListener('api-usage', usageHandler);
+    };
   },
 
   // Chat Notes (یادداشت‌های هر چت)
@@ -821,6 +848,7 @@ export const useStore = create<AppState>((set, get) => ({
   confirmDialog: null,
   pendingEdit: null,
   contextUsage: null,
+  lastApiUsage: null,
 
   addToast: (message, type = 'info') => {
     const id = Math.random().toString(36).slice(2);
@@ -1111,21 +1139,32 @@ export const useStore = create<AppState>((set, get) => ({
         },
         (token) => tokenBatcher.push(token),
         () => {
-          tokenBatcher.flush();
+          // [DEBUG] onDone callback — critical point for two-phase debugging
+          if (localStorage.getItem('DEBUG_CHAT') === '1') {
+            console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [onDone] isGenerating: true→false, calling updateContextUsage`);
+          }
+          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
-          get().updateContextUsage();
+          try { get().updateContextUsage(); } catch (e) { console.error('[onDone] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
-          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
+          if (get().notifyOnResponse) { try { playNotifySound(get().notifyVolume); } catch (e) { console.error('[onDone] playNotifySound error:', e); } }
           if (isFirstMessage) {
             get().autoNameChat(currentChat.id);
           }
-          // Check for chapter trigger suggestion
-          get().checkChapterTrigger(currentChat.id);
+          // Check for chapter trigger suggestion — همیشه اجرا بشه حتی اگه operation‌های بالا fail بشن
+          try {
+            get().checkChapterTrigger(currentChat.id);
+          } catch (e) {
+            console.error('[onDone] checkChapterTrigger error:', e);
+          }
         },
         controller.signal
       );
     } catch (error: any) {
       tokenBatcher?.dispose();
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.error(`[CHAT-CLIENT] [${new Date().toISOString()}] [ERROR] ${error?.name}: ${error?.message}`);
+      }
       if (error?.name === 'AbortError') {
         set({ isGenerating: false });
         return;
@@ -1148,6 +1187,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   // لغو پاسخ در حال تولید — هم fetch کلاینت و هم استریم سرور متوقف می‌شود
   stopGeneration: async () => {
+    if (localStorage.getItem('DEBUG_CHAT') === '1') {
+      console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [stopGeneration] called — isGenerating=${get().isGenerating}`);
+    }
     // اگر پنل بازرسی باز باشد، Stop = لغو بازرسی
     if (get().promptInspection) {
       get().resolveInspection(false);
@@ -1322,12 +1364,18 @@ export const useStore = create<AppState>((set, get) => ({
         () => {},
         (token) => tokenBatcher.push(token),
         () => {
-          tokenBatcher.flush();
+          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-regen] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
           if (currentAbortController === controller) currentAbortController = null;
-          get().updateContextUsage();
+          try { get().updateContextUsage(); } catch (e) { console.error('[onDone-regen] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
-          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
+          if (get().notifyOnResponse) { try { playNotifySound(get().notifyVolume); } catch (e) { console.error('[onDone-regen] playNotifySound error:', e); } }
+          // Check for chapter trigger suggestion after regeneration
+          try {
+            get().checkChapterTrigger(currentChat.id);
+          } catch (e) {
+            console.error('[onDone-regen] checkChapterTrigger error:', e);
+          }
         },
         controller.signal
       );
@@ -1426,11 +1474,17 @@ export const useStore = create<AppState>((set, get) => ({
         },
         (token) => tokenBatcher.push(token),
         () => {
-          tokenBatcher.flush();
+          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-continue] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
-          get().updateContextUsage();
+          try { get().updateContextUsage(); } catch (e) { console.error('[onDone-continue] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
-          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
+          if (get().notifyOnResponse) { try { playNotifySound(get().notifyVolume); } catch (e) { console.error('[onDone-continue] playNotifySound error:', e); } }
+          // Check for chapter trigger suggestion after continue
+          try {
+            get().checkChapterTrigger(currentChat.id);
+          } catch (e) {
+            console.error('[onDone-continue] checkChapterTrigger error:', e);
+          }
         },
         controller.signal
       );
@@ -1527,11 +1581,17 @@ export const useStore = create<AppState>((set, get) => ({
         },
         (token) => tokenBatcher.push(token),
         () => {
-          tokenBatcher.flush();
+          try { tokenBatcher.flush(); } catch (e) { console.error('[onDone-impersonate] tokenBatcher.flush error:', e); }
           set({ isGenerating: false });
-          get().updateContextUsage();
+          try { get().updateContextUsage(); } catch (e) { console.error('[onDone-impersonate] updateContextUsage error:', e); }
           // 🔔 پخش صدای هشدار
-          if (get().notifyOnResponse) playNotifySound(get().notifyVolume);
+          if (get().notifyOnResponse) { try { playNotifySound(get().notifyVolume); } catch (e) { console.error('[onDone-impersonate] playNotifySound error:', e); } }
+          // Check for chapter trigger suggestion after impersonate
+          try {
+            get().checkChapterTrigger(currentChat.id);
+          } catch (e) {
+            console.error('[onDone-impersonate] checkChapterTrigger error:', e);
+          }
         },
         controller.signal
       );
@@ -1708,23 +1768,51 @@ export const useStore = create<AppState>((set, get) => ({
     if (_contextUsageTimer) clearTimeout(_contextUsageTimer);
     _contextUsageTimer = setTimeout(() => {
       _contextUsageTimer = null;
-      const { currentChat, currentCharacter, activePersona, apiSettings, activeLorebook, chatLorebooks, chapters, chapterSettings } = get();
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [updateContextUsage] computing...`);
+      }
+      const {
+        currentChat, currentCharacter, activePersona, apiSettings,
+        activeLorebook, chatLorebooks, chapters, chapterSettings,
+        storyState, groupChatParticipants,
+      } = get();
       if (!currentChat) {
         set({ contextUsage: null });
         return;
       }
       const settings = apiSettings['openai'];
 
-      // استفاده از entries فعال chat lorebooks (تقریبی) یا activeLorebook
+      // ─── Lorebook entries ───
+      // activeLorebook شامل entries واقعیه (legacy path)
+      // chatLorebooks فقط metadata داره — تعداد active_entries
+      // برای تخمین دقیق‌تر، از token_budget هر lorebook استفاده می‌کنیم
       let lorebookEntries: { content: string }[] = [];
       if (chatLorebooks.length > 0) {
-        const totalActive = chatLorebooks
+        // تخمین: هر entry ≈ 100 توکن (میانگین معقول)
+        // token_budget کل هر lorebook لحاظ میشه
+        const totalActiveTokens = chatLorebooks
           .filter((cl: any) => cl.is_active)
-          .reduce((sum: number, cl: any) => sum + (cl.active_entries || 0), 0);
-        lorebookEntries = Array.from({ length: totalActive }, () => ({ content: 'token' }));
+          .reduce((sum: number, cl: any) => {
+            // اگر token_budget تنظیم شده از اون استفاده کن
+            if (cl.token_budget && cl.token_budget > 0) {
+              return sum + cl.token_budget;
+            }
+            // در غیر این صورت تخمین بر اساس تعداد entries
+            return sum + (cl.active_entries || 0) * 100;
+          }, 0);
+        // تبدیل توکن به متن تقریبی (هر توکن ≈ 4 کاراکتر)
+        const estimatedText = 'x'.repeat(totalActiveTokens * 4);
+        lorebookEntries = [{ content: estimatedText }];
       } else if (activeLorebook) {
         lorebookEntries = activeLorebook.entries || [];
       }
+
+      // ─── Group chat detection ───
+      const isGroupChat = !!currentChat.is_group_chat;
+      const activeParticipants = groupChatParticipants.filter(p => p.is_active);
+
+      // ─── two_phase setting ───
+      const twoPhaseEnabled = !!settings?.two_phase_state_update;
 
       const usage = estimateContextUsage(
         currentChat.messages,
@@ -1740,7 +1828,16 @@ export const useStore = create<AppState>((set, get) => ({
           raw_min_messages: chapterSettings.raw_min_messages || 3,
           raw_max_messages: chapterSettings.raw_max_messages || 20,
         } : undefined,
+        // پارامترهای جدید
+        storyState,
+        currentChat,
+        isGroupChat,
+        activeParticipants.length > 0 ? activeParticipants : undefined,
+        twoPhaseEnabled,
       );
+      if (localStorage.getItem('DEBUG_CHAT') === '1') {
+        console.log(`[CHAT-CLIENT] [${new Date().toISOString()}] [updateContextUsage] result: used=${usage.used} max=${usage.max} pct=${usage.percentage}%`);
+      }
       set({ contextUsage: usage });
     }, 300);
   },
@@ -1958,21 +2055,128 @@ export const useStore = create<AppState>((set, get) => ({
 
   checkChapterTrigger: async (chatId) => {
     const { chapterSettings } = get();
-    if (!chapterSettings?.auto_detect_enabled) return;
+    if (!chapterSettings?.auto_detect_enabled) {
+      console.log('[CHAPTER-TRIGGER] Skipped: chapterSettings not loaded or auto_detect_enabled=false', { chapterSettings });
+      return;
+    }
     try {
+      console.log('[CHAPTER-TRIGGER] Calling detect API...', { chatId, raw_window: chapterSettings.raw_window });
       const result = await api.detectTrigger(chatId);
+      console.log('[CHAPTER-TRIGGER] API result:', result);
       if (result.suggested) {
+        console.log('[CHAPTER-TRIGGER] ✅ SUGGESTION READY — setting chapterSuggestion');
         set({
           chapterSuggestion: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase },
           chapterPendingTrigger: null,
         });
+        return;
       } else if (result.trigger_message_id) {
+        console.log('[CHAPTER-TRIGGER] ⏳ Trigger found but distance not enough:', { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase });
         // تریگر پیدا شده ولی فاصله کافی نیست — برای نمایش در progress tracker
         set({ chapterPendingTrigger: { trigger_message_id: result.trigger_message_id, trigger_phrase: result.trigger_phrase } });
       } else {
+        console.log('[CHAPTER-TRIGGER] ❌ No trigger found');
         set({ chapterPendingTrigger: null });
       }
-    } catch {}
+
+      // ─── Client-side fallback: اگه سرور suggested=false برگردونه ولی کلاینت فاصله کافی ببینه ───
+      const { currentChat, chapters } = get();
+      if (currentChat && !get().chapterSuggestion) {
+        const messages = currentChat.messages;
+        if (messages.length > 0) {
+          // پیدا کردن شروع اسکن (مثل سرور)
+          let scanStart = chapters.length === 0 ? 1 : 0;
+          const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
+          if (lastChapter) {
+            if (lastChapter.trigger_message_id) {
+              const ti = messages.findIndex((m: any) => m.id === lastChapter.trigger_message_id);
+              if (ti !== -1) scanStart = ti + 1;
+            } else {
+              const ei = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
+              if (ei !== -1) scanStart = ei + 2;
+            }
+          }
+          const triggerPhrases = chapterSettings.trigger_phrases || [];
+          // پیدا کردن آخرین تریگر در پیام‌ها
+          let foundTriggerIndex = -1;
+          let foundTriggerPhrase = '';
+          for (let i = messages.length - 1; i >= scanStart; i--) {
+            const msg = messages[i];
+            if (!msg.content) continue;
+            for (const phrase of triggerPhrases) {
+              if (msg.content.toLowerCase().includes(phrase.toLowerCase())) {
+                foundTriggerIndex = i;
+                foundTriggerPhrase = phrase;
+                break;
+              }
+            }
+            if (foundTriggerIndex !== -1) break;
+          }
+          if (foundTriggerIndex !== -1) {
+            const distance = messages.length - 1 - foundTriggerIndex;
+            const rawWindow = chapterSettings.raw_window || 10;
+            console.log('[CHAPTER-TRIGGER] Client-side check:', { foundTriggerIndex, distance, rawWindow, suggested: distance >= rawWindow });
+            if (distance >= rawWindow) {
+              console.log('[CHAPTER-TRIGGER] ✅ CLIENT FALLBACK: distance >= rawWindow — setting chapterSuggestion');
+              set({
+                chapterSuggestion: { trigger_message_id: messages[foundTriggerIndex].id, trigger_phrase: foundTriggerPhrase },
+                chapterPendingTrigger: null,
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[CHAPTER-TRIGGER] ❌ Error calling detect API:', e);
+      // ─── Client-side fallback وقتی API call fail می‌شه ───
+      try {
+        const { currentChat, chapters, chapterSettings: cs } = get();
+        if (currentChat && cs?.auto_detect_enabled && !get().chapterSuggestion) {
+          const messages = currentChat.messages;
+          if (messages.length > 0) {
+            let scanStart = chapters.length === 0 ? 1 : 0;
+            const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
+            if (lastChapter) {
+              if (lastChapter.trigger_message_id) {
+                const ti = messages.findIndex((m: any) => m.id === lastChapter.trigger_message_id);
+                if (ti !== -1) scanStart = ti + 1;
+              } else {
+                const ei = messages.findIndex((m: any) => m.id === lastChapter.end_message_id);
+                if (ei !== -1) scanStart = ei + 2;
+              }
+            }
+            const triggerPhrases = cs.trigger_phrases || [];
+            let foundTriggerIndex = -1;
+            let foundTriggerPhrase = '';
+            for (let i = messages.length - 1; i >= scanStart; i--) {
+              const msg = messages[i];
+              if (!msg.content) continue;
+              for (const phrase of triggerPhrases) {
+                if (msg.content.toLowerCase().includes(phrase.toLowerCase())) {
+                  foundTriggerIndex = i;
+                  foundTriggerPhrase = phrase;
+                  break;
+                }
+              }
+              if (foundTriggerIndex !== -1) break;
+            }
+            if (foundTriggerIndex !== -1) {
+              const distance = messages.length - 1 - foundTriggerIndex;
+              const rawWindow = cs.raw_window || 10;
+              if (distance >= rawWindow) {
+                console.log('[CHAPTER-TRIGGER] ✅ CLIENT FALLBACK (after API error): distance >= rawWindow');
+                set({
+                  chapterSuggestion: { trigger_message_id: messages[foundTriggerIndex].id, trigger_phrase: foundTriggerPhrase },
+                  chapterPendingTrigger: null,
+                });
+              }
+            }
+          }
+        }
+      } catch (fallbackErr) {
+        console.error('[CHAPTER-TRIGGER] Client fallback also failed:', fallbackErr);
+      }
+    }
   },
 
   dismissChapterSuggestion: () => set({ chapterSuggestion: null }),

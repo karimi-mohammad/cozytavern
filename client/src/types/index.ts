@@ -262,6 +262,10 @@ export interface ChatParticipant {
   display_avatar: string;
   is_active: boolean;
   created_at: string;
+  // Server-side fields (from JOIN with characters table)
+  char_name?: string;
+  char_desc?: string;
+  char_personality?: string;
 }
 
 export interface GroupChat extends Chat {

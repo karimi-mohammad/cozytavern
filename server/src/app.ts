@@ -29,6 +29,12 @@ import { stripToolCallsFromContent } from './utils/strip-tool-calls';
 import { parseToolCallsFromText } from './utils/parse-tool-calls-from-text';
 import { getDb } from './db';
 import { v4 as uuidv4 } from 'uuid';
+import { createChatDebugger, ChatDebugContext } from './utils/chat-debug-logger';
+
+// Debug log helper — only logs when DEBUG_CHAT=true
+const _DEBUG = process.env.DEBUG_CHAT === 'true' || process.env.DEBUG_CHAT === '1';
+function _log(...args: any[]) { if (_DEBUG) console.log(...args); }
+function _err(...args: any[]) { if (_DEBUG) console.error(...args); }
 
 // Extract state from text response (fallback when tool calling is not available)
 function extractStateFromText(text: string, characterName: string): any {
@@ -194,6 +200,17 @@ if (fs.existsSync(clientDistPath)) {
 app.post('/api/chat', async (req, res) => {
   const { chat_id, character_id, persona_id, lorebook_id, update_message_id, continue_mode, impersonate, edited_messages, skip_generate } = req.body;
 
+  // ─── Debug Logger ───
+  const _reqId = uuidv4().slice(0, 8);
+  const _debugCtx: ChatDebugContext = {
+    requestId: _reqId,
+    chatId: chat_id,
+    characterId: character_id,
+    twoPhaseEnabled: false, // will be set later
+    streamEnabled: false,   // will be set later
+  };
+  const dbg = createChatDebugger(_debugCtx);
+
   const db = getDb();
   let character = db.prepare('SELECT * FROM characters WHERE id = ?').get(character_id) as any;
   const persona = persona_id ? db.prepare('SELECT * FROM personas WHERE id = ?').get(persona_id) as any : null;
@@ -307,17 +324,17 @@ app.post('/api/chat', async (req, res) => {
     );
 
     // Rollback state به snapshot قبل از پیامی که داریم regenerate می‌کنیم
-    console.log(`[StoryState] Regenerating message ${update_message_id}, rolling back state...`);
+    _log(`[StoryState] Regenerating message ${update_message_id}, rolling back state...`);
     const snapshotToRestore = db.prepare(
       'SELECT * FROM chat_state_snapshots WHERE chat_id = ? AND message_id = ? ORDER BY created_at DESC LIMIT 1'
     ).get(chat_id, update_message_id) as any;
 
     if (snapshotToRestore) {
-      console.log(`[StoryState] Found snapshot, restoring state...`);
+      _log(`[StoryState] Found snapshot, restoring state...`);
       db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
         .run(snapshotToRestore.state_json, new Date().toISOString(), chat_id);
     } else {
-      console.log(`[StoryState] No snapshot found for this message`);
+      _log(`[StoryState] No snapshot found for this message`);
     }
   }
 
@@ -395,15 +412,27 @@ You are responding as "${character.name}" ONLY.
       ? [character.name, ...participants.filter(p => p.char_name && p.char_name !== character.name).map(p => p.char_name!)]
       : [character.name];
     const storyStateTool = getStoryStateToolDefinition(characterNames);
-    console.log(`[StoryState] Tool definition for characters:`, JSON.stringify(characterNames));
-    console.log(`[StoryState] Story state in prompt:`, storyState ? 'YES' : 'NO');
+    _log(`[StoryState] Tool definition for characters:`, JSON.stringify(characterNames));
+    _log(`[StoryState] Story state in prompt:`, storyState ? 'YES' : 'NO');
     if (storyState) {
-      console.log(`[StoryState] Current state:`, JSON.stringify(storyState).slice(0, 500));
+      _log(`[StoryState] Current state:`, JSON.stringify(storyState).slice(0, 500));
     }
 
     // Two-phase mode: separate text generation from tool calls
-    const twoPhaseEnabled = settings.two_phase_state_update === 1;
-    console.log(`[StoryState] Two-phase mode: ${twoPhaseEnabled ? 'ENABLED' : 'DISABLED'}`);
+    // Use == for robust comparison (handles 1, true, "1" from SQLite/frontend)
+    const twoPhaseEnabled = !!settings.two_phase_state_update;
+    _debugCtx.twoPhaseEnabled = twoPhaseEnabled;
+    _debugCtx.streamEnabled = !!settings.stream;
+    dbg.start();
+    dbg.params({
+      chat_id, character_id, persona_id: persona_id || 'none',
+      update_message_id: update_message_id || 'none',
+      continue_mode: !!continue_mode, impersonate: !!impersonate,
+      model: settings.model, stream: !!settings.stream,
+      two_phase_state_update: twoPhaseEnabled,
+      messages_count: messages.length,
+    });
+    _log(`[StoryState] Two-phase mode: ${twoPhaseEnabled ? 'ENABLED' : 'DISABLED'} (raw value: ${settings.two_phase_state_update})`);
 
     // اضافه کردن دستور استفاده از tool به انتهای پرامپت (فقط در حالت غیر two-phase)
     const toolInstruction = {
@@ -428,6 +457,8 @@ You are responding as "${character.name}" ONLY.
         reasoning_effort: settings.reasoning_effort || undefined,
       }
     );
+
+    dbg.phase1Request(endpoint, requestBody.slice(0, 400));
 
     // حالت بازرسی (Prompt Inspector): فقط ساخت payload، بدون فراخوانی LLM و بدون تغییر دیتابیس
     if (req.body?.inspect) {
@@ -470,7 +501,8 @@ You are responding as "${character.name}" ONLY.
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`LLM API error ${response.status}:`, errorText.slice(0, 200));
+      _err(`LLM API error ${response.status}:`, errorText.slice(0, 200));
+      dbg.error('phase1-response', new Error(`API ${response.status}: ${errorText.slice(0, 200)}`));
       if (settings.stream && res.headersSent) {
         // Headers already sent as SSE — send error as SSE event
         res.write(`data: ${JSON.stringify({ error: `API error: ${response.status}: ${errorText}` })}\n\n`);
@@ -484,6 +516,7 @@ You are responding as "${character.name}" ONLY.
 
     if (settings.stream) {
       // ─── Streaming response ───
+      dbg.phase1Response(response.status, response.ok);
       // ایجاد یا بروزرسانی پیام — AFTER successful fetch
       let msgId: string;
       const now = new Date().toISOString();
@@ -499,11 +532,13 @@ You are responding as "${character.name}" ONLY.
         `).run(msgId, chat_id, msgRole, now);
       }
       res.write(`data: ${JSON.stringify({ message_id: msgId })}\n\n`);
+      dbg.messageSaved(msgId, msgRole, 0); // content is empty at this point
 
       // لغو فعال: کاربر از طریق /api/chat/abort
       const streamController = new AbortController();
       activeStreams.set(msgId, streamController);
       res.on('close', () => {
+        dbg.resLifecycle('close', `activeStreams.size=${activeStreams.size}`);
         streamController.abort();
         activeStreams.delete(msgId);
       });
@@ -513,6 +548,10 @@ You are responding as "${character.name}" ONLY.
       let fullContent = '';
       let streamAborted = false;
       let toolCalls: any[] = [];
+      // API usage data — استخراج از آخرین chunk streaming
+      let streamUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
+
+      dbg.streamStart();
 
       if (reader) {
         try {
@@ -547,16 +586,24 @@ You are responding as "${character.name}" ONLY.
             chunkCount++;
             try {
               const parsed = JSON.parse(rawData);
+              // استخراج usage data از آخرین chunk (بعضی API ها اینجا برمیگردونن)
+              if (parsed.usage) {
+                streamUsage = {
+                  prompt_tokens: parsed.usage.prompt_tokens,
+                  completion_tokens: parsed.usage.completion_tokens,
+                  total_tokens: parsed.usage.total_tokens,
+                };
+              }
               const delta = parsed.choices?.[0]?.delta;
 
               // Debug logging for first few chunks
               if (chunkCount <= 3) {
-                console.log(`[StoryState] Chunk ${chunkCount}:`, JSON.stringify(delta).slice(0, 300));
+                _log(`[StoryState] Chunk ${chunkCount}:`, JSON.stringify(delta).slice(0, 300));
               }
 
               // Check for tool calls
               if (delta?.tool_calls) {
-                console.log(`[StoryState] Tool call detected in chunk ${chunkCount}`);
+                _log(`[StoryState] Tool call detected in chunk ${chunkCount}`);
                 for (const tc of delta.tool_calls) {
                   if (tc.index !== undefined) {
                     // New tool call or continuation
@@ -633,10 +680,12 @@ You are responding as "${character.name}" ONLY.
           if (streamError?.name === 'AbortError') {
             streamAborted = true;
           } else {
-            console.error('Stream error:', streamError);
+            _err('Stream error:', streamError);
           }
         }
       }
+
+      dbg.streamEnd(fullContent.length, toolCalls.length, streamAborted);
 
       // بروزرسانی محتوای پیام
       if (fullContent) {
@@ -657,73 +706,203 @@ You are responding as "${character.name}" ONLY.
         // پیام جدید بود ولی محتوا خالی موند (LLLLM خالی برگردوند)
         // پیام خالی رو حذف کن تا ghost نمونه
         db.prepare('DELETE FROM messages WHERE id = ?').run(msgId);
-        console.log(`[Chat] Empty response — deleted empty message ${msgId}`);
+        _log(`[Chat] Empty response — deleted empty message ${msgId}`);
       }
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), chat_id);
 
       // پردازش tool calls (update_story_state)
       let storyStateUpdated = false;
       let newStoryState = null;
-      console.log(`[StoryState] Tool calls received: ${toolCalls.length}`);
+      _log(`[StoryState] Tool calls received: ${toolCalls.length}`);
 
       // Two-phase mode: if enabled and no tool calls in phase 1, make phase 2 request
       if (twoPhaseEnabled && toolCalls.length === 0 && fullContent) {
-        console.log(`[StoryState] Two-phase mode: Making phase 2 request for state extraction...`);
+        _log(`[StoryState] Phase 2: Triggering state extraction (twoPhase=${twoPhaseEnabled} toolCalls=${toolCalls.length} contentLen=${fullContent.length})`);
+        dbg.phase2Decision(true, `twoPhase=${twoPhaseEnabled} toolCalls=${toolCalls.length} hasContent=${!!fullContent}`);
+
+        // Strip think tags before Phase 2 — client never sees them, so don't pollute extraction
+        const cleanContentForPhase2 = fullContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
         try {
-          // Build phase 2 request: same context + generated response + extraction prompt
-          const phase2PromptParts = [
-            ...effectiveParts,
-            { role: 'assistant' as const, content: fullContent },
-          ];
-
           const extractionPrompt = getStateExtractionPrompt(character.name, storyState, characterNames);
-          const phase2RequestBody = buildRequestBody([...phase2PromptParts, ...extractionPrompt], {
+          // Extraction instruction FIRST (system), then conversation, then assistant response
+          const phase2RequestBody = buildRequestBody([
+            ...extractionPrompt,
+            ...effectiveParts,
+            { role: 'assistant' as const, content: cleanContentForPhase2 },
+          ], {
             model: settings.model,
             temperature: 0.3, // Lower temperature for more precise extraction
-            max_tokens: 1000,
+            max_tokens: 2000, // Enough for full state JSON
             top_p: settings.top_p,
             frequency_penalty: settings.frequency_penalty,
             presence_penalty: settings.presence_penalty,
-            stream: false, // Non-streaming for phase 2
+            stream: !!settings.stream, // Match Phase 1 stream mode (some providers abort non-streaming)
             stop: JSON.parse(settings.stop || '[]'),
             // No tools/tool_choice — extraction prompt asks for JSON response, not tool calls
           });
 
-          const phase2Response = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            body: phase2RequestBody,
-          });
+          // 30s timeout so a slow/stuck Phase 2 never blocks [DONE]
+          const phase2Abort = new AbortController();
+          const phase2Timeout = setTimeout(() => {
+            _log(`[StoryState] Phase 2: timeout after 30s, aborting`);
+            phase2Abort.abort();
+          }, 30_000);
+
+          _log(`[StoryState] Phase 2: sending request to ${endpoint} (stream=${!!settings.stream})`);
+
+          let phase2Response: globalThis.Response;
+          try {
+            phase2Response = await fetch(endpoint, {
+              method: 'POST',
+              headers,
+              body: phase2RequestBody,
+              signal: phase2Abort.signal,
+            });
+          } finally {
+            clearTimeout(phase2Timeout);
+          }
 
           if (phase2Response.ok) {
-            const phase2Data = await phase2Response.json() as any;
-            const phase2Content = phase2Data.choices?.[0]?.message?.content || '';
+            let phase2Content = '';
 
-            console.log(`[StoryState] Phase 2 response: ${phase2Content.slice(0, 200)}...`);
+            if (settings.stream) {
+              // Read streaming response
+              const reader = phase2Response.body?.getReader();
+              const decoder = new TextDecoder();
+              if (reader) {
+                const lineBuffer = createLineBuffer();
+                let done = false;
+                while (!done) {
+                  const { done: streamDone, value } = await reader.read();
+                  if (streamDone) break;
+                  const chunk = decoder.decode(value, { stream: true });
+                  const lines = lineBuffer.push(chunk);
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ')) {
+                      const data = trimmed.slice(6);
+                      if (data === '[DONE]') { done = true; break; }
+                      try {
+                        const parsed = JSON.parse(data);
+                        const delta = parsed.choices?.[0]?.delta;
+                        // Only collect content tokens — NOT reasoning_content (pollutes JSON parsing)
+                        if (delta?.content) phase2Content += delta.content;
+                      } catch {}
+                    }
+                  }
+                }
+                // Flush remaining buffer
+                const remaining = lineBuffer.flush();
+                for (const line of remaining) {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith('data: ') && trimmed.slice(6) !== '[DONE]') {
+                    try {
+                      const parsed = JSON.parse(trimmed.slice(6));
+                      const delta = parsed.choices?.[0]?.delta;
+                      if (delta?.content) phase2Content += delta.content;
+                    } catch {}
+                  }
+                }
+              }
+            } else {
+              // Non-streaming: read full JSON
+              const phase2Data = await phase2Response.json() as any;
+              phase2Content = phase2Data.choices?.[0]?.message?.content || '';
+            }
+
+            _log(`[StoryState] Phase 2: response received (${phase2Content.length} chars)`);
+            _log(`[StoryState] Phase 2: RAW first 300: ${phase2Content.slice(0, 300)}`);
+            _log(`[StoryState] Phase 2: RAW last 200: ${phase2Content.slice(-200)}`);
 
             // Parse JSON response from extraction prompt
-            // The prompt asks for: { "tool_calls": [{ "function": { "name": "...", "arguments": "..." } }] }
+            // Try multiple formats: tool_calls wrapper, direct state, or text fallback
+            let cleanedPhase2 = phase2Content.trim();
+
+            // Strip markdown code blocks (```json ... ```) that LLMs often wrap around JSON
+            const codeBlockMatch = cleanedPhase2.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+            if (codeBlockMatch) {
+              cleanedPhase2 = codeBlockMatch[1].trim();
+              _log(`[StoryState] Phase 2: stripped markdown code block → ${cleanedPhase2.length} chars`);
+            } else {
+              _log(`[StoryState] Phase 2: no code block found, trying raw content`);
+            }
+
+            // Also try: extract JSON between first { and last }
+            if (cleanedPhase2[0] !== '{') {
+              const firstBrace = cleanedPhase2.indexOf('{');
+              const lastBrace = cleanedPhase2.lastIndexOf('}');
+              if (firstBrace !== -1 && lastBrace > firstBrace) {
+                const extracted = cleanedPhase2.slice(firstBrace, lastBrace + 1);
+                _log(`[StoryState] Phase 2: extracted JSON from braces: ${extracted.length} chars`);
+                cleanedPhase2 = extracted;
+              }
+            }
+
+            _log(`[StoryState] Phase 2: cleanedPhase2 first 300: ${cleanedPhase2.slice(0, 300)}`);
+
             try {
-              const parsed = JSON.parse(phase2Content);
+              const parsed = JSON.parse(cleanedPhase2);
+
+              // Format 1: {"tool_calls": [{ "function": { "name": "update_story_state", "arguments": "..." } }]}
               if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
                 toolCalls = parsed.tool_calls;
-                console.log(`[StoryState] Phase 2 parsed ${toolCalls.length} tool calls from JSON`);
+                _log(`[StoryState] Phase 2: ✅ extracted ${toolCalls.length} tool calls via tool_calls format`);
               }
-            } catch (parseErr) {
-              console.log(`[StoryState] Phase 2 JSON parse failed, trying text extraction...`);
+              // Format 2: Direct state object
+              else if (parsed.characters || parsed.current_situation || parsed.relationships || parsed.memories) {
+                _log(`[StoryState] Phase 2: wrapping direct state object`);
+                toolCalls = [{
+                  id: 'phase2-extracted',
+                  type: 'function',
+                  function: {
+                    name: 'update_story_state',
+                    arguments: JSON.stringify(parsed),
+                  }
+                }];
+              }
+              // Format 3: Has arguments directly at root
+              else if (parsed.arguments && typeof parsed.arguments === 'string') {
+                _log(`[StoryState] Phase 2: direct arguments format`);
+                toolCalls = [{
+                  id: 'phase2-extracted',
+                  type: 'function',
+                  function: {
+                    name: 'update_story_state',
+                    arguments: parsed.arguments,
+                  }
+                }];
+              } else {
+                _log(`[StoryState] Phase 2: JSON parsed but unrecognized format. Keys: ${Object.keys(parsed).join(', ')}`);
+              }
+            } catch (parseErr: any) {
+              _log(`[StoryState] Phase 2: JSON parse FAILED: ${parseErr.message}`);
+              _log(`[StoryState] Phase 2: cleanedPhase2 for debugging: ${cleanedPhase2.slice(0, 500)}`);
               // Fallback: try to extract tool calls from text
               const textToolCalls = parseToolCallsFromText(phase2Content);
               if (textToolCalls.length > 0) {
                 toolCalls = textToolCalls;
-                console.log(`[StoryState] Phase 2 extracted ${toolCalls.length} tool calls from text`);
+                _log(`[StoryState] Phase 2: extracted ${toolCalls.length} tool calls via text fallback`);
+              } else {
+                _log(`[StoryState] Phase 2: ALL extraction methods failed`);
               }
             }
+          } else {
+            _log(`[StoryState] Phase 2: HTTP error ${phase2Response.status}`);
+            dbg.phase2Response(phase2Response.status, false);
           }
-        } catch (phase2Error) {
-          console.error('[StoryState] Phase 2 request failed:', phase2Error);
+        } catch (phase2Error: any) {
+          _err(`[StoryState] Phase 2: request failed:`, phase2Error?.message || phase2Error);
+          dbg.phase2Error(phase2Error);
           // Continue with fallback methods
         }
+      } else {
+        const reason = !twoPhaseEnabled ? 'two-phase DISABLED in settings'
+          : toolCalls.length > 0 ? `already have ${toolCalls.length} tool calls from phase1`
+          : !fullContent ? 'no content from phase1'
+          : 'unknown';
+        _log(`[StoryState] Phase 2: SKIPPED — ${reason}`);
+        dbg.phase2Decision(false, reason);
       }
 
       // ذخیره snapshot قبل از آپدیت state (برای امکان rollback)
@@ -735,12 +914,12 @@ You are responding as "${character.name}" ONLY.
             INSERT INTO chat_state_snapshots (id, chat_id, message_id, state_json, created_at)
             VALUES (?, ?, ?, ?, ?)
           `).run(snapshotId, chat_id, msgId, existingRowForSnapshot.state_json, new Date().toISOString());
-          console.log(`[StoryState] Snapshot saved for message: ${msgId}`);
+          _log(`[StoryState] Snapshot saved for message: ${msgId}`);
         }
       }
 
       for (const toolCall of toolCalls) {
-        console.log(`[StoryState] Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
+        _log(`[StoryState] Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
         if (toolCall.function?.name === 'update_story_state') {
           try {
             const args = JSON.parse(toolCall.function.arguments);
@@ -762,21 +941,21 @@ You are responding as "${character.name}" ONLY.
                 .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
             }
             storyStateUpdated = true;
-            console.log(`[StoryState] State updated via tool call`);
+            _log(`[StoryState] State updated via tool call`);
           } catch (e) {
-            console.error('Failed to process update_story_state:', e);
+            _err('Failed to process update_story_state:', e);
           }
         }
       }
 
       // Fallback: parse tool calls from text if no tool calls were detected
       if (!storyStateUpdated && fullContent) {
-        console.log(`[StoryState] No tool calls detected in stream, trying text parsing...`);
+        _log(`[StoryState] No tool calls detected in stream, trying text parsing...`);
         const textToolCalls = parseToolCallsFromText(fullContent);
-        console.log(`[StoryState] Found ${textToolCalls.length} tool calls in text`);
+        _log(`[StoryState] Found ${textToolCalls.length} tool calls in text`);
         
         for (const toolCall of textToolCalls) {
-          console.log(`[StoryState] Text Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
+          _log(`[StoryState] Text Tool: ${toolCall.function?.name}, Args: ${toolCall.function?.arguments?.slice(0, 200)}`);
           if (toolCall.function?.name === 'update_story_state') {
             try {
               const args = JSON.parse(toolCall.function.arguments);
@@ -795,9 +974,9 @@ You are responding as "${character.name}" ONLY.
                   .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
               }
               storyStateUpdated = true;
-              console.log(`[StoryState] State updated via text parsing`);
+              _log(`[StoryState] State updated via text parsing`);
             } catch (e) {
-              console.error('Failed to process update_story_state from text:', e);
+              _err('Failed to process update_story_state from text:', e);
             }
           }
         }
@@ -805,10 +984,10 @@ You are responding as "${character.name}" ONLY.
 
       // Fallback: if still no tool calls, try regex extraction from text
       if (!storyStateUpdated && fullContent) {
-        console.log(`[StoryState] No tool calls in text, trying regex extraction...`);
+        _log(`[StoryState] No tool calls in text, trying regex extraction...`);
         const extractedState = extractStateFromText(fullContent, character.name);
         if (extractedState) {
-          console.log(`[StoryState] Extracted from text:`, JSON.stringify(extractedState));
+          _log(`[StoryState] Extracted from text:`, JSON.stringify(extractedState));
           const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
           let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
           if (existingRow) {
@@ -824,9 +1003,9 @@ You are responding as "${character.name}" ONLY.
               .run(uuidv4(), chat_id, JSON.stringify(newStoryState), now);
           }
           storyStateUpdated = true;
-          console.log(`[StoryState] State updated via text extraction`);
+          _log(`[StoryState] State updated via text extraction`);
         } else {
-          console.log(`[StoryState] No state changes detected in text`);
+          _log(`[StoryState] No state changes detected in text`);
         }
       }
 
@@ -848,16 +1027,37 @@ You are responding as "${character.name}" ONLY.
               }
             }
           }
-          console.log(`[Chat] Stripped tool call artifacts from message ${msgId}`);
+          _log(`[Chat] Stripped tool call artifacts from message ${msgId}`);
         }
       }
 
       // ارسال story state update قبل از DONE
       if (storyStateUpdated && newStoryState) {
+        dbg.sseEvent('story_state_updated', JSON.stringify(newStoryState).slice(0, 200));
         res.write(`data: ${JSON.stringify({ story_state_updated: true, state: newStoryState })}\n\n`);
+      } else {
+        dbg.sseEvent('story_state_updated', `SKIPPED (updated=${storyStateUpdated} hasState=${!!newStoryState})`);
+      }
+
+      // ارسال usage data (prompt_tokens, completion_tokens) قبل از DONE
+      if (streamUsage) {
+        dbg.sseEvent('usage', JSON.stringify(streamUsage));
+        res.write(`data: ${JSON.stringify({ usage: streamUsage })}\n\n`);
+      } else {
+        dbg.sseEvent('usage', 'SKIPPED (no usage data from stream)');
       }
 
       // ارسال DONE و بستن اتصال
+      dbg.done(streamAborted);
+      dbg.summary({
+        msgId,
+        fullContentLength: fullContent.length,
+        toolCallsFromPhase1: 0, // in two-phase, phase1 has no tools
+        toolCallsFromPhase2: toolCalls.length,
+        storyStateUpdated,
+        streamAborted,
+        streamUsagePresent: !!streamUsage,
+      });
       if (!streamAborted) {
         res.write('data: [DONE]\n\n');
       }
@@ -865,7 +1065,8 @@ You are responding as "${character.name}" ONLY.
       res.end();
     } else {
       // Non-streaming response
-      const data = await response.json();
+      dbg.phase1Response(response.status, response.ok);
+      const data = await response.json() as any;
       let content = parseNonStreamingResponse(data);
       // حذف tool call‌هایی که مدل به صورت متن در content برگردانده
       content = stripToolCallsFromContent(content);
@@ -897,15 +1098,213 @@ You are responding as "${character.name}" ONLY.
 
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(now, chat_id);
 
-      res.json({ content, message_id: msgId });
+      // ─── Non-streaming: Tool calls from response ───
+      let toolCalls: any[] = data.choices?.[0]?.message?.tool_calls || [];
+      _log(`[StoryState] Non-streaming tool calls: ${toolCalls.length}`);
+
+      // Two-phase mode: if enabled and no tool calls, make phase 2 request
+      if (twoPhaseEnabled && toolCalls.length === 0 && content) {
+        dbg.phase2Decision(true, `non-streaming: twoPhase=${twoPhaseEnabled} toolCalls=${toolCalls.length} hasContent=${!!content}`);
+
+        // Strip think tags before Phase 2
+        const cleanContentForPhase2 = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+        try {
+          const extractionPrompt = getStateExtractionPrompt(character.name, storyState, characterNames);
+          const phase2RequestBody = buildRequestBody([
+            ...extractionPrompt,
+            ...effectiveParts,
+            { role: 'assistant' as const, content: cleanContentForPhase2 },
+          ], {
+            model: settings.model,
+            temperature: 0.3,
+            max_tokens: 2000,
+            top_p: settings.top_p,
+            frequency_penalty: settings.frequency_penalty,
+            presence_penalty: settings.presence_penalty,
+            stream: !!settings.stream,
+            stop: JSON.parse(settings.stop || '[]'),
+          });
+
+          const phase2Abort = new AbortController();
+          const phase2Timeout = setTimeout(() => {
+            _log(`[StoryState] Non-streaming Phase 2: timeout after 30s`);
+            phase2Abort.abort();
+          }, 30_000);
+
+          _log(`[StoryState] Non-streaming Phase 2: sending request to ${endpoint}`);
+
+          let phase2Response: globalThis.Response;
+          try {
+            phase2Response = await fetch(endpoint, {
+              method: 'POST',
+              headers,
+              body: phase2RequestBody,
+              signal: phase2Abort.signal,
+            });
+          } finally {
+            clearTimeout(phase2Timeout);
+          }
+
+          if (phase2Response.ok) {
+            let phase2Content = '';
+
+            if (settings.stream) {
+              const reader = phase2Response.body?.getReader();
+              const decoder = new TextDecoder();
+              if (reader) {
+                const lineBuffer = createLineBuffer();
+                let done = false;
+                while (!done) {
+                  const { done: streamDone, value } = await reader.read();
+                  if (streamDone) break;
+                  const chunk = decoder.decode(value, { stream: true });
+                  const lines = lineBuffer.push(chunk);
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ')) {
+                      const data = trimmed.slice(6);
+                      if (data === '[DONE]') { done = true; break; }
+                      try {
+                        const parsed = JSON.parse(data);
+                        const delta = parsed.choices?.[0]?.delta;
+                        if (delta?.content) phase2Content += delta.content;
+                      } catch {}
+                    }
+                  }
+                }
+              }
+            } else {
+              const phase2Data = await phase2Response.json() as any;
+              phase2Content = phase2Data.choices?.[0]?.message?.content || '';
+            }
+
+            _log(`[StoryState] Non-streaming Phase 2: response received (${phase2Content.length} chars)`);
+
+            let cleanedPhase2 = phase2Content.trim();
+            const codeBlockMatch = cleanedPhase2.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+            if (codeBlockMatch) {
+              cleanedPhase2 = codeBlockMatch[1].trim();
+            }
+
+            try {
+              const parsed = JSON.parse(cleanedPhase2);
+              if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+                toolCalls = parsed.tool_calls;
+                _log(`[StoryState] Non-streaming Phase 2: extracted ${toolCalls.length} tool calls`);
+              }
+            } catch (parseErr) {
+              const textToolCalls = parseToolCallsFromText(phase2Content);
+              if (textToolCalls.length > 0) {
+                toolCalls = textToolCalls;
+                _log(`[StoryState] Non-streaming Phase 2: text fallback ${toolCalls.length} tool calls`);
+              }
+            }
+          }
+        } catch (phase2Error: any) {
+          _err(`[StoryState] Non-streaming Phase 2: failed:`, phase2Error?.message || phase2Error);
+        }
+      }
+
+      // Process tool calls (same logic as streaming path)
+      let storyStateUpdated = false;
+      let newStoryState = null;
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.function?.name === 'update_story_state') {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+            let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+            if (existingRow) {
+              try { currentState = JSON.parse(existingRow.state_json); } catch {}
+            }
+            newStoryState = deepMergeState(currentState, args);
+            const saveNow = new Date().toISOString();
+            if (existingRow) {
+              db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                .run(JSON.stringify(newStoryState), saveNow, chat_id);
+            } else {
+              db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                .run(uuidv4(), chat_id, JSON.stringify(newStoryState), saveNow);
+            }
+            storyStateUpdated = true;
+            _log(`[StoryState] Non-streaming state updated via tool call`);
+          } catch (e) {
+            _err('Failed to process non-streaming update_story_state:', e);
+          }
+        }
+      }
+
+      // Fallback: text parsing (same as streaming)
+      if (!storyStateUpdated && content) {
+        const textToolCalls = parseToolCallsFromText(content);
+        for (const toolCall of textToolCalls) {
+          if (toolCall.function?.name === 'update_story_state') {
+            try {
+              const args = JSON.parse(toolCall.function.arguments);
+              const existingRow = db.prepare('SELECT * FROM chat_story_state WHERE chat_id = ?').get(chat_id) as any;
+              let currentState = { characters: {}, relationships: {}, current_situation: '', rules: [], relationship_details: {}, memories: [] };
+              if (existingRow) {
+                try { currentState = JSON.parse(existingRow.state_json); } catch {}
+              }
+              newStoryState = deepMergeState(currentState, args);
+              const saveNow = new Date().toISOString();
+              if (existingRow) {
+                db.prepare('UPDATE chat_story_state SET state_json = ?, updated_at = ? WHERE chat_id = ?')
+                  .run(JSON.stringify(newStoryState), saveNow, chat_id);
+              } else {
+                db.prepare('INSERT INTO chat_story_state (id, chat_id, state_json, updated_at) VALUES (?, ?, ?, ?)')
+                  .run(uuidv4(), chat_id, JSON.stringify(newStoryState), saveNow);
+              }
+              storyStateUpdated = true;
+              _log(`[StoryState] Non-streaming state updated via text parsing`);
+            } catch (e) {
+              _err('Failed to process non-streaming text tool call:', e);
+            }
+          }
+        }
+      }
+
+      // Strip tool calls from content
+      const strippedContent = stripToolCallsFromContent(content);
+      if (strippedContent !== content) {
+        content = strippedContent;
+        db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, msgId);
+      }
+
+      dbg.messageSaved(msgId, msgRole, content.length);
+      dbg.summary({
+        path: 'non-streaming',
+        msgId,
+        contentLength: content.length,
+        toolCallsFromPhase2: toolCalls.length,
+        storyStateUpdated,
+        hasUsage: !!data.usage,
+      });
+
+      res.json({
+        content,
+        message_id: msgId,
+        ...(storyStateUpdated && { story_state_updated: true, state: newStoryState }),
+        // Usage data از API response
+        ...(data.usage && {
+          usage: {
+            prompt_tokens: data.usage.prompt_tokens,
+            completion_tokens: data.usage.completion_tokens,
+            total_tokens: data.usage.total_tokens,
+          }
+        }),
+      });
     }
   } catch (error: any) {
     // اگر کلاینت اتصال را قطع کرده، نیازی به پاسخ نیست
     if (error?.name === 'AbortError') {
-      console.log('Request aborted (client disconnected)');
+      dbg.error('outer-catch', new Error('Request aborted (client disconnected)'));
       return;
     }
-    console.error('API Error:', error);
+    dbg.error('outer-catch', error);
+    _err('API Error:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message || 'Error connecting to API' });
     }
